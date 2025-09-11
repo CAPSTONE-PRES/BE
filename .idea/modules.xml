@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/com.pres.pres-server.main.iml" filepath="$PROJECT_DIR$/.idea/modules/com.pres.pres-server.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/pres-server.main.iml" filepath="$PROJECT_DIR$/.idea/modules/pres-server.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/pres-server.test.iml" filepath="$PROJECT_DIR$/.idea/modules/pres-server.test.iml" />
     </modules>
   </component>
 </project>

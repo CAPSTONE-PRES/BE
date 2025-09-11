@@ -16,12 +16,11 @@ public class Comment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long commentId;
 
-    private String commentText;
+    private String commentContent;
     private String commentAuthor;
 
     private String commentDate;
     private LocalDateTime commentTime;
-    private String commentLocation;
 
     private boolean isMemberChecked;
 }

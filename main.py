@@ -1,19 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import JSONResponse
-import aiofiles
-import os
-from pptx import Presentation
-import pytesseract
-from pdf2image import convert_from_path, convert_from_bytes
-from openai import OpenAI
-from pydantic import BaseModel
-import re
-# from sentence_transformers import SentenceTransformer, util
-from konlpy.tag import Okt
-from typing import Dict
-from pdf2image import convert_from_path
-import requests
-from fastapi.middleware.cors import CORSMiddleware
+
+
 
 
 #pdf2image 설정

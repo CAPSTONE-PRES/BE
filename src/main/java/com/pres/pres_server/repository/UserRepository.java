@@ -1,2 +1,14 @@
-package com.pres.pres_server.repository;public class UserRepository {
+package com.pres.pres_server.repository;
+
+import com.pres.pres_server.domain.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email); // email로 사용자 찾기
+
+    Optional<User> findById(Long id); // id로 사용자 찾기
+
+    void deleteById(Long id); // id로 사용자 삭제
 }

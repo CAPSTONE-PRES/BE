@@ -5,7 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name="CueCard")
+@Table(name = "CueCard")
 @Getter
 @Setter
 public class CueCard {
@@ -19,8 +19,7 @@ public class CueCard {
     private String qrUrl;
 
     @OneToOne
-    @JoinColumn(name="fileId")
+    @JoinColumn(name = "fileId")
     private PresentationFile presentationFile;
-
 
 }

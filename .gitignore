@@ -1,18 +1,40 @@
+# Java
 *.iml
 *.ipr
+*.class
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
 
 
 # Gradle
-/.gradle/
+/gradle/
 /build/
 
 # IDE
 /.idea/
 /*.iml
+/.vscode/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs, temp files, and databases
+*.log
+*.tmp
+*.temp
+
+# Pakage Files
+*.jar
+*.war
+*.ear
+*.nar
+
+# Spring Boot
+/application.properties
+/application.yml
+/application-*.properties
+/application-*.yml
+
+

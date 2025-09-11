@@ -1,2 +1,49 @@
-package com.pres.pres_server.util;public class CookieUtil {
+package com.pres.pres_server.util;
+
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.util.SerializationUtils;
+
+import java.util.Base64;
+
+public class CookieUtil {
+    // 요청값 기반 Http 응답에 쿠키 추가
+    public static void addCookie(HttpServletResponse response, String name, String value,
+            int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setPath("/"); // 모든 경로에서 접근 가능
+        cookie.setMaxAge(maxAge);
+        response.addCookie(cookie);
+    }
+
+    // 객체 이름 입력받아 쿠키 삭제
+    // 쿠키를 빈 값으로 바꾸고 만료 시간을 0으로 설정해 쿠키가 재생성 되자마자 만료 처리
+    public static void deleteCookie(HttpServletRequest request,
+            HttpServletResponse response, String name) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (name.equals(cookie.getName())) {
+                cookie.setValue(""); // 빈 값으로 설정
+                cookie.setPath("/"); // 모든 경로에서 접근 가능
+                cookie.setMaxAge(0);
+                response.addCookie(cookie);
+            }
+        }
+    }
+
+    // 객체 직렬화해 쿠키의 값으로 변환
+    public static String serialize(Object object) {
+        return Base64.getUrlEncoder().encodeToString(SerializationUtils.serialize(object));
+    }
+
+    // 쿠키 역직렬화해 객체로 변환
+    public static <T> T deserialize(Cookie cookie, Class<T> cls) {
+        return cls.cast(
+                SerializationUtils.deserialize(Base64.getUrlDecoder().decode(cookie.getValue())));
+    }
 }
