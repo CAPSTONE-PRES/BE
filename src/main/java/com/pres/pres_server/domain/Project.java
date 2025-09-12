@@ -29,7 +29,7 @@ public class Project {
     private boolean is_bookmarked = false;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 
     @Column(name = "due_date")
     private LocalDateTime due_date;

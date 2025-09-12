@@ -34,30 +34,30 @@ public class User implements UserDetails {
     private String username;
 
     @Column(name = "email_verified", nullable = false)
-    private boolean email_verified;
+    private boolean emailVerified;
 
     @Column(name = "email_verified_at")
-    private LocalDateTime email_verified_at;
+    private LocalDateTime emailVerifiedAt;
 
     @Column(name = "is_admin")
-    private boolean is_admin;
+    private boolean admin;
 
     @Column(name = "profile_image_url")
-    private String profile_image_url;
+    private String profileImageUrl;
 
     @Column(name = "push_enabled", nullable = false)
-    private boolean push_enabled = false;
+    private boolean pushEnabled = false;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 
     @Builder
-    public User(String email, String password, String username, boolean email_verified) {
+    public User(String email, String password, String username, boolean emailVerified) {
         this.email = email;
         this.password = password;
         this.username = username;
-        this.email_verified = email_verified;
+        this.emailVerified = emailVerified;
     }
 
     @Override

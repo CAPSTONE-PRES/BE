@@ -27,5 +27,5 @@ public class EmailAuthCode {
     private String code;
 
     @Column(name = "expire_at", nullable = false)
-    private LocalDateTime expire_at;
+    private LocalDateTime expireAt;
 }
