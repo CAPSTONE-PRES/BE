@@ -45,19 +45,19 @@ public class KakaoOAuthService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
-    @Value("${KAKAO_CLIENT_ID}")
+    @Value("${kakao.client-id}")
     public String clientId;
 
-    @Value("${KAKAO_CLIENT_SECRET}")
+    @Value("${kakao.client-secret}")
     String clientSecret;
 
-    @Value("${KAKAO_REDIRECT_URI}")
+    @Value("${kakao.redirect-uri}")
     public String redirectUri;
 
-    @Value("${KAKAO_KAUTH_HOST}")
+    @Value("${kakao.kauth-host}")
     public String kauthHost; // 예: https://kauth.kakao.com
 
-    @Value("${KAKAO_KAPI_HOST}")
+    @Value("${kakao.kapi-host}")
     public String kapiHost; // 예: https://kapi.kakao.com
 
     public String getOauthRedirectURL() {

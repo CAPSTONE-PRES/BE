@@ -13,6 +13,8 @@ import com.pres.pres_server.service.token.TokenService;
 import com.pres.pres_server.service.user.UserService;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.pres.pres_server.service.auth.UserAuthService;
@@ -121,6 +123,10 @@ public class AuthController {
 
     @Operation(summary = "카카오 토큰 생성", description = "카카오 로그인 후 콜백으로 전달된 코드를 통해 토큰을 생성합니다.")
     @GetMapping("/kakao/callback")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
     public ResponseEntity<?> kakaoCallback(@RequestParam("code") String code) {
         // 1. access token 발급
         String kakaoAccessToken = kakaoAuthService.requestAccessToken(code);

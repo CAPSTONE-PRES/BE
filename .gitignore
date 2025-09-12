@@ -6,10 +6,9 @@ out/
 !**/src/main/**/out/
 !**/src/test/**/out/
 
-
-# Gradle
-/gradle/
-/build/
+#gradle
+.gradle/
+build/
 
 # IDE
 /.idea/
@@ -32,9 +31,8 @@ Thumbs.db
 *.nar
 
 # Spring Boot
-/application.properties
-/application.yml
-/application-*.properties
-/application-*.yml
-
+src/main/resources/application.yml
+src/main/resources/application-*.yml
+# keep example tracked
+!src/main/resources/application-example.yml
 
