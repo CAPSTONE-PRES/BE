@@ -17,7 +17,7 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // 기본 생성자
 @AllArgsConstructor
 @Builder
-@Table(name = "Users")
+@Table(name = "users")
 public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,31 +30,34 @@ public class User implements UserDetails {
     @Column(name = "password")
     private String password;
 
-    @Column(nullable = false, unique = true, length = 50)
+    @Column(name = "username", nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(nullable = false)
-    private boolean emailVerified;
+    @Column(name = "email_verified", nullable = false)
+    private boolean email_verified;
 
-    private LocalDateTime emailVerifiedAt;
+    @Column(name = "email_verified_at")
+    private LocalDateTime email_verified_at;
 
-    private boolean isAdmin;
+    @Column(name = "is_admin")
+    private boolean is_admin;
 
-    private String profileImageUrl;
+    @Column(name = "profile_image_url")
+    private String profile_image_url;
 
-    @Column(nullable = false)
-    private boolean pushEnabled = false;
+    @Column(name = "push_enabled", nullable = false)
+    private boolean push_enabled = false;
 
     @CreationTimestamp
-    @Column(updatable = false)
-    private LocalDateTime createdAt; // = LocalDateTime.now();
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime created_at;
 
     @Builder
-    public User(String email, String password, String username, boolean emailVerified) {
+    public User(String email, String password, String username, boolean email_verified) {
         this.email = email;
         this.password = password;
         this.username = username;
-        this.emailVerified = emailVerified;
+        this.email_verified = email_verified;
     }
 
     @Override

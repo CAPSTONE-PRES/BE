@@ -10,21 +10,22 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
-@Table(name = "EmailAuthCode")
+@Table(name = "email_auth_code")
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class EmailAuthCode {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "email", nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column(name = "code", nullable = false)
     private String code;
 
-    @Column(nullable = false)
-    private LocalDateTime expireAt;
+    @Column(name = "expire_at", nullable = false)
+    private LocalDateTime expire_at;
 }

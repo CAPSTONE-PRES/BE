@@ -7,22 +7,25 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="PresentationFile")
+@Table(name = "presentation_files")
 @Getter
 @Setter
-
 public class PresentationFile {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long fileId;
+    @Column(name = "file_id")
+    private Long file_id;
 
-    private String fileUrl;
-    //private String file_name;
-    private String extractedText;
+    @Column(name = "file_url", nullable = false)
+    private String file_url;
 
-    private LocalDateTime uploadedAt;
+    @Column(name = "extracted_text", columnDefinition = "TEXT")
+    private String extracted_text;
+
+    @Column(name = "uploaded_at")
+    private LocalDateTime uploaded_at;
 
     @OneToOne
-    @JoinColumn(name="projectId")
-    private Project project; //FK, project_id
+    @JoinColumn(name = "project_id", nullable = false, unique = true)
+    private Project project;
 }

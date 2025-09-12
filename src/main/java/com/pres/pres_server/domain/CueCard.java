@@ -4,22 +4,31 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+
+
 @Entity
-@Table(name = "CueCard")
+@Table(name = "cue_cards", uniqueConstraints = @UniqueConstraint(columnNames = { "file_id", "slide_number" }))
 @Getter
 @Setter
 public class CueCard {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long cueId;
-    private int slideNumber;
+    @Column(name = "cue_id")
+    private Long cue_id;
+
+    @ManyToOne
+    @JoinColumn(name = "file_id", nullable = false)
+    private PresentationFile presentation_file;
+
+    @Column(name = "slide_number", nullable = false)
+    private int slide_number;
+
+    @Column(name = "content", columnDefinition = "TEXT")
     private String content;
+
+    @Column(name = "mode")
     private String mode;
-    private String qrUrl;
 
-    @OneToOne
-    @JoinColumn(name = "fileId")
-    private PresentationFile presentationFile;
-
+    @Column(name = "qr_url")
+    private String qr_url;
 }

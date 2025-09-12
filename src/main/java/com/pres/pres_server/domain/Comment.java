@@ -7,20 +7,32 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "Comment")
+@Table(name = "comments")
 @Getter
 @Setter
-
 public class Comment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long commentId;
+    @Column(name = "comment_id")
+    private Long comment_id;
 
-    private String commentContent;
-    private String commentAuthor;
+    @ManyToOne
+    @JoinColumn(name = "cue_id", nullable = false)
+    private CueCard cue_card;
 
-    private String commentDate;
-    private LocalDateTime commentTime;
+    @ManyToOne
+    @JoinColumn(name = "author_user_id", nullable = false)
+    private User author_user;
 
-    private boolean isMemberChecked;
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    private String content;
+
+    @Column(name = "location")
+    private String location;
+
+    @Column(name = "is_member_checked", nullable = false)
+    private boolean is_member_checked = false;
+
+    @Column(name = "created_at")
+    private LocalDateTime created_at;
 }

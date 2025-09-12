@@ -5,23 +5,31 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name="Feedback")
+@Table(name = "feedback")
 @Getter
 @Setter
 public class Feedback {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long feedbackId;
+    @Column(name = "feedback_id")
+    private Long feedback_id;
 
-    private int spmScore;
-    private int fillerScore;
-    private int repeatScore;
+    @Column(name = "spm_score")
+    private int spm_score;
 
-    private int totalScore;
+    @Column(name = "filler_score")
+    private int filler_score;
 
+    @Column(name = "repeat_score")
+    private int repeat_score;
+
+    @Column(name = "total_score")
+    private int total_score;
+
+    @Column(name = "grade")
     private String grade;
 
     @OneToOne
-    @JoinColumn(name="session_id")
-    private PracticeSession practiceSession;
+    @JoinColumn(name = "session_id")
+    private PracticeSession practice_session;
 }

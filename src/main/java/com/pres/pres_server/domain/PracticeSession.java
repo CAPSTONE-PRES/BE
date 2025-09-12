@@ -8,22 +8,30 @@ import java.sql.Time;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="PracticeSession")
+@Table(name = "practice_session")
 @Getter
 @Setter
 public class PracticeSession {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long sessionId;
-    private String audioUrl;
-    private String sttText;
+    @Column(name = "session_id")
+    private Long session_id;
 
-    private LocalDateTime practicedAt;
-    private Time duration; //타입 확인
+    @Column(name = "audio_url")
+    private String audio_url;
 
-    //일대다 속성 타입은 컨테이너여야 합니다. ??
+    @Column(name = "stt_text")
+    private String stt_text;
+
+    @Column(name = "practiced_at")
+    private LocalDateTime practiced_at;
+
+    @Column(name = "duration")
+    private Time duration; //Time? int?
+
     @ManyToOne
-    @JoinColumn(name="project_id")
-    private Project project; //FK, project_id
+    @JoinColumn(name = "project_id", nullable = false)
+    private Project project;
 
 }

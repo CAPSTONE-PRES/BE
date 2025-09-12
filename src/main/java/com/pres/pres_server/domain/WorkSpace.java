@@ -3,31 +3,25 @@ package com.pres.pres_server.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
-import java.security.PrivateKey;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "WorkSpace")
+@Table(name = "workspaces")
 @Getter
 @Setter
-
 public class WorkSpace {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long workspaceId;
-    private String workspaceName;
-    //private String workspace_description;
-    private LocalDateTime createdAt; //=LocalDateTime.now();
+    @Column(name = "workspace_id")
+    private Long workspace_id;
 
+    @Column(name = "workspace_name", nullable = false)
+    private String workspace_name;
 
-    //user id 받음
+    @Column(name = "created_at")
+    private LocalDateTime created_at;
+
     @ManyToOne
-    @JoinColumn(name="userId")
-    private User user; //FK, user_id
-
-    //project에서 w.s id받음
-    //teammember에서 w.s id받음
-
+    @JoinColumn(name = "owner_user_id", nullable = false)
+    private User owner_user;
 }

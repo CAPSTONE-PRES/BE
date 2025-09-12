@@ -7,24 +7,26 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="TeamMember")
+@Table(name = "team_members", uniqueConstraints = @UniqueConstraint(columnNames = { "workspace_id", "user_id" }))
 @Getter
 @Setter
 public class TeamMember {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long memberId;
+    @Column(name = "member_id")
+    private Long member_id;
 
-    //fk 두개 == pk
+    @Column(name = "role", nullable = false)
     private String role;
-    private LocalDateTime invitedAt;
+
+    @Column(name = "invited_at")
+    private LocalDateTime invited_at;
 
     @ManyToOne
-    @JoinColumn(name="user_id")
+    @JoinColumn(name = "workspace_id", nullable = false)
+    private WorkSpace workspace;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-    @ManyToOne
-    @JoinColumn(name="workspace_id")
-    private WorkSpace workSpace; //FK, project_id
-
 }
