@@ -12,10 +12,27 @@ import lombok.RequiredArgsConstructor;
 public class RefreshTokenService {
     private final RefreshTokenRepository refreshTokenRepository;
 
-    // 리프레시 토큰 전달
+    // 리프레시 토큰으로 DB에서 리프레시 토큰 엔티티 찾기
     public RefreshToken findByRefreshToken(String refreshToken) {
         return refreshTokenRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new IllegalArgumentException("Unexpected refresh token"));
     }
 
+    // 리프레시 토큰 저장
+    public void save(RefreshToken refreshToken) {
+        refreshTokenRepository.save(refreshToken);
+    }
+
+    // 리프레시 토큰 삭제
+    public void deleteByRefreshToken(String refreshToken) {
+        refreshTokenRepository.findByRefreshToken(refreshToken)
+                .ifPresent(refreshTokenRepository::delete);
+    }
+
+    // DB에서 카카오 액세스 토큰을 가져오는 메서드
+    public String getKakaoAccessTokenFromDB(String refreshToken) {
+        // 리프레시 토큰에 해당하는 사용자를 찾고,
+        // 해당 사용자의 카카오 액세스 토큰을 DB에서 가져오는 로직
+        return "가상_카카오_액세스_토큰";
+    }
 }
