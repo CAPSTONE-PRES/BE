@@ -2,6 +2,7 @@ package com.pres.pres_server.security.jwt;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Date;
@@ -74,6 +75,8 @@ public class TokenProvider {
         return claims.get("id", Long.class);
     }
 
+    // 토큰에서 클레임을 추출하는 메서드
+    // 클레임 : 토큰에 담기는 정보의 단위
     private Claims getClaims(String token) {
         return Jwts.parser() // 클레임 조회
                 .setSigningKey(jwtProperties.getSecretKey())
@@ -81,4 +84,11 @@ public class TokenProvider {
                 .getBody();
     }
 
+    public String resolveRefreshToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+        return null;
+    }
 }
