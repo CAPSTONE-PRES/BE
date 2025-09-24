@@ -26,11 +26,11 @@ public class Project {
     private String category;
 
     @Column(name = "is_bookmarked", nullable = false)
-    private boolean is_bookmarked = false;
+    private boolean isBookmarked = false;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @Column(name = "due_date")
-    private LocalDateTime due_date;
+    private LocalDateTime dueDate;
 }
