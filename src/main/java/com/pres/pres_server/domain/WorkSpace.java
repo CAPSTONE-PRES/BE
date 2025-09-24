@@ -13,15 +13,15 @@ public class WorkSpace {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "workspace_id")
-    private Long workspace_id;
+    private Long workspaceId;
 
     @Column(name = "workspace_name", nullable = false)
-    private String workspace_name;
+    private String workspaceName;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 
     @ManyToOne
     @JoinColumn(name = "owner_user_id", nullable = false)
-    private User owner_user;
+    private User ownerUserId;
 }

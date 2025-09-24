@@ -12,24 +12,24 @@ public class Feedback {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "feedback_id")
-    private Long feedback_id;
+    private Long feedbackId;
 
     @Column(name = "spm_score")
-    private int spm_score;
+    private int spmScore;
 
     @Column(name = "filler_score")
-    private int filler_score;
+    private int fillerScore;
 
     @Column(name = "repeat_score")
-    private int repeat_score;
+    private int repeatScore;
 
     @Column(name = "total_score")
-    private int total_score;
+    private int totalScore;
 
     @Column(name = "grade")
     private String grade;
 
     @OneToOne
     @JoinColumn(name = "session_id")
-    private PracticeSession practice_session;
+    private PracticeSession practiceSessionId;
 }

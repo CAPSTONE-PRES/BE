@@ -14,15 +14,15 @@ public class Comment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "comment_id")
-    private Long comment_id;
+    private Long commentId;
 
     @ManyToOne
     @JoinColumn(name = "cue_id", nullable = false)
-    private CueCard cue_card;
+    private CueCard cueCard;
 
     @ManyToOne
     @JoinColumn(name = "author_user_id", nullable = false)
-    private User author_user;
+    private User authorUser;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -31,8 +31,8 @@ public class Comment {
     private String location;
 
     @Column(name = "is_member_checked", nullable = false)
-    private boolean is_member_checked = false;
+    private boolean isMemberChecked = false;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 }

@@ -38,6 +38,7 @@ public class UserAuthService {
         if (dto.getPassword().length() < 6) {
             throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
         }
+        
         User user = User.builder()
                 .email(dto.getEmail())
                 .password(encoder.encode(dto.getPassword()))

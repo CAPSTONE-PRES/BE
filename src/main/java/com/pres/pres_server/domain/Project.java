@@ -13,11 +13,11 @@ public class Project {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "project_id")
-    private Long project_id;
+    private Long projectId;
 
     @ManyToOne
     @JoinColumn(name = "workspace_id", nullable = false)
-    private WorkSpace workspace;
+    private WorkSpace workspaceId;
 
     @Column(name = "title", nullable = false)
     private String title;
@@ -26,11 +26,12 @@ public class Project {
     private String category;
 
     @Column(name = "is_bookmarked", nullable = false)
-    private boolean is_bookmarked = false;
+    private boolean isBookmarked = false;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @Column(name = "due_date")
-    private LocalDateTime due_date;
+    private LocalDateTime dueDate;
+
 }

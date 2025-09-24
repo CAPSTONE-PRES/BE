@@ -14,17 +14,7 @@ import java.util.List;
 
 @RequiredArgsConstructor
 @Service
-// 스프링 시큐리티에서 사용자 정보를 가져오는 역할
-// 이미 가입된 사용자에 대한 CRUD
 public class UserService implements UserDetailsService {
-
-    // 비밀번호 변경
-    @Transactional
-    public void updatePassword(String email, String newPassword) {
-        User user = findByEmail(email);
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
-    }
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -32,20 +22,29 @@ public class UserService implements UserDetailsService {
     @Override
     public User loadUserByUsername(String email) {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
+                .orElseThrow(() -> new IllegalArgumentException("이메일로 사용자를 찾을 수 없습니다: " + email));
     }
 
     // 사용자 정보 변경
     @Transactional
     public User updateUser(Long id, UserUpdateDto dto) {
         User user = getUser(id);
-        if (dto.getUsername() != null && !dto.getUsername().isEmpty()) {
+        if (dto.getUsername() != null && dto.getUsername().isEmpty()) {
+            throw new IllegalArgumentException("사용자 이름이 비어 있습니다.");
+        }
+        if (dto.getEmail() != null && dto.getEmail().isEmpty()) {
+            throw new IllegalArgumentException("이메일이 비어 있습니다.");
+        }
+        if (dto.getPassword() != null && dto.getPassword().length() < 8) {
+            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
+        }
+        if (dto.getUsername() != null) {
             user.setUsername(dto.getUsername());
         }
-        if (dto.getEmail() != null && !dto.getEmail().isEmpty()) {
+        if (dto.getEmail() != null) {
             user.setEmail(dto.getEmail());
         }
-        if (dto.getPassword() != null && !dto.getPassword().isEmpty()) {
+        if (dto.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(dto.getPassword()));
         }
         userRepository.save(user);
@@ -55,32 +54,50 @@ public class UserService implements UserDetailsService {
     // 사용자 삭제
     @Transactional
     public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new IllegalArgumentException("삭제할 사용자를 찾을 수 없습니다. id=" + id);
+        }
         userRepository.deleteById(id);
     }
 
     // 사용자 조회
     public User getUser(Long id) {
         return userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new IllegalArgumentException("id로 사용자를 찾을 수 없습니다: " + id));
     }
 
     // 모든 사용자 목록 조회 (관리자용)
     public List<User> listUsers() {
-        return userRepository.findAll();
+        List<User> users = userRepository.findAll();
+        if (users.isEmpty()) {
+            throw new IllegalArgumentException("등록된 사용자가 없습니다.");
+        }
+        return users;
     }
 
     // id로 사용자 찾기
     public User findById(Long id) {
         return userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Unexpected user"));
+                .orElseThrow(() -> new IllegalArgumentException("id로 사용자를 찾을 수 없습니다: " + id));
     }
 
     // email로 사용자 찾기
     public User findByEmail(String email) {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Unexpected user"));
+                .orElseThrow(() -> new IllegalArgumentException("이메일로 사용자를 찾을 수 없습니다: " + email));
     }
 
-
-
+    // 비밀번호 변경
+    @Transactional
+    public void updatePassword(String email, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
+        }
+        User user = findByEmail(email);
+        if (user == null) {
+            throw new IllegalArgumentException("비밀번호 변경 대상 사용자를 찾을 수 없습니다: " + email);
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
 }
