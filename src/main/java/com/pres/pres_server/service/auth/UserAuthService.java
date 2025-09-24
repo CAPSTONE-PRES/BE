@@ -29,11 +29,14 @@ public class UserAuthService {
         if (!emailService.isVerified(dto.getEmail())) {
             throw new IllegalStateException("이메일 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
         }
-        if (userRepository.findByEmail(dto.getEmail()) != null) {
+        if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
             throw new IllegalStateException("이미 가입된 이메일입니다.");
         }
         if (!dto.getPassword().equals(dto.getPasswordConfirm())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+        }
+        if (dto.getPassword().length() < 6) {
+            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
         }
         User user = User.builder()
                 .email(dto.getEmail())
@@ -66,8 +69,12 @@ public class UserAuthService {
     // 로그인
     public boolean login(String email, String rawPassword) {
         User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null)
-            return false;
+        if (user == null) {
+            throw new IllegalArgumentException("이메일로 사용자를 찾을 수 없습니다: " + email);
+        }
+        if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
+            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+        }
         return passwordEncoder.matches(rawPassword, user.getPassword());
     }
 }
