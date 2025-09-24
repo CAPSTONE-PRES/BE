@@ -1,0 +1,72 @@
+package com.pres.pres_server.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import java.util.Map;
+
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> handleValidationException(MethodArgumentNotValidException ex) {
+        String errorMsg = ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                .findFirst()
+                .orElse("잘못된 요청입니다.");
+        return ResponseEntity.badRequest().body(Map.of("error", errorMsg));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String errorMsg = "파라미터 타입이 올바르지 않습니다: " + ex.getName();
+        return ResponseEntity.badRequest().body(Map.of("error", errorMsg));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> handleException(Exception ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    // 카카오 관련 예외 처리, badrequest 400
+    @ExceptionHandler(KakaoBadRequestException.class)
+    public ResponseEntity<Map<String, String>> handleKakaoBadRequest(KakaoBadRequestException ex) {
+        log.warn("카카오 API 요청 오류 (400): {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    }
+
+    // 카카오 인증 관련 예외 처리, unauthorized 401
+    @ExceptionHandler(KakaoUnauthorizedException.class)
+    public ResponseEntity<Map<String, String>> handleKakaoUnauthorized(KakaoUnauthorizedException ex) {
+        log.warn("카카오 API 인증 실패 (401): {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", ex.getMessage()));
+    }
+
+    // 카카오 서버 오류 관련 예외 처리, internal server error 500
+    @ExceptionHandler(KakaoInternalServerException.class)
+    public ResponseEntity<Map<String, String>> handleKakaoInternalServer(KakaoInternalServerException ex) {
+        log.error("카카오 API 내부 오류 (500): {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", ex.getMessage()));
+    }
+
+    // 기타 카카오 예외 처리, service unavailable 503
+    @ExceptionHandler(KakaoException.class)
+    public ResponseEntity<Map<String, String>> handleKakaoException(KakaoException ex) {
+        log.error("알 수 없는 카카오 API 오류: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", ex.getMessage()));
+    }
+
+}
