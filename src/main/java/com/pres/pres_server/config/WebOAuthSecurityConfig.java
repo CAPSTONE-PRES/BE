@@ -25,60 +25,63 @@ import org.springframework.http.HttpStatus;
 @Configuration
 public class WebOAuthSecurityConfig {
 
-    private final OAuth2UserCustomService customService;
-    private final UserService userService;
-    private final TokenProvider tokenProvider;
-    private final RefreshTokenRepository refreshTokenRepository;
+        private final OAuth2UserCustomService customService;
+        private final UserService userService;
+        private final TokenProvider tokenProvider;
+        private final RefreshTokenRepository refreshTokenRepository;
 
-    @Bean
-    public WebSecurityCustomizer configure() { // 스프링 시큐리티 기능 비활성화
-        return (web) -> web.ignoring().requestMatchers("/h2-console/**")
-                .requestMatchers("/static/**");
-    }
+        @Bean
+        public WebSecurityCustomizer configure() { // 스프링 시큐리티 기능 비활성화
+                return (web) -> web.ignoring().requestMatchers("/h2-console/**")
+                                .requestMatchers("/static/**");
+        }
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-                .csrf(csrf -> csrf.disable())
-                .httpBasic(AbstractHttpConfigurer::disable)
-                .formLogin(AbstractHttpConfigurer::disable)
-                .logout(AbstractHttpConfigurer::disable)
-                .sessionManagement(management -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(tokenAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth
-                        // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/token").permitAll()
-                        .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll())
-                .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/login")
-                        .authorizationEndpoint(authorization -> authorization
-                                .authorizationRequestRepository(oAuth2AuthorizationRequestBasedOnCookieRepository()))
-                        .userInfoEndpoint(userInfo -> userInfo.userService(customService))
-                        .successHandler(oAuth2SuccessHandler()))
-                .exceptionHandling(exceptions -> exceptions
-                        .defaultAuthenticationEntryPointFor(
-                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
-                                new AntPathRequestMatcher("/api/**")))
-                .build();
-    }
+        @Bean
+        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                return http
+                                .csrf(csrf -> csrf.disable())
+                                .httpBasic(AbstractHttpConfigurer::disable)
+                                .formLogin(AbstractHttpConfigurer::disable)
+                                .logout(AbstractHttpConfigurer::disable)
+                                .sessionManagement(management -> management
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .addFilterBefore(tokenAuthenticationFilter(),
+                                                UsernamePasswordAuthenticationFilter.class)
+                                .authorizeHttpRequests(auth -> auth
+                                                // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
+                                                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                                                .requestMatchers("/api/token").permitAll()
+                                                .requestMatchers("/api/**").authenticated()
+                                                .anyRequest().permitAll())
+                                .oauth2Login(oauth2 -> oauth2
+                                                .loginPage("/login")
+                                                .authorizationEndpoint(authorization -> authorization
+                                                                .authorizationRequestRepository(
+                                                                                oAuth2AuthorizationRequestBasedOnCookieRepository()))
+                                                .userInfoEndpoint(userInfo -> userInfo.userService(customService))
+                                                .successHandler(oAuth2SuccessHandler()))
+                                .exceptionHandling(exceptions -> exceptions
+                                                .defaultAuthenticationEntryPointFor(
+                                                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                                                                new AntPathRequestMatcher("/api/**")))
+                                .build();
+        }
 
+        @Bean
+        public OAuth2SuccessHandler oAuth2SuccessHandler() {
+                return new OAuth2SuccessHandler(tokenProvider,
+                                refreshTokenRepository,
+                                oAuth2AuthorizationRequestBasedOnCookieRepository(),
+                                userService);
+        }
 
-    public OAuth2SuccessHandler oAuth2SuccessHandler() {
-        return new OAuth2SuccessHandler(tokenProvider,
-                refreshTokenRepository,
-                oAuth2AuthorizationRequestBasedOnCookieRepository(),
-                userService);
-    }
+        @Bean
+        public TokenAuthenticationFilter tokenAuthenticationFilter() {
+                return new TokenAuthenticationFilter(tokenProvider);
+        }
 
-    @Bean
-    public TokenAuthenticationFilter tokenAuthenticationFilter() {
-        return new TokenAuthenticationFilter(tokenProvider);
-    }
-
-    @Bean
-    public OAuth2AuthorizationRequestBasedOnCookieRepository oAuth2AuthorizationRequestBasedOnCookieRepository() {
-        return new OAuth2AuthorizationRequestBasedOnCookieRepository();
-    }
+        @Bean
+        public OAuth2AuthorizationRequestBasedOnCookieRepository oAuth2AuthorizationRequestBasedOnCookieRepository() {
+                return new OAuth2AuthorizationRequestBasedOnCookieRepository();
+        }
 }
