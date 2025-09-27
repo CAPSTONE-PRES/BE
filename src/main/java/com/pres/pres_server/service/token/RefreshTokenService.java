@@ -23,6 +23,20 @@ public class RefreshTokenService {
         refreshTokenRepository.save(refreshToken);
     }
 
+    // 리프레시 토큰 저장 또는 업데이트 (기존 토큰이 있으면 업데이트)
+    public void saveOrUpdate(Long userId, String newRefreshToken) {
+        RefreshToken existingToken = refreshTokenRepository.findByUserId(userId).orElse(null);
+
+        if (existingToken != null) {
+            // 기존 토큰이 있으면 업데이트
+            existingToken.update(newRefreshToken);
+            refreshTokenRepository.save(existingToken);
+        } else {
+            // 기존 토큰이 없으면 새로 생성
+            refreshTokenRepository.save(new RefreshToken(userId, newRefreshToken));
+        }
+    }
+
     // 리프레시 토큰 삭제
     public void deleteByRefreshToken(String refreshToken) {
         refreshTokenRepository.findByRefreshToken(refreshToken)

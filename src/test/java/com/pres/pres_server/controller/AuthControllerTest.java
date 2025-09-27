@@ -10,13 +10,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.security.jwt.TokenProvider;
 import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.auth.UserAuthService;
 import com.pres.pres_server.service.email.EmailService;
@@ -40,6 +40,8 @@ class AuthControllerTest {
         private UserService userService;
         @MockitoBean
         private TokenService tokenService;
+        @MockitoBean
+        private TokenProvider tokenProvider;
 
         @Test
         @DisplayName("로그아웃 API 정상 동작 테스트")

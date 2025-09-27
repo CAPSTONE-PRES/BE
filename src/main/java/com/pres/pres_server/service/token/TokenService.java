@@ -34,8 +34,8 @@ public class TokenService {
     public String createRefreshToken(User user) {
         // 사용자 id로 리프레시 토큰 생성 (14일 유효)
         String refreshToken = tokenProvider.generateToken(user, Duration.ofDays(14));
-        // DB에 리프레시 토큰 저장
-        refreshTokenService.save(new RefreshToken(user.getId(), refreshToken));
+        // 기존 토큰이 있으면 업데이트, 없으면 새로 생성
+        refreshTokenService.saveOrUpdate(user.getId(), refreshToken);
         return refreshToken;
     }
 

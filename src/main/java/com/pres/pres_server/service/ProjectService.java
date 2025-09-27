@@ -15,116 +15,116 @@ import java.time.format.DateTimeFormatter;
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
-    private final ProjectRepository projectRepository;
-    private final TeamMemberRepository teamMemberRepository;
+        private final ProjectRepository projectRepository;
+        private final TeamMemberRepository teamMemberRepository;
 
-    public List<ProjectListDTO> getProjectsByUserId(Long userId) {
-        // 1. 사용자가 속한 workspace 조회
-        List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
-        List<Long> workspaceIds = members.stream()
-                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                .toList();
+        public List<ProjectListDTO> getProjectsByUserId(Long userId) {
+                // 1. 사용자가 속한 workspace 조회
+                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
+                List<Long> workspaceIds = members.stream()
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
 
-        // 2. workspace에 속한 프로젝트 조회
-        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                // 2. workspace에 속한 프로젝트 조회
+                List<Project> projects = projectRepository
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
 
-        // 3. DTO 변환
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        return projects.stream()
-                .map(p -> new ProjectListDTO(
-                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                        p.getTitle(),
-                        p.getWorkspaceId().getWorkspaceName()
-                ))
-                .toList();
-    }
-
-    public List<ProjectListDTO> getProjectsByUserIdAndDate(Long userId, LocalDate targetDate) {
-        // 1. user가 속한 workspace 조회
-        List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
-        List<Long> workspaceIds = members.stream()
-                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                .toList();
-
-        // 2. workspace에 속한 프로젝트 조회
-        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
-
-        // 3. targetDate 기준 필터링
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        return projects.stream()
-                .filter(p -> p.getDueDate() != null && p.getDueDate().toLocalDate().equals(targetDate))
-                .map(p -> new ProjectListDTO(
-                        p.getDueDate().format(formatter),
-                        p.getTitle(),
-                        p.getWorkspaceId().getWorkspaceName()
-                ))
-                .toList();
-    }
-
-    public ProjectListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
-
-        // user가 해당 프로젝트 접근 권한 있는지 확인 (TeamMember 확인)
-        boolean isMember = teamMemberRepository.findByUser_Id(userId).stream()
-                .anyMatch(tm -> tm.getWorkspace().getWorkspaceId().equals(project.getWorkspaceId().getWorkspaceId()));
-
-        if (!isMember) {
-            throw new IllegalArgumentException("User does not have access to this project");
+                // 3. DTO 변환
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                return projects.stream()
+                                .map(p -> new ProjectListDTO(
+                                                p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                p.getTitle(),
+                                                p.getWorkspaceId().getWorkspaceName()))
+                                .toList();
         }
 
-        project.setBookmarked(status);
-        projectRepository.save(project);
+        public List<ProjectListDTO> getProjectsByUserIdAndDate(Long userId, LocalDate targetDate) {
+                // 1. user가 속한 workspace 조회
+                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
+                List<Long> workspaceIds = members.stream()
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                // 2. workspace에 속한 프로젝트 조회
+                List<Project> projects = projectRepository
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
 
-        return new ProjectListDTO(
-                project.getDueDate() != null ? project.getDueDate().format(formatter) : "",
-                project.getTitle(),
-                project.getWorkspaceId().getWorkspaceName()
-        );
-    }
+                // 3. targetDate 기준 필터링
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                return projects.stream()
+                                .filter(p -> p.getDueDate() != null && p.getDueDate().toLocalDate().equals(targetDate))
+                                .map(p -> new ProjectListDTO(
+                                                p.getDueDate().format(formatter),
+                                                p.getTitle(),
+                                                p.getWorkspaceId().getWorkspaceName()))
+                                .toList();
+        }
 
-    public List<ProjectListDTO> getBookmarkedProjects(Long userId) {
-        // 1. 사용자가 속한 workspace 조회
-        List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
-        List<Long> workspaceIds = members.stream()
-                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                .toList();
+        public ProjectListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
+                Project project = projectRepository.findById(projectId)
+                                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
 
-        // 2. workspace에 속한 프로젝트 조회 + isBookmarked = true 필터
-        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                // user가 해당 프로젝트 접근 권한 있는지 확인 (TeamMember 확인)
+                boolean isMember = teamMemberRepository.findByUser_Id(userId).stream()
+                                .anyMatch(tm -> tm.getWorkspace().getWorkspaceId()
+                                                .equals(project.getWorkspaceId().getWorkspaceId()));
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        return projects.stream()
-                .filter(Project::isBookmarked)
-                .map(p -> new ProjectListDTO(
-                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                        p.getTitle(),
-                        p.getWorkspaceId().getWorkspaceName()
-                ))
-                .toList();
-    }
+                if (!isMember) {
+                        throw new IllegalArgumentException("User does not have access to this project");
+                }
 
-    public List<ProjectListDTO> searchProjectsByTitle(Long userId, String title) {
-        // 1. 사용자가 속한 workspace 조회
-        List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
-        List<Long> workspaceIds = members.stream()
-                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                .toList();
+                project.setBookmarked(status);
+                projectRepository.save(project);
 
-        // 2. workspace에 속한 프로젝트 조회
-        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        return projects.stream()
-                .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase())) // 제목 포함 검색
-                .map(p -> new ProjectListDTO(
-                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                        p.getTitle(),
-                        p.getWorkspaceId().getWorkspaceName()
-                ))
-                .toList();
-    }
+                return new ProjectListDTO(
+                                project.getDueDate() != null ? project.getDueDate().format(formatter) : "",
+                                project.getTitle(),
+                                project.getWorkspaceId().getWorkspaceName());
+        }
+
+        public List<ProjectListDTO> getBookmarkedProjects(Long userId) {
+                // 1. 사용자가 속한 workspace 조회
+                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
+                List<Long> workspaceIds = members.stream()
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
+
+                // 2. workspace에 속한 프로젝트 조회 + isBookmarked = true 필터
+                List<Project> projects = projectRepository
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                return projects.stream()
+                                .filter(Project::isBookmarked)
+                                .map(p -> new ProjectListDTO(
+                                                p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                p.getTitle(),
+                                                p.getWorkspaceId().getWorkspaceName()))
+                                .toList();
+        }
+
+        public List<ProjectListDTO> searchProjectsByTitle(Long userId, String title) {
+                // 1. 사용자가 속한 workspace 조회
+                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
+                List<Long> workspaceIds = members.stream()
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
+
+                // 2. workspace에 속한 프로젝트 조회
+                List<Project> projects = projectRepository
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                return projects.stream()
+                                .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase())) // 제목 포함 검색
+                                .map(p -> new ProjectListDTO(
+                                                p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                p.getTitle(),
+                                                p.getWorkspaceId().getWorkspaceName()))
+                                .toList();
+        }
 
 }

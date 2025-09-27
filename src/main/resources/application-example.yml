@@ -1,120 +1,120 @@
-#예시 설정 파일
+# #예시 설정 파일
 
-spring:
-  application:
-    name: pres-server
-  datasource:
-    url: <db-url>
-    username: <db-username>
-    password: <db-password>
-    driver-class-name: com.mysql.cj.jdbc.Driver
+# spring:
+#   application:
+#     name: pres-server
+#   datasource:
+#     url: <db-url>
+#     username: <db-username>
+#     password: <db-password>
+#     driver-class-name: com.mysql.cj.jdbc.Driver
 
-  security:
-    oauth2:
-      client:
-        registration:
-          kakao:
-            client-id: <kakao-client-id>
-            client-secret: <kakao-client-secret>
-            redirect-uri: "http://localhost:8080/api/auth/kakao/callback"
-            authorization-grant-type: "authorization_code"
-            client-authentication-method: "POST"
-            client-name: "Kakao"
-            scope:
-              - profile_nickname
-              - account_email
-        provider:
-          kakao:
-            authorization-uri: https://kauth.kakao.com/oauth/authorize
-            token-uri: https://kauth.kakao.com/oauth/token
-            user-info-uri: https://kapi.kakao.com/v2/user/me
-            user-name-attribute: id
+#   security:
+#     oauth2:
+#       client:
+#         registration:
+#           kakao:
+#             client-id: <kakao-client-id>
+#             client-secret: <kakao-client-secret>
+#             redirect-uri: "http://localhost:8080/api/auth/kakao/callback"
+#             authorization-grant-type: "authorization_code"
+#             client-authentication-method: "POST"
+#             client-name: "Kakao"
+#             scope:
+#               - profile_nickname
+#               - account_email
+#         provider:
+#           kakao:
+#             authorization-uri: https://kauth.kakao.com/oauth/authorize
+#             token-uri: https://kauth.kakao.com/oauth/token
+#             user-info-uri: https://kapi.kakao.com/v2/user/me
+#             user-name-attribute: id
 
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-    defer-datasource-initialization: true
-    database-platform: org.hibernate.dialect.MySQL8Dialect
+#   jpa:
+#     hibernate:
+#       ddl-auto: update
+#     show-sql: true
+#     properties:
+#       hibernate:
+#         format_sql: true
+#     defer-datasource-initialization: true
+#     database-platform: org.hibernate.dialect.MySQL8Dialect
 
-  data:
-    redis:
-      host: localhost
-      port: 6379
+#   data:
+#     redis:
+#       host: localhost
+#       port: 6379
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: <gmail-username>
-    password: <gmail-app-password>   # 앱 비밀번호 (레포에 올리지 마세요)
-    protocol: smtp
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          ssl:
-            trust: smtp.gmail.com
+#   mail:
+#     host: smtp.gmail.com
+#     port: 587
+#     username: <gmail-username>
+#     password: <gmail-app-password>   # 앱 비밀번호 (레포에 올리지 마세요)
+#     protocol: smtp
+#     properties:
+#       mail:
+#         smtp:
+#           auth: true
+#           starttls:
+#             enable: true
+#             required: true
+#           ssl:
+#             trust: smtp.gmail.com
 
-server:
-  port: 8080
-  servlet:
-    context-path: /api
+# server:
+#   port: 8080
+#   servlet:
+#     context-path: /api
 
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-    group-enabled: true
-  swagger-ui:
-    path: /swagger-ui.html
-    operations-sorter: method
-    display-operation-id: true
-    default-model-rendering: example
-    doc-expansion: none
-    display-request-duration: true
-  paths-to-match: /**
-  packages-to-scan: com.pres.pres_server.controller
+# springdoc:
+#   api-docs:
+#     path: /v3/api-docs
+#     group-enabled: true
+#   swagger-ui:
+#     path: /swagger-ui.html
+#     operations-sorter: method
+#     display-operation-id: true
+#     default-model-rendering: example
+#     doc-expansion: none
+#     display-request-duration: true
+#   paths-to-match: /**
+#   packages-to-scan: com.pres.pres_server.controller
 
-kakao:
-  client-id: ${KAKAO_CLIENT_ID}
-  client-secret: ${KAKAO_CLIENT_SECRET}
-  redirect-uri: http://localhost:8080/api/auth/kakao/callback
-  kauth-host: https://kauth.kakao.com
-  kapi-host: https://kapi.kakao.com
+# kakao:
+#   client-id: ${KAKAO_CLIENT_ID}
+#   client-secret: ${KAKAO_CLIENT_SECRET}
+#   redirect-uri: http://localhost:8080/api/auth/kakao/callback
+#   kauth-host: https://kauth.kakao.com
+#   kapi-host: https://kapi.kakao.com
 
-jwt:
-  issuer: pres-server
-  secretKey: pres-secret-key
+# jwt:
+#   issuer: pres-server
+#   secretKey: pres-secret-key
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "*"
-      base-path: /actuator
-  endpoint:
-    health:
-      show-details: always
-      redis:
-        enabled: true
-      db:
-        enabled: true
-      mail:
-        enabled: true
-      diskspace:
-        enabled: true
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-        rsocket:
-          enabled: true
-          host: localhost
-          port: 9090
-          mode: SERVER
-          mapping: pres-metric
+# management:
+#   endpoints:
+#     web:
+#       exposure:
+#         include: "*"
+#       base-path: /actuator
+#   endpoint:
+#     health:
+#       show-details: always
+#       redis:
+#         enabled: true
+#       db:
+#         enabled: true
+#       mail:
+#         enabled: true
+#       diskspace:
+#         enabled: true
+#   metrics:
+#     export:
+#       prometheus:
+#         enabled: true
+#         rsocket:
+#           enabled: true
+#           host: localhost
+#           port: 9090
+#           mode: SERVER
+#           mapping: pres-metric

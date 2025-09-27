@@ -5,7 +5,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import com.pres.pres_server.domain.User;
 
 @Entity
 @Table(name = "presentation_files")
@@ -40,9 +39,6 @@ public class PresentationFile {
     @Column(name = "file_size", nullable = false)
     private Long fileSize;
 
-    @Column(name = "extracted_text", columnDefinition = "TEXT")
-    private String extractedText;
-
     // 슬라이드별 텍스트 리스트
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "presentation_slide_texts", joinColumns = @JoinColumn(name = "file_id"))
@@ -51,6 +47,10 @@ public class PresentationFile {
 
     @Column(name = "uploaded_at")
     private LocalDateTime uploadedAt;
+
+    // ExtractedText와의 1:1 관계
+    @OneToOne(mappedBy = "presentationFile", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private ExtractedText extractedText;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
