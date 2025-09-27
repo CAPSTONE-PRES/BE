@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
@@ -29,15 +30,15 @@ class AuthControllerTest {
         @Autowired
         private MockMvc mockMvc;
 
-        @MockBean
+        @MockitoBean
         private EmailService emailService;
-        @MockBean
+        @MockitoBean
         private UserAuthService userAuthService;
-        @MockBean
+        @MockitoBean
         private KakaoOAuthService kakaoOAuthService;
-        @MockBean
+        @MockitoBean
         private UserService userService;
-        @MockBean
+        @MockitoBean
         private TokenService tokenService;
 
         @Test

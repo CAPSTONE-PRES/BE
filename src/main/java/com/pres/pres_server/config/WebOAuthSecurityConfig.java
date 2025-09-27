@@ -38,37 +38,32 @@ public class WebOAuthSecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // 토큰 방식으로 인증, 기존에 사용하던 폼 로그인과 세션 비활성화
         return http
-                .csrf(csrf -> csrf.disable()) // csrf 보호 비활성화
+                .csrf(csrf -> csrf.disable())
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
-                .sessionManagement(management -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 세션
-                                                                                                                    // 비활성화
-                // 헤더 확인 할 커스텀 필터
-                // config class
+                .sessionManagement(management -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(tokenAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
-
-                // 토큰 재발급 url은 인증 없이 접근 가능하도록 설정, 나머지는 인증 필요
                 .authorizeHttpRequests(auth -> auth
+                        // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/token").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
-
-                .oauth2Login(oauth2 -> oauth2.loginPage("/login")
-                        // authorization 요청과 관련한 상태 저장
+                .oauth2Login(oauth2 -> oauth2
+                        .loginPage("/login")
                         .authorizationEndpoint(authorization -> authorization
                                 .authorizationRequestRepository(oAuth2AuthorizationRequestBasedOnCookieRepository()))
                         .userInfoEndpoint(userInfo -> userInfo.userService(customService))
-                        // 인증 성공 시 사용할 핸들러
                         .successHandler(oAuth2SuccessHandler()))
-                // api로 시작하는 url인 경우 401 상태코드 반환하도록 예외 처리
-                .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
-                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
-                        new AntPathRequestMatcher("/api/**")))
+                .exceptionHandling(exceptions -> exceptions
+                        .defaultAuthenticationEntryPointFor(
+                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                                new AntPathRequestMatcher("/api/**")))
                 .build();
     }
+
 
     public OAuth2SuccessHandler oAuth2SuccessHandler() {
         return new OAuth2SuccessHandler(tokenProvider,

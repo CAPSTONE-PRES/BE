@@ -24,4 +24,14 @@ public class WorkSpace {
     @ManyToOne
     @JoinColumn(name = "owner_user_id", nullable = false)
     private User ownerUserId;
+
+    // string 형태로 저장, 최대 3개, 0요일 00:00-00:00 으로 저장 필요
+    @Column(name = "classtime1")
+    private String classtime1;
+
+    @Column(name = "classtime2")
+    private String classtime2;
+
+    @Column(name = "classtime3")
+    private String classtime3;
 }
