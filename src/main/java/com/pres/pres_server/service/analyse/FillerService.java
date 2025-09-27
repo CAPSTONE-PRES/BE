@@ -1,4 +1,4 @@
-package com.pres.pres_server.service;
+package com.pres.pres_server.service.analyse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

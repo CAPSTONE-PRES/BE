@@ -1,9 +1,10 @@
 package com.pres.pres_server.controller;
 
 import com.pres.pres_server.dto.WindowDto;
-import com.pres.pres_server.service.FillerService;
-import com.pres.pres_server.service.SpeechSpeedService;
 import com.pres.pres_server.service.WhisperService;
+import com.pres.pres_server.service.analyse.FillerService;
+import com.pres.pres_server.service.analyse.SpeechSpeedService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;

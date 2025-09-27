@@ -1,4 +1,4 @@
-package com.pres.pres_server.service;
+package com.pres.pres_server.service.analyse;
 
 import org.springframework.stereotype.Service;
 
