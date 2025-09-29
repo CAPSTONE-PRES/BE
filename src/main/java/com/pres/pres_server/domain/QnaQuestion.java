@@ -43,9 +43,6 @@ public class QnaQuestion {
     @Column(name = "status")
     private String status;
 
-    @Column(name = "is_anonymous")
-    private boolean is_anonymous = false;
-
     @ManyToOne
     @JoinColumn(name = "created_by")
     private User created_by;

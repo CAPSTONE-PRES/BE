@@ -15,14 +15,14 @@ public class QnaAnswer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "answer_id")
-    private Long answer_id;
+    private Long answerId;
 
     @ManyToOne
     @JoinColumn(name = "qna_id", nullable = false)
-    private QnaQuestion qna_question;
+    private QnaQuestion qnaQuestion;
 
     @Column(name = "answer_type")
-    private String answer_type;
+    private String answerType;
 
     @Column(name = "body", nullable = false, columnDefinition = "TEXT")
     private String body;
@@ -38,24 +38,24 @@ public class QnaAnswer {
 
     @ManyToOne
     @JoinColumn(name = "created_by")
-    private User created_by;
+    private User createdBy;
 
     @ManyToOne
     @JoinColumn(name = "practice_session_id")
-    private PracticeSession practice_session;
+    private PracticeSession practiceSession;
 
     @Column(name = "start_ms")
-    private Integer start_ms;
+    private Integer startMs;
 
     @Column(name = "end_ms")
-    private Integer end_ms;
+    private Integer endMs;
 
     @Column(name = "raw_stt", columnDefinition = "TEXT")
-    private String raw_stt;
+    private String rawStt;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
-    private LocalDateTime updated_at;
+    private LocalDateTime updatedAt;
 }

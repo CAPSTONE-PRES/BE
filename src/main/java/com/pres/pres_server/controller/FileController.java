@@ -1,7 +1,9 @@
 
 package com.pres.pres_server.controller;
 
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 
@@ -85,26 +87,4 @@ public class FileController {
         QnaDto qnaResult = generateQnaService.generateQna(fullText);
         return ResponseEntity.ok(qnaResult);
     }
-
-    @Operation(summary = "파일 업로드 후 바로 텍스트 추출 및 반환 (테스트용)")
-    @PostMapping(value = "/upload-and-extract", consumes = { "multipart/form-data" })
-    public ResponseEntity<ExtractedTextDto> uploadAndExtract(@RequestPart("file") MultipartFile file) {
-        // 파일 업로드(DB 저장) → 파일 ID 생성
-        FileUploadDto uploadResult = presentationFileService.uploadAndSave(file, /* 테스트용 uploaderId */ 1L, /*
-                                                                                                            * 테스트용
-                                                                                                            * projectId
-                                                                                                            */ 1L);
-        // 텍스트 추출 및 DB 저장
-        ExtractedTextDto extractedText = extractTextService.extractTextAndSave(file, uploadResult.getFileId());
-        return ResponseEntity.ok(extractedText);
-    }
-
-    @Operation(summary = "슬라이드별 텍스트로 바로 큐카드 생성 (테스트용)")
-    @PostMapping("/generate-cue-direct")
-    public ResponseEntity<CueCardDto> generateCueDirect(@RequestBody List<String> slideTexts) {
-        // 테스트용이므로 임시 fileId로 처리하거나 별도 메서드 필요
-        // 현재는 fileId 기반으로만 작동하므로 이 API는 사용 불가
-        throw new UnsupportedOperationException("이 API는 현재 지원되지 않습니다. /generate-cue/{fileId}를 사용하세요.");
-    }
-
 }

@@ -93,6 +93,66 @@ public class ExtractTextService {
         return result;
     }
 
+    // 저장된 파일 경로를 사용한 텍스트 추출 및 DB 저장 (테스트용)
+    public ExtractedTextDto extractTextAndSaveFromStoredFile(Long fileId) {
+        // DB에서 파일 정보 조회
+        PresentationFile presentationFile = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
+
+        String fileName = presentationFile.getOriginalName();
+        String filePath = presentationFile.getFilePath();
+
+        if (fileName == null) {
+            throw new IllegalArgumentException("파일 이름이 없습니다.");
+        }
+
+        String fullText = "";
+        List<String> slideTexts = new ArrayList<>();
+
+        try {
+            File storedFile = new File(filePath);
+            if (!storedFile.exists()) {
+                throw new RuntimeException("저장된 파일을 찾을 수 없습니다: " + filePath);
+            }
+
+            if (fileName.endsWith(".pdf")) {
+                ExtractedTextDto result = extractPdfTextByPage(storedFile);
+                fullText = result.getFullText();
+                slideTexts = result.getSlideTexts();
+            } else if (fileName.endsWith(".pptx")) {
+                ExtractedTextDto result = extractPptTextBySlide(storedFile);
+                fullText = result.getFullText();
+                slideTexts = result.getSlideTexts();
+                currentPdfPageInfos = null; // PPTX는 PDF 정보 없음
+            } else {
+                fullText = "지원하지 않는 파일 형식입니다.";
+                slideTexts.add(fullText);
+                // 지원하지 않는 파일 형식의 경우 검증 정보 초기화
+                currentSlideInfos = null;
+                currentPdfPageInfos = null;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("텍스트 추출 실패: " + e.getMessage(), e);
+        }
+
+        // ExtractedText 엔티티 생성 및 저장
+        ExtractedText extractedText = new ExtractedText(presentationFile, fullText, slideTexts);
+        extractedTextRepository.save(extractedText);
+
+        // 텍스트 부족한 슬라이드 검증
+        ExtractedTextDto result = validateSlideContent(new ExtractedTextDto(fullText, slideTexts));
+
+        // 검증 결과를 ExtractedText에 업데이트
+        extractedText
+                .setIsSufficient(result.getInsufficientSlides() == null || result.getInsufficientSlides().isEmpty());
+        extractedText.setInsufficientSlides(
+                result.getInsufficientSlides() != null ? result.getInsufficientSlides().toString() : null);
+        extractedText.setInsufficientMessage(result.getInsufficientMessage());
+        extractedTextRepository.save(extractedText);
+
+        return result;
+    }
+
     // 기존 파일 ID로 슬라이드 텍스트 조회
     public List<String> getSlideTextsByFileId(Long fileId) {
         ExtractedText extractedText = extractedTextRepository.findByPresentationFile_FileId(fileId)
