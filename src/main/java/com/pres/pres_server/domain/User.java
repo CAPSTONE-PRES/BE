@@ -46,6 +46,7 @@ public class User implements UserDetails {
     private String profileImageUrl;
 
     @Column(name = "push_enabled", nullable = false)
+    @Builder.Default
     private boolean pushEnabled = false;
 
     @CreationTimestamp

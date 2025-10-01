@@ -9,6 +9,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -39,6 +40,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleException(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", ex.getMessage()));
+    }
+
+    // Q&A 생성 관련 예외 처리
+    @ExceptionHandler(QnaGenerationException.class)
+    public ResponseEntity<Map<String, Object>> handleQnaGenerationException(QnaGenerationException ex) {
+        log.error("Q&A 생성 오류: ", ex);
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("success", false);
+        errorResponse.put("message", ex.getMessage());
+        errorResponse.put("questionCount", 0);
+
+        return ResponseEntity.badRequest().body(errorResponse);
     }
 
     // 카카오 관련 예외 처리, badrequest 400

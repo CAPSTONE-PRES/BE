@@ -11,9 +11,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import com.pres.pres_server.dto.CueCardDto;
+import com.pres.pres_server.dto.ExtractedTextDto;
+import com.pres.pres_server.domain.CueCard;
+import com.pres.pres_server.domain.PresentationFile;
+import com.pres.pres_server.repository.CueCardRepository;
+import com.pres.pres_server.repository.PresentationFileRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,36 +33,193 @@ public class GenerateCueService {
 
     private final RestTemplate restTemplate;
     private final ExtractTextService extractTextService;
+    private final CueCardRepository cueCardRepository;
+    private final PresentationFileRepository presentationFileRepository;
 
+    @Transactional
     public CueCardDto generateCueCards(Long fileId) {
-        // ExtractTextService를 통해 슬라이드 텍스트 가져오기
-        List<String> slideTexts = extractTextService.getSlideTextsByFileId(fileId);
-        String fullText = extractTextService.getFullTextByFileId(fileId);
-
-        // 디버깅: 슬라이드 개수 확인
-        log.info("총 슬라이드 개수: {}", slideTexts.size());
-
-        List<String> cueCards = new ArrayList<>();
-        for (int i = 0; i < slideTexts.size(); i++) {
-            String slideText = slideTexts.get(i);
-            log.info("슬라이드 {} 텍스트 길이: {}", (i + 1), slideText.length());
-
-            // 빈 슬라이드나 너무 짧은 텍스트는 건너뛰기
-            if (slideText.trim().isEmpty() || slideText.trim().length() < 10) {
-                cueCards.add("슬라이드 " + (i + 1) + "\n[기본버전]\n(OCR 인식 불가 - 요약 생략)\n\n[심화버전]\n(OCR 인식 불가 – 요약 생략)");
-                continue;
-            }
-
-            String prompt = buildCueCardPrompt(slideText, i + 1); // 슬라이드 번호 전달
-            String cueCard = callAiModel(prompt);
-            cueCards.add(cueCard);
+        // 입력 값 검증
+        if (fileId == null || fileId <= 0) {
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
         }
 
-        CueCardDto cueCardDto = new CueCardDto();
-        cueCardDto.setFileId(fileId);
-        cueCardDto.setExtractedText(fullText);
-        cueCardDto.setCueCards(cueCards);
-        return cueCardDto;
+        // 중복 생성 방지: 이미 생성 중인지 확인 (간단한 예시)
+        log.info("파일 ID {}의 큐카드 생성을 시작합니다.", fileId);
+
+        try {
+            // 검증된 텍스트 정보 가져오기
+            ExtractedTextDto extractedTextDto = extractTextService.getExtractedTextByFileId(fileId);
+            List<String> slideTexts = extractedTextDto.getSlideTexts();
+            List<Integer> insufficientSlides = extractedTextDto.getInsufficientSlides();
+
+            if (slideTexts == null || slideTexts.isEmpty()) {
+                throw new IllegalStateException("파일 ID " + fileId + "에 대한 추출된 텍스트가 없습니다.");
+            }
+
+            // 디버깅: 슬라이드 개수 확인
+            log.info("총 슬라이드 개수: {}", slideTexts.size());
+            if (insufficientSlides != null) {
+                log.info("텍스트 부족 슬라이드: {}", insufficientSlides);
+            }
+
+            List<String> cueCards = new ArrayList<>();
+            List<String> failedSlides = new ArrayList<>();
+
+            for (int i = 0; i < slideTexts.size(); i++) {
+                int slideNumber = i + 1;
+                String slideText = slideTexts.get(i);
+                log.info("슬라이드 {} 텍스트 길이: {}", slideNumber, slideText.length());
+
+                try {
+                    // 이미 검증된 결과 활용 - TextValidationService에서 부족하다고 판단된 슬라이드
+                    if (insufficientSlides != null && insufficientSlides.contains(slideNumber)) {
+                        cueCards.add(
+                                "슬라이드 " + slideNumber + "\n[기본버전]\n(내용 부족 - 요약 생략)\n\n[심화버전]\n(내용 부족 – 요약 생략)");
+                        continue;
+                    }
+
+                    // 정상 텍스트는 큐카드 생성
+                    String prompt = buildCueCardPrompt(slideText, slideNumber);
+                    String cueCard = callAiModel(prompt);
+
+                    if (cueCard == null || cueCard.trim().isEmpty()) {
+                        throw new RuntimeException("AI 모델에서 빈 응답을 받았습니다.");
+                    }
+
+                    cueCards.add(cueCard);
+                } catch (Exception e) {
+                    log.error("슬라이드 {} 큐카드 생성 실패: {}", slideNumber, e.getMessage());
+                    failedSlides.add("슬라이드 " + slideNumber);
+                    // 실패한 슬라이드는 기본 메시지로 대체
+                    cueCards.add("슬라이드 " + slideNumber + "\n[기본버전]\n큐카드 생성에 실패했습니다. 다시 시도해주세요.\n\n[심화버전]\n큐카드 생성 실패");
+                }
+            }
+
+            // 실패한 슬라이드가 있다면 경고 로그
+            if (!failedSlides.isEmpty()) {
+                log.warn("파일 ID {}에서 실패한 슬라이드: {}", fileId, String.join(", ", failedSlides));
+            }
+
+            // DB에 저장
+            saveCueCardsToDatabase(fileId, cueCards);
+
+            CueCardDto cueCardDto = new CueCardDto();
+            cueCardDto.setFileId(fileId);
+            cueCardDto.setCueCards(cueCards);
+
+            log.info("파일 ID {}의 큐카드 생성이 완료되었습니다.", fileId);
+            return cueCardDto;
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.error("파일 ID {}의 큐카드 생성 실패 (입력 오류): {}", fileId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("파일 ID {}의 큐카드 생성 중 예상치 못한 오류 발생: {}", fileId, e.getMessage(), e);
+            throw new RuntimeException("큐카드 생성 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    // 큐카드를 DB에 저장 (Update 방식)
+    @Transactional
+    private void saveCueCardsToDatabase(Long fileId, List<String> cueCards) {
+        try {
+            // PresentationFile 조회
+            PresentationFile presentationFile = presentationFileRepository.findById(fileId)
+                    .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
+
+            // 기존 큐카드 조회
+            List<CueCard> existingCueCards = cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumber(fileId);
+
+            int updateCount = 0;
+            int createCount = 0;
+
+            // 큐카드 업데이트 또는 생성
+            for (int i = 0; i < cueCards.size(); i++) {
+                int slideNumber = i + 1;
+                String content = cueCards.get(i);
+
+                if (content == null || content.trim().isEmpty()) {
+                    log.warn("슬라이드 {}의 큐카드 내용이 비어있습니다.", slideNumber);
+                    content = "큐카드 내용이 생성되지 않았습니다.";
+                }
+
+                // 기존 큐카드가 있으면 업데이트, 없으면 생성
+                CueCard cueCard = existingCueCards.stream()
+                        .filter(c -> c.getSlideNumber() == slideNumber)
+                        .findFirst()
+                        .orElse(null);
+
+                if (cueCard != null) {
+                    // 기존 큐카드 업데이트
+                    cueCard.setContent(content);
+                    updateCount++;
+                } else {
+                    // 새 큐카드 생성
+                    cueCard = new CueCard();
+                    cueCard.setPresentationFile(presentationFile);
+                    cueCard.setSlideNumber(slideNumber);
+                    cueCard.setContent(content);
+                    createCount++;
+                }
+
+                cueCardRepository.save(cueCard);
+            }
+
+            // 슬라이드 수가 줄어든 경우, 여분의 큐카드 삭제
+            int deleteCount = 0;
+            for (CueCard existingCard : existingCueCards) {
+                if (existingCard.getSlideNumber() > cueCards.size()) {
+                    cueCardRepository.delete(existingCard);
+                    deleteCount++;
+                }
+            }
+
+            log.info("파일 ID {}의 큐카드 처리 완료 - 업데이트: {}, 생성: {}, 삭제: {}",
+                    fileId, updateCount, createCount, deleteCount);
+
+        } catch (Exception e) {
+            log.error("파일 ID {}의 큐카드 DB 저장 실패: {}", fileId, e.getMessage(), e);
+            throw new RuntimeException("큐카드 저장 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    // DB에서 큐카드 조회
+    public CueCardDto getCueCardsByFileId(Long fileId) {
+        // 입력 값 검증
+        if (fileId == null || fileId <= 0) {
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+        }
+
+        try {
+            List<CueCard> savedCueCards = cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumber(fileId);
+
+            if (savedCueCards.isEmpty()) {
+                throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
+            }
+
+            List<String> cueCardContents = savedCueCards.stream()
+                    .map(CueCard::getContent)
+                    .filter(content -> content != null && !content.trim().isEmpty())
+                    .toList();
+
+            if (cueCardContents.isEmpty()) {
+                throw new IllegalStateException("해당 파일의 큐카드 내용이 모두 비어있습니다: " + fileId);
+            }
+
+            CueCardDto cueCardDto = new CueCardDto();
+            cueCardDto.setFileId(fileId);
+            cueCardDto.setCueCards(cueCardContents);
+
+            log.info("파일 ID {}의 큐카드 {} 개를 조회했습니다.", fileId, cueCardContents.size());
+            return cueCardDto;
+
+        } catch (IllegalArgumentException e) {
+            log.warn("파일 ID {}의 큐카드 조회 실패: {}", fileId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("파일 ID {}의 큐카드 조회 중 예상치 못한 오류: {}", fileId, e.getMessage(), e);
+            throw new RuntimeException("큐카드 조회 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
     }
 
     // 프롬프트 생성 (슬라이드 번호 포함)
@@ -126,6 +289,10 @@ public class GenerateCueService {
 
     // OPENAI API 호출 메서드
     private String callAiModel(String prompt) {
+        if (prompt == null || prompt.trim().isEmpty()) {
+            throw new IllegalArgumentException("프롬프트가 비어있습니다.");
+        }
+
         String url = "https://api.openai.com/v1/chat/completions";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -142,6 +309,7 @@ public class GenerateCueService {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         try {
+            @SuppressWarnings("rawtypes")
             ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
 
             if (response.getBody() == null) {
@@ -150,6 +318,20 @@ public class GenerateCueService {
 
             @SuppressWarnings("unchecked")
             Map<String, Object> responseBody = (Map<String, Object>) response.getBody();
+
+            if (responseBody == null) {
+                throw new RuntimeException("OpenAI API 응답 본문이 비어있습니다.");
+            }
+
+            // 에러 응답 체크
+            if (responseBody.containsKey("error")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> error = (Map<String, Object>) responseBody.get("error");
+                String errorMessage = (String) error.get("message");
+                String errorType = (String) error.get("type");
+                throw new RuntimeException("OpenAI API 오류 [" + errorType + "]: " + errorMessage);
+            }
+
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
 
@@ -171,12 +353,25 @@ public class GenerateCueService {
             }
 
             return content.trim();
+
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            // HTTP 4xx 오류 (API 키 문제, 요청 형식 오류 등)
+            log.error("OpenAI API 클라이언트 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 서비스 요청 오류: " + e.getMessage());
+        } catch (org.springframework.web.client.HttpServerErrorException e) {
+            // HTTP 5xx 오류 (OpenAI 서버 문제)
+            log.error("OpenAI API 서버 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 서비스 일시적 오류: " + e.getMessage());
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            // 네트워크 연결 문제
+            log.error("OpenAI API 연결 오류: {}", e.getMessage());
+            throw new RuntimeException("AI 서비스 연결 실패: " + e.getMessage());
         } catch (Exception e) {
             // 로깅을 위한 에러 정보 출력
             log.error("큐카드 생성 실패: {}", e.getMessage(), e);
 
             // 사용자 친화적인 기본 메시지 반환
-            return "큐카드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.";
+            throw new RuntimeException("큐카드 생성에 실패했습니다: " + e.getMessage());
         }
     }
 

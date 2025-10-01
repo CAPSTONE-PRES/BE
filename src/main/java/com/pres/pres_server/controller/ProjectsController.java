@@ -5,6 +5,8 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
+
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
+@Tag(name = "Projects Controller", description = "프로젝트 관련 API")
 @RestController
 @RequestMapping("/projects")
 @RequiredArgsConstructor

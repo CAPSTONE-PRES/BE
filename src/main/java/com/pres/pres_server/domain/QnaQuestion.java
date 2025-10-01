@@ -16,8 +16,8 @@ public class QnaQuestion {
     private Long qnaId;
 
     @ManyToOne
-    @JoinColumn(name = "cue_id", nullable = false)
-    private CueCard cueCardId;
+    @JoinColumn(name = "file_id", nullable = false)
+    private PresentationFile presentationFile;
 
     @Column(name = "title")
     private String title;

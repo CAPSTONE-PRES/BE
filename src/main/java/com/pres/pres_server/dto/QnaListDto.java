@@ -5,13 +5,14 @@ import java.util.List;
 
 @Data
 public class QnaListDto {
-    private Long cueCardId;
-    private int slideNumber;
+    private Long fileId;
     private int totalQuestions;
     private List<QnaDetailDto> questions;
+    private String status;
 
     public QnaListDto() {
         this.totalQuestions = 0;
+        this.status = "success";
     }
 
     public void setQuestions(List<QnaDetailDto> questions) {

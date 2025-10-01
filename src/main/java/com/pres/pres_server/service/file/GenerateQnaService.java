@@ -15,18 +15,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import com.pres.pres_server.domain.CueCard;
+import com.fasterxml.jackson.core.json.JsonReadFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.QnaAnswer;
 import com.pres.pres_server.domain.QnaQuestion;
-import com.pres.pres_server.dto.QnaDto;
+import com.pres.pres_server.dto.QnaDetailDto;
+import com.pres.pres_server.dto.QnaListDto;
+import com.pres.pres_server.exception.QnaGenerationException;
 import com.pres.pres_server.repository.QnaAnswerRepository;
 import com.pres.pres_server.repository.QnaQuestionRepository;
+import com.pres.pres_server.repository.PresentationFileRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class GenerateQnaService {
     @Value("${openai.api.key}")
     private String OPENAI_API_KEY;
@@ -34,152 +42,398 @@ public class GenerateQnaService {
     private final RestTemplate restTemplate;
     private final QnaQuestionRepository qnaQuestionRepository;
     private final QnaAnswerRepository qnaAnswerRepository;
+    private final PresentationFileRepository presentationFileRepository;
 
-    // extractedText를 받아서 예상 질문과 답변을 생성하는 메서드
-    public QnaDto generateQna(String extractedText) {
+    // === 핵심 API 메서드들 ===
+
+    // 1. Q&A 미리보기 (생성만, 저장 안함)
+    public Map<String, String> generateQna(String extractedText) {
+        return generateQnaWithoutTransaction(extractedText);
+    }
+
+    // Q&A 생성 (트랜잭션 없음 - 외부 API 호출)
+    private Map<String, String> generateQnaWithoutTransaction(String extractedText) {
         validateExtractedText(extractedText);
 
-        // 1단계: 예상 질문들 생성
-        String questionsPrompt = buildQuestionsPrompt(extractedText);
-        String questionsResponse = callAiModel(questionsPrompt);
+        // Q&A 생성 (단일 호출로 변경)
+        String qnaPrompt = buildQnaPrompt(extractedText);
+        String qnaResponse = callAiModel(qnaPrompt);
+        log.info("=== AI Q&A 응답 ===");
+        log.info("{}", qnaResponse);
 
-        // 2단계: 각 질문에 대한 답변 생성
-        String answersPrompt = buildAnswersPrompt(extractedText, questionsResponse);
-        String answersResponse = callAiModel(answersPrompt);
-
-        // DTO 생성 및 반환
-        QnaDto qna = new QnaDto();
-        qna.setQuestion(questionsResponse);
-        qna.setAnswer(answersResponse);
-        return qna;
+        // 생성된 내용 반환 (저장하지 않음)
+        Map<String, String> result = new HashMap<>();
+        result.put("qna", qnaResponse);
+        return result;
     }
 
-    // extractedText와 CueCard를 받아서 예상 질문과 답변을 생성하고 DB에 저장하는 메서드
-    @Transactional
-    public List<QnaQuestion> generateAndSaveQna(String extractedText, CueCard cueCard) {
-        validateExtractedText(extractedText);
-        validateCueCard(cueCard);
+    // 2. Q&A 생성 및 저장 (메인 API)
+    public List<QnaQuestion> generateAndSaveQna(String extractedText, Long fileId) {
+        log.info("Q&A 생성 및 저장 시작 - fileId: {}", fileId);
+        validateFileId(fileId);
 
-        // 1단계: 예상 질문들 생성
-        String questionsPrompt = buildQuestionsPrompt(extractedText);
-        String questionsResponse = callAiModel(questionsPrompt);
-
-        // 2단계: 각 질문에 대한 답변 생성
-        String answersPrompt = buildAnswersPrompt(extractedText, questionsResponse);
-        String answersResponse = callAiModel(answersPrompt);
-
-        // 질문과 답변을 파싱하고 DB에 저장
-        return parseAndSaveQna(questionsResponse, answersResponse, cueCard, extractedText);
-    }
-
-    // 텍스트 검증 메서드
-    private void validateExtractedText(String extractedText) {
-        if (extractedText == null || extractedText.trim().isEmpty()) {
-            throw new IllegalArgumentException("추출된 텍스트가 비어있습니다.");
+        // 1단계: Q&A 생성 (트랜잭션 외부에서 실행)
+        Map<String, String> generatedContent;
+        try {
+            generatedContent = generateQnaWithoutTransaction(extractedText);
+        } catch (Exception e) {
+            log.error("Q&A 생성 실패 - fileId: {}, 오류: {}", fileId, e.getMessage(), e);
+            throw new QnaGenerationException("Q&A 생성에 실패했습니다: " + e.getMessage(), e);
         }
+
+        // 2단계: DB 저장 (파싱 포함)
+        return saveQnaToDatabase(fileId, extractedText, generatedContent);
     }
 
-    // CueCard 검증 메서드
-    private void validateCueCard(CueCard cueCard) {
-        if (cueCard == null) {
-            throw new IllegalArgumentException("CueCard가 null입니다.");
+    // DB 저장만 담당하는 트랜잭션 메서드
+    @Transactional(rollbackFor = Exception.class)
+    public List<QnaQuestion> saveQnaToDatabase(Long fileId, String extractedText,
+            Map<String, String> generatedContent) {
+        // 기존 Q&A 삭제 (중복 방지)
+        clearExistingQnaInternal(fileId);
+
+        // PresentationFile 조회
+        PresentationFile presentationFile = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
+        
+        log.info("🔍 조회된 PresentationFile: ID={}, 객체={}", presentationFile.getFileId(), presentationFile);
+
+        // DB 저장 (개선된 파싱 로직 사용)
+        String qnaResponse = generatedContent.get("qna");
+        List<QnaQuestion> result = parseAndSaveQnaFromJson(qnaResponse, presentationFile, extractedText);
+
+        // 파싱 실패 시 명확한 예외 발생
+        if (result.isEmpty()) {
+            throw new QnaGenerationException("AI 응답을 파싱할 수 없습니다. 응답 형식이 올바르지 않거나 빈 응답입니다.");
         }
-        if (cueCard.getCueId() == null) {
-            throw new IllegalArgumentException("CueCard ID가 null입니다.");
-        }
+
+        log.info("Q&A 생성 및 저장 완료 - fileId: {}, 질문 수: {}", fileId, result.size());
+        return result;
     }
 
-    // 기존 CueCard의 저장된 QnA 조회
-    public List<QnaQuestion> getSavedQna(CueCard cueCard) {
-        return qnaQuestionRepository.findActiveByCueCard(cueCard);
-    }
+    // JSON 기반 QnA 파싱 및 저장 로직 (개선된 버전)
+    private List<QnaQuestion> parseAndSaveQnaFromJson(String qnaResponse, PresentationFile presentationFile,
+            String extractedText) {
+        log.info("=== Q&A 파싱 및 저장 시작 ===");
+        log.debug("트랜잭션 활성 상태 (시작): {}",
+                org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
 
-    // QnA 파싱 및 저장 로직
-    private List<QnaQuestion> parseAndSaveQna(String questionsResponse, String answersResponse,
-            CueCard cueCard, String extractedText) {
         List<QnaQuestion> savedQuestions = new ArrayList<>();
 
         // 응답 검증
-        if (questionsResponse == null || questionsResponse.trim().isEmpty()) {
-            System.err.println("질문 응답이 비어있습니다.");
-            return savedQuestions;
-        }
-        if (answersResponse == null || answersResponse.trim().isEmpty()) {
-            System.err.println("답변 응답이 비어있습니다.");
-            return savedQuestions;
+        if (qnaResponse == null || qnaResponse.trim().isEmpty()) {
+            log.warn("Q&A 응답이 비어있습니다");
+            throw new QnaGenerationException("AI 응답이 비어있습니다");
         }
 
         try {
-            // 질문들을 파싱 (실제 구현에서는 더 정교한 파싱 로직 필요)
-            String[] questionBlocks = questionsResponse.split("\\*\\*질문 \\d+:");
-            String[] answerBlocks = answersResponse.split("\\*\\*질문 \\d+에 대한 답변:");
-
-            // 파싱 결과 검증
-            if (questionBlocks.length <= 1) {
-                System.err.println("질문 파싱 실패: 예상 형식과 다름");
-                return savedQuestions;
+            log.info("=== JSON 파싱 시작 ===");
+            log.info("Q&A 응답 길이: {} 문자", qnaResponse.length());
+            
+            // 디버깅을 위해 AI 응답을 파일로 저장
+            try {
+                java.nio.file.Files.write(
+                    java.nio.file.Paths.get("debug_ai_response_" + System.currentTimeMillis() + ".txt"),
+                    qnaResponse.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                );
+                log.info("🔍 AI 응답을 debug_ai_response_*.txt 파일로 저장했습니다");
+            } catch (Exception fileError) {
+                log.warn("AI 응답 파일 저장 실패: {}", fileError.getMessage());
             }
-            if (answerBlocks.length <= 1) {
-                System.err.println("답변 파싱 실패: 예상 형식과 다름");
-                return savedQuestions;
+            
+            log.debug("Q&A 응답 첫 500자:\n{}", qnaResponse.substring(0, Math.min(500, qnaResponse.length())));
+
+            // Jackson ObjectMapper를 사용한 JSON 파싱 (UTF-8 인코딩 및 제어문자 허용)
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
+
+            // 이스케이프된 JSON 문자열 처리 (확실한 방법)
+            String cleanedResponse = qnaResponse.trim();
+
+            // 응답이 따옴표로 감싸져 있고 이스케이프 문자가 포함된 경우 처리
+            if (cleanedResponse.startsWith("\"") && cleanedResponse.endsWith("\"")) {
+                log.info("이스케이프된 JSON 문자열 감지, 정리 시작");
+                // 앞뒤 따옴표 제거
+                cleanedResponse = cleanedResponse.substring(1, cleanedResponse.length() - 1);
+                // 이스케이프 문자 복원
+                cleanedResponse = cleanedResponse
+                        .replace("\\\"", "\"") // 이스케이프된 따옴표
+                        .replace("\\n", "\n") // 이스케이프된 줄바꿈
+                        .replace("\\r", "\r") // 이스케이프된 캐리지 리턴
+                        .replace("\\t", "\t") // 이스케이프된 탭
+                        .replace("\\/", "/") // 이스케이프된 슬래시
+                        .replace("\\\\", "\\"); // 이스케이프된 백슬래시 (마지막에 처리)
+
+                log.info("이스케이프 정리 완료");
+                log.debug("정리된 JSON:\n{}", cleanedResponse);
             }
 
-            for (int i = 1; i < questionBlocks.length && i < answerBlocks.length; i++) {
+            JsonNode rootNode;
+            try {
+                rootNode = objectMapper.readTree(cleanedResponse);
+                log.info("✅ JSON 루트 노드 파싱 성공");
+            } catch (com.fasterxml.jackson.core.JsonParseException jpe) {
+                log.error("❌ JSON 구문 오류: {}", jpe.getMessage());
+                log.error("오류 발생 위치: line {}, column {}", jpe.getLocation().getLineNr(), jpe.getLocation().getColumnNr());
+                log.error("문제가 된 JSON 내용 (처음 1000자):\n{}", cleanedResponse.substring(0, Math.min(1000, cleanedResponse.length())));
+                throw new QnaGenerationException("JSON 구문 오류: " + jpe.getMessage(), jpe);
+            } catch (Exception parseError) {
+                log.error("❌ JSON 파싱 실패: {}", parseError.getMessage());
+                log.error("JSON 파싱 실패 상세: {}", parseError.getClass().getSimpleName());
+                log.error("문제가 된 JSON 내용 (처음 1000자):\n{}", cleanedResponse.substring(0, Math.min(1000, cleanedResponse.length())));
+                throw new QnaGenerationException("JSON 파싱 실패: " + parseError.getMessage(), parseError);
+            }
+            
+            JsonNode itemsNode = rootNode.get("items");
+
+            if (itemsNode == null) {
+                log.error("❌ JSON 형식 오류: 'items' 필드가 없습니다");
+                log.error("실제 JSON 구조의 필드들: {}", rootNode.fieldNames());
+                log.error("전체 JSON 내용: {}", rootNode.toPrettyString());
+                throw new QnaGenerationException("JSON 형식 오류: 'items' 배열을 찾을 수 없습니다");
+            }
+            
+            if (!itemsNode.isArray()) {
+                log.error("❌ JSON 형식 오류: 'items'가 배열이 아닙니다");
+                log.error("'items' 필드의 실제 타입: {}", itemsNode.getNodeType());
+                log.error("'items' 필드 내용: {}", itemsNode.toString());
+                throw new QnaGenerationException("JSON 형식 오류: 'items'가 배열이 아닙니다");
+            }
+
+            log.info("✅ JSON 파싱 성공! 파싱된 아이템 수: {}", itemsNode.size());
+
+            // 각 Q&A 아이템 처리
+            for (JsonNode item : itemsNode) {
                 try {
-                    // 개별 질문-답변 저장
-                    String questionText = questionBlocks[i].trim();
-                    String answerText = answerBlocks[i].trim();
+                    log.info("=== 새 아이템 처리 시작 ===");
+                    
+                    // 필수 필드 존재 여부 체크
+                    String[] requiredFields = {"index", "category", "question", "answer"};
+                    for (String field : requiredFields) {
+                        if (!item.has(field)) {
+                            log.error("❌ 필수 필드 '{}' 누락", field);
+                            log.error("현재 아이템의 실제 필드들: {}", item.fieldNames());
+                            throw new QnaGenerationException("필수 필드 '" + field + "'가 누락되었습니다");
+                        }
+                        if (item.get(field).isNull()) {
+                            log.error("❌ 필드 '{}'가 null입니다", field);
+                            throw new QnaGenerationException("필드 '" + field + "'가 null입니다");
+                        }
+                    }
+                    
+                    int index = item.get("index").asInt();
+                    String category = item.get("category").asText();
+                    String questionText = item.get("question").asText();
+                    String answerText = item.get("answer").asText();
+
+                    log.info("🔄 Q{} 처리 시작 - 카테고리: [{}]", index, category);
+                    log.info("질문 길이: {} 문자, 답변 길이: {} 문자", questionText.length(), answerText.length());
+                    log.debug("질문 내용: {}", questionText.substring(0, Math.min(100, questionText.length())));
+                    log.debug("답변 내용: {}", answerText.substring(0, Math.min(100, answerText.length())));
 
                     // 내용 검증
-                    if (questionText.isEmpty() || answerText.isEmpty()) {
-                        System.err.println("질문 또는 답변이 비어있음 (인덱스: " + i + ")");
+                    if (questionText.trim().isEmpty() || answerText.trim().isEmpty()) {
+                        log.warn("⚠️ Q{}: 질문 또는 답변이 비어있어서 건너뜀", index);
                         continue;
                     }
 
+                    log.info("Q{} 저장 시작", index);
+
                     // 질문 저장
                     QnaQuestion question = new QnaQuestion();
-                    question.setCueCardId(cueCard);
-                    question.setBody(questionText);
+                    question.setPresentationFile(presentationFile);
+                    question.setBody(questionText.trim());
                     question.setOrigin("AI_GENERATED");
                     question.setModel("gpt-4o-mini");
                     question.setStatus("ACTIVE");
                     question.setPrompt_hash(generatePromptHash(extractedText));
-                    question.setConfidence(0.8f); // AI 생성은 기본 confidence
+                    question.setConfidence(0.8f);
                     question.setCreated_at(LocalDateTime.now());
                     question.setUpdated_at(LocalDateTime.now());
 
-                    QnaQuestion savedQuestion = qnaQuestionRepository.save(question);
+                    log.info("💾 Q{} 질문 엔티티 생성 완료 - presentationFile ID: {}", index, 
+                            question.getPresentationFile() != null ? question.getPresentationFile().getFileId() : "NULL");
+
+                    // 질문 엔티티 유효성 검사 로그
+                    log.debug("질문 엔티티 생성 완료 - presentationFile ID: {}, body length: {}",
+                            presentationFile.getFileId(), questionText.trim().length());
+
+                    log.info("Q{} 질문 저장 중...", index);
+                    QnaQuestion savedQuestion;
+                    try {
+                        // DB 제약 체크를 위한 상세 로깅
+                        log.debug("💾 질문 저장 시도 - fileId: {}, body length: {}, prompt_hash: {}", 
+                                presentationFile.getFileId(), questionText.trim().length(), 
+                                question.getPrompt_hash());
+                        
+                        savedQuestion = qnaQuestionRepository.save(question);
+                        log.info("✅ Q{} 질문 저장 성공, ID: {}", index, savedQuestion.getQnaId());
+                    } catch (org.springframework.dao.DataIntegrityViolationException dive) {
+                        log.error("❌ DB 제약 위반 - Q{} 질문 저장 실패: {}", index, dive.getMessage());
+                        log.error("제약 위반 상세: {}", dive.getMostSpecificCause().getMessage());
+                        throw new QnaGenerationException("DB 제약 위반으로 질문 저장 실패: " + dive.getMostSpecificCause().getMessage(), dive);
+                    } catch (Exception saveError) {
+                        log.error("❌ Q{} 질문 저장 실패: {}", index, saveError.getMessage(), saveError);
+                        throw new QnaGenerationException("질문 저장 실패: " + saveError.getMessage(), saveError);
+                    }
+
+                    // 트랜잭션 상태 확인
+                    log.debug("트랜잭션 활성 상태: {}",
+                            org.springframework.transaction.support.TransactionSynchronizationManager
+                                    .isActualTransactionActive());
+
                     savedQuestions.add(savedQuestion);
 
                     // 해당 질문에 대한 답변 저장
                     QnaAnswer answer = new QnaAnswer();
                     answer.setQnaQuestion(savedQuestion);
                     answer.setAnswerType("AI_GENERATED");
-                    answer.setBody(answerText);
+                    answer.setBody(answerText.trim());
                     answer.setOrigin("AI_GENERATED");
                     answer.setModel("gpt-4o-mini");
                     answer.setConfidence(0.8f);
                     answer.setCreatedAt(LocalDateTime.now());
                     answer.setUpdatedAt(LocalDateTime.now());
 
-                    qnaAnswerRepository.save(answer);
+                    // 답변 엔티티 유효성 검사 로그
+                    log.debug("답변 엔티티 생성 완료 - questionId: {}, body length: {}",
+                            savedQuestion.getQnaId(), answerText.trim().length());
+
+                    log.info("Q{} 답변 저장 중...", index);
+                    try {
+                        // DB 제약 체크를 위한 상세 로깅
+                        log.debug("💾 답변 저장 시도 - questionId: {}, body length: {}", 
+                                savedQuestion.getQnaId(), answerText.trim().length());
+                        
+                        qnaAnswerRepository.save(answer);
+                        log.info("✅ Q{} 답변 저장 성공", index);
+                    } catch (org.springframework.dao.DataIntegrityViolationException dive) {
+                        log.error("❌ DB 제약 위반 - Q{} 답변 저장 실패: {}", index, dive.getMessage());
+                        log.error("제약 위반 상세: {}", dive.getMostSpecificCause().getMessage());
+                        throw new QnaGenerationException("DB 제약 위반으로 답변 저장 실패: " + dive.getMostSpecificCause().getMessage(), dive);
+                    } catch (Exception saveError) {
+                        log.error("❌ Q{} 답변 저장 실패: {}", index, saveError.getMessage(), saveError);
+                        throw new QnaGenerationException("답변 저장 실패: " + saveError.getMessage(), saveError);
+                    }
+
+                    log.info("✅ Q{} 저장 완료 - 질문: {}", index,
+                            questionText.substring(0, Math.min(50, questionText.length())) + "...");
+
                 } catch (Exception e) {
-                    System.err.println("개별 QnA 저장 실패 (인덱스: " + i + "): " + e.getMessage());
-                    // 개별 실패는 전체를 중단시키지 않음
+                    log.error("❌ 개별 Q&A 처리 실패: {}", e.getMessage(), e);
+                    log.error("실패한 아이템의 index: {}", item.has("index") ? item.get("index").asText() : "N/A");
+                    
+                    // DB 관련 에러인지 구체적으로 확인
+                    if (e instanceof org.springframework.dao.DataIntegrityViolationException) {
+                        log.error("🚨 DB 제약 위반 감지: {}", e.getCause() != null ? e.getCause().getMessage() : "알 수 없는 제약 위반");
+                    } else if (e instanceof org.springframework.dao.DataAccessException) {
+                        log.error("🚨 DB 접근 오류 감지: {}", e.getMessage());
+                    }
+                    
+                    // 개별 실패는 전체를 중단시키지 않음 (옵션에 따라 변경 가능)
+                    throw new QnaGenerationException("Q&A 저장 중 오류: " + e.getMessage(), e);
                 }
             }
+
         } catch (Exception e) {
-            System.err.println("QnA 파싱 및 저장 실패: " + e.getMessage());
-            e.printStackTrace();
-            // 트랜잭션이 있으므로 예외 발생 시 롤백됨
-            throw new RuntimeException("QnA 저장 중 오류가 발생했습니다.", e);
+            log.error("JSON 파싱 및 Q&A 저장 중 오류 발생", e);
+            throw new QnaGenerationException("JSON 파싱에 실패했습니다: " + e.getMessage(), e);
         }
 
         if (savedQuestions.isEmpty()) {
-            System.err.println("저장된 QnA가 없습니다. 파싱 또는 저장 과정에서 문제가 발생했을 수 있습니다.");
+            log.error("❌ 저장된 Q&A가 없습니다. JSON 파싱 또는 저장 과정에서 문제가 발생했을 수 있습니다.");
+            log.debug("트랜잭션 활성 상태 (실패 시): {}",
+                    org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive());
+            throw new QnaGenerationException("파싱된 Q&A가 없습니다. AI 응답 형식을 확인해주세요.");
+        } else {
+            log.info("🎉 Q&A 저장 완료! 총 {}개 질문이 성공적으로 저장되었습니다!", savedQuestions.size());
+            log.debug("트랜잭션 활성 상태 (성공 시): {}",
+                    org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive());
         }
 
         return savedQuestions;
+    }
+
+    // 3. 저장된 Q&A 조회 (DTO 형태)
+    public QnaListDto getSavedQnaAsDto(Long fileId) {
+        validateFileId(fileId);
+        List<QnaQuestion> questions = qnaQuestionRepository.findActiveByFileId(fileId);
+
+        QnaListDto qnaListDto = new QnaListDto();
+        qnaListDto.setFileId(fileId);
+
+        if (questions.isEmpty()) {
+            qnaListDto.setQuestions(new ArrayList<>());
+            return qnaListDto;
+        }
+
+        List<QnaDetailDto> questionDtos = new ArrayList<>();
+
+        for (QnaQuestion question : questions) {
+            // 해당 질문의 답변들 조회
+            var answers = qnaAnswerRepository.findByQnaQuestion(question);
+
+            QnaDetailDto questionDto = new QnaDetailDto();
+            questionDto.setQuestionId(question.getQnaId());
+            questionDto.setQuestionBody(question.getBody());
+            questionDto.setOrigin(question.getOrigin());
+            questionDto.setModel(question.getModel());
+            questionDto.setConfidence(question.getConfidence());
+            questionDto.setCreatedAt(question.getCreated_at());
+
+            // 답변들을 DTO로 변환
+            List<QnaDetailDto.QnaAnswerDto> answerDtos = new ArrayList<>();
+            for (QnaAnswer answer : answers) {
+                QnaDetailDto.QnaAnswerDto answerDto = new QnaDetailDto.QnaAnswerDto();
+                answerDto.setAnswerId(answer.getAnswerId());
+                answerDto.setAnswerBody(answer.getBody());
+                answerDto.setAnswerType(answer.getAnswerType());
+                answerDto.setOrigin(answer.getOrigin());
+                answerDto.setModel(answer.getModel());
+                answerDto.setConfidence(answer.getConfidence());
+                answerDto.setCreatedAt(answer.getCreatedAt());
+                answerDtos.add(answerDto);
+            }
+            questionDto.setAnswers(answerDtos);
+            questionDtos.add(questionDto);
+        }
+
+        qnaListDto.setQuestions(questionDtos);
+        return qnaListDto;
+    }
+
+    // 4. 기존 Q&A 재생성 (사용자가 다시 생성 요청할 때)
+    public List<QnaQuestion> regenerateQna(String extractedText, Long fileId) {
+        log.info("Q&A 재생성 시작 - fileId: {}", fileId);
+        validateFileId(fileId);
+
+        // 1단계: Q&A 새로 생성 (트랜잭션 외부에서 실행)
+        Map<String, String> generatedContent;
+        try {
+            generatedContent = generateQnaWithoutTransaction(extractedText);
+        } catch (Exception e) {
+            log.error("Q&A 재생성 실패 - fileId: {}, 오류: {}", fileId, e.getMessage(), e);
+            throw new QnaGenerationException("Q&A 재생성에 실패했습니다: " + e.getMessage(), e);
+        }
+
+        // 2단계: DB 저장 (파싱 포함)
+        return saveQnaToDatabase(fileId, extractedText, generatedContent);
+    }
+
+    // === 유틸리티 메서드들 ===
+
+    private void validateExtractedText(String extractedText) {
+        if (extractedText == null || extractedText.trim().isEmpty()) {
+            throw new IllegalArgumentException("추출된 텍스트가 비어있습니다.");
+        }
+    }
+
+    private void validateFileId(Long fileId) {
+        if (fileId == null || fileId <= 0) {
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+        }
     }
 
     // 프롬프트 해시 생성 (중복 생성 방지용)
@@ -187,138 +441,100 @@ public class GenerateQnaService {
         return String.valueOf(extractedText.hashCode());
     }
 
-    // 기존 QnA 삭제 (재생성 전)
-    @Transactional
-    public void clearExistingQna(CueCard cueCard) {
-        List<QnaQuestion> existingQuestions = qnaQuestionRepository.findByCueCardId(cueCard);
-        for (QnaQuestion question : existingQuestions) {
-            // 관련 답변들도 함께 삭제
-            List<QnaAnswer> answers = qnaAnswerRepository.findByQnaQuestion(question);
-            qnaAnswerRepository.deleteAll(answers);
+    // 기존 QnA 삭제 (내부 사용 - 트랜잭션 없음)
+    private void clearExistingQnaInternal(Long fileId) {
+        List<QnaQuestion> existingQuestions = qnaQuestionRepository.findByPresentationFile_FileId(fileId);
+        if (!existingQuestions.isEmpty()) {
+            log.info("기존 Q&A 삭제 중 - fileId: {}, 질문 수: {}", fileId, existingQuestions.size());
+            for (QnaQuestion question : existingQuestions) {
+                // 관련 답변들도 함께 삭제
+                List<QnaAnswer> answers = qnaAnswerRepository.findByQnaQuestion(question);
+                qnaAnswerRepository.deleteAll(answers);
+            }
+            qnaQuestionRepository.deleteAll(existingQuestions);
         }
-        qnaQuestionRepository.deleteAll(existingQuestions);
     }
 
-    // CueCard의 QnA를 강제 재생성 (기존 데이터 삭제 후 새로 생성)
-    @Transactional
-    public List<QnaQuestion> regenerateQna(String extractedText, CueCard cueCard) {
-        // 기존 QnA 삭제
-        clearExistingQna(cueCard);
+    // === 프롬프트 빌더 메서드들 ===
 
-        // 새로 생성
-        return generateAndSaveQna(extractedText, cueCard);
-    }
-
-    // 예상 질문 생성 프롬프트
-    private String buildQuestionsPrompt(String extractedText) {
+    // JSON 형식 Q&A 생성 프롬프트
+    private String buildQnaPrompt(String extractedText) {
         return """
-                너는 대학생 발표자료를 분석해서 청중이 물어볼 수 있는 예상 질문을 생성하는 전문가야.
+                너는 대학생 발표자료를 분석해서 청중이 물어볼 수 있는 예상 질문과 답변을 생성하는 전문가야.
 
-                아래 발표 자료 내용을 분석해서, 청중이 발표 후에 물어볼 만한 **핵심 질문 5개**를 생성해줘.
+                아래 발표 자료 내용을 분석해서, 청중이 발표 후에 물어볼 만한 핵심 질문 5개와 각각에 대한 이상적인 답변을 생성해줘.
 
                 ---
                 [지침]
-                [1] 질문 유형
-                - **내용 이해 확인**: 발표 내용의 핵심을 제대로 이해했는지 확인하는 질문
-                - **세부사항 문의**: 발표에서 다루지 않은 구체적인 세부사항에 대한 질문
-                - **실무 적용**: 발표 내용을 실제로 어떻게 활용할 수 있는지에 대한 질문
-                - **비판적 사고**: 발표 내용에 대한 다른 관점이나 한계점을 묻는 질문
-                - **확장 질문**: 발표 주제와 관련된 추가적인 영역에 대한 질문
+                [1] 질문 유형 (각 질문은 다음 5가지 카테고리 중 정확히 하나씩 포함해야 함)
+                - "내용 이해 확인": 발표 내용의 핵심을 제대로 이해했는지 확인하는 질문
+                - "세부사항 문의": 발표에서 다루지 않은 구체적인 세부사항에 대한 질문
+                - "실무 적용": 발표 내용을 실제로 어떻게 활용할 수 있는지에 대한 질문
+                - "비판적 사고": 발표 내용에 대한 다른 관점이나 한계점을 묻는 질문
+                - "확장 질문": 발표 주제와 관련된 추가적인 영역에 대한 질문
 
                 [2] 질문 작성 원칙
-                - 발표 내용을 **정확히 이해한 사람**이 물어볼 법한 수준 높은 질문
-                - **"네/아니오"**로 답할 수 있는 단순한 질문은 피해주세요
-                - 발표자가 **충분히 답변할 수 있는** 범위 내의 질문
-                - **구체적이고 명확한** 질문 (애매하거나 추상적이지 않게)
-                - 각 질문은 **서로 다른 관점**에서 접근
+                - 발표 내용을 정확히 이해한 사람이 물어볼 법한 수준 높은 질문
+                - "네/아니오"로 답할 수 있는 단순한 질문은 피해주세요
+                - 발표자가 충분히 답변할 수 있는 범위 내의 질문
+                - 구체적이고 명확한 질문 (애매하거나 추상적이지 않게)
 
-                [3] 출력 형식
-                **질문 1: [내용 이해 확인]**
-                구체적인 질문 내용
+                [3] 답변 작성 원칙
+                - 발표 자료 내용에 근거를 두고 답변
+                - 구체적이고 정확한 정보 제공 (2-3문장으로 충분히 설명)
+                - 자신감 있고 전문적인 어조로 작성 ("~입니다", "~합니다")
+                - 발표 자료를 벗어나지 않는 범위에서 답변
 
-                **질문 2: [세부사항 문의]**
-                구체적인 질문 내용
+                [4] 출력 형식 (⚠️ 반드시 아래 JSON 형식으로만 응답하세요)
+                {
+                  "items": [
+                    {
+                      "index": 1,
+                      "category": "내용 이해 확인",
+                      "question": "구체적인 질문 내용",
+                      "answer": "구체적이고 상세한 답변 내용"
+                    },
+                    {
+                      "index": 2,
+                      "category": "세부사항 문의",
+                      "question": "구체적인 질문 내용",
+                      "answer": "구체적이고 상세한 답변 내용"
+                    },
+                    {
+                      "index": 3,
+                      "category": "실무 적용",
+                      "question": "구체적인 질문 내용",
+                      "answer": "구체적이고 상세한 답변 내용"
+                    },
+                    {
+                      "index": 4,
+                      "category": "비판적 사고",
+                      "question": "구체적인 질문 내용",
+                      "answer": "구체적이고 상세한 답변 내용"
+                    },
+                    {
+                      "index": 5,
+                      "category": "확장 질문",
+                      "question": "구체적인 질문 내용",
+                      "answer": "구체적이고 상세한 답변 내용"
+                    }
+                  ]
+                }
 
-                **질문 3: [실무 적용]**
-                구체적인 질문 내용
-
-                **질문 4: [비판적 사고]**
-                구체적인 질문 내용
-
-                **질문 5: [확장 질문]**
-                구체적인 질문 내용
-
-                [4] 추가 지침
-                - 발표 주제와 내용에 **직접적으로 관련된** 질문만 생성
-                - 발표자료에 **근거가 있는** 질문 위주로 작성
-                - 질문의 **난이도는 대학생 수준**에 맞춤
-                - **형식을 정확히** 지켜서 출력해주세요
-
-                ---
-                [발표 자료 내용]
-                """ + extractedText + """
-                ---
-                [예상 질문 생성]
-                """;
-    }
-
-    // 예상 답변 생성 프롬프트
-    private String buildAnswersPrompt(String extractedText, String questions) {
-        return """
-                너는 발표자가 되어 청중의 질문에 대한 이상적인 답변을 생성하는 전문가야.
-
-                발표 자료 내용과 예상 질문을 바탕으로, 각 질문에 대한 **발표자의 이상적인 답변**을 생성해줘.
-
-                ---
-                [지침]
-                [1] 답변 작성 원칙
-                - 발표 자료 내용에 **근거를 두고** 답변
-                - **구체적이고 정확한** 정보 제공
-                - **자신감 있고 전문적인** 어조로 작성
-                - 필요시 **추가 설명이나 예시** 포함
-                - **"잘 모르겠습니다"**라는 답변은 지양
-
-                [2] 답변 구조
-                - **핵심 답변**: 질문에 대한 직접적인 답변
-                - **근거 제시**: 발표 자료의 어떤 부분을 근거로 하는지
-                - **부연 설명**: 필요시 추가적인 설명이나 예시
-                - **마무리**: 질문에 대한 완결성 있는 마무리
-
-                [3] 답변 어조
-                - **공식적이고 학술적인** 발표체 ("~입니다", "~합니다")
-                - **논리적이고 체계적인** 설명
-                - **자신감 있는** 어조 (확신을 가지고 답변)
-                - **친근하면서도 전문적인** 느낌
-
-                [4] 출력 형식
-                **질문 1에 대한 답변:**
-                구체적이고 상세한 답변 내용 (2-3문장으로 충분히 설명)
-
-                **질문 2에 대한 답변:**
-                구체적이고 상세한 답변 내용 (2-3문장으로 충분히 설명)
-
-                **질문 3에 대한 답변:**
-                구체적이고 상세한 답변 내용 (2-3문장으로 충분히 설명)
-
-                **질문 4에 대한 답변:**
-                구체적이고 상세한 답변 내용 (2-3문장으로 충분히 설명)
-
-                **질문 5에 대한 답변:**
-                구체적이고 상세한 답변 내용 (2-3문장으로 충분히 설명)
-
-                [5] 추가 지침
-                - 각 답변은 **질문의 의도를 정확히 파악**하고 답변
-                - **발표 자료를 벗어나지 않는** 범위에서 답변
-                - **형식을 정확히** 지켜서 출력해주세요
+                ⚠️ 중요 지침:
+                - 반드시 위 JSON 형식으로만 응답하세요
+                - “코드펜스(```) 금지”
+                - 추가 설명이나 다른 텍스트는 포함하지 마세요
+                - index는 1부터 5까지 순서대로
+                - category는 위 5가지 중 정확히 하나씩
+                - question과 answer는 비어있지 않게 작성
+                - JSON 문법을 정확히 지켜주세요
 
                 ---
                 [발표 자료 내용]
                 """ + extractedText + """
-
-                [예상 질문들]
-                """ + questions + """
                 ---
-                [이상적인 답변 생성]
+                [JSON 형식 Q&A 생성]
                 """;
     }
 
@@ -326,6 +542,7 @@ public class GenerateQnaService {
     private String callAiModel(String prompt) {
         // API 키 검증
         if (OPENAI_API_KEY == null || OPENAI_API_KEY.trim().isEmpty()) {
+            log.error("OpenAI API 키가 설정되지 않았습니다");
             throw new IllegalStateException("OpenAI API 키가 설정되지 않았습니다.");
         }
 
@@ -337,10 +554,19 @@ public class GenerateQnaService {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", "gpt-4o-mini");
         requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", "너는 발표 Q&A를 생성하는 전문가야."),
+                Map.of("role", "system", "content", "너는 발표 Q&A를 생성하는 전문가야. 반드시 JSON 형식으로만 응답해야 한다."),
                 Map.of("role", "user", "content", prompt)));
         requestBody.put("temperature", 0.7);
         requestBody.put("max_tokens", 2500);
+
+        // JSON 형식 강제 설정
+        Map<String, Object> responseFormat = new HashMap<>();
+        responseFormat.put("type", "json_object");
+        requestBody.put("response_format", responseFormat);
+
+        // 요청 확인 로그
+        log.info("🚀 OpenAI API 요청 - 모델: {}, JSON mode: active", requestBody.get("model"));
+        log.debug("요청 본문: {}", requestBody);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
@@ -373,23 +599,22 @@ public class GenerateQnaService {
                 throw new RuntimeException("OpenAI API 응답 내용이 비어있습니다.");
             }
 
+            log.debug("OpenAI API 호출 성공, 응답 길이: {}", content.length());
             return content.trim();
+
         } catch (org.springframework.web.client.HttpClientErrorException e) {
-            System.err.println("OpenAI API 클라이언트 오류 (4xx): " + e.getMessage());
-            e.printStackTrace();
-            return "API 요청에 문제가 있습니다. 잠시 후 다시 시도해주세요.";
+            log.error("OpenAI API 클라이언트 오류 (4xx): {}", e.getMessage());
+            throw new RuntimeException("AI 서비스 요청에 문제가 있습니다: " + e.getMessage(), e);
         } catch (org.springframework.web.client.HttpServerErrorException e) {
-            System.err.println("OpenAI API 서버 오류 (5xx): " + e.getMessage());
-            e.printStackTrace();
-            return "OpenAI 서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.";
+            log.error("OpenAI API 서버 오류 (5xx): {}", e.getMessage());
+            throw new RuntimeException("AI 서비스에 일시적인 문제가 있습니다: " + e.getMessage(), e);
         } catch (org.springframework.web.client.ResourceAccessException e) {
-            System.err.println("네트워크 연결 오류: " + e.getMessage());
-            e.printStackTrace();
-            return "네트워크 연결을 확인하고 다시 시도해주세요.";
+            log.error("네트워크 연결 오류: {}", e.getMessage());
+            throw new RuntimeException("네트워크 연결을 확인해 주세요: " + e.getMessage(), e);
         } catch (Exception e) {
-            System.err.println("Q&A 생성 실패: " + e.getMessage());
-            e.printStackTrace();
-            return "Q&A 생성에 실패했습니다. 잠시 후 다시 시도해주세요.";
+            log.error("Q&A 생성 중 예상치 못한 오류 발생", e);
+            throw new RuntimeException("Q&A 생성에 실패했습니다: " + e.getMessage(), e);
         }
     }
+
 }

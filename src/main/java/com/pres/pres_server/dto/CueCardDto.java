@@ -11,6 +11,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CueCardDto {
     private Long fileId;
-    private String extractedText;
     private List<String> cueCards;
 }
