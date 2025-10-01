@@ -95,8 +95,6 @@ public class GenerateQnaService {
         // PresentationFile 조회
         PresentationFile presentationFile = presentationFileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
-        
-        log.info("🔍 조회된 PresentationFile: ID={}, 객체={}", presentationFile.getFileId(), presentationFile);
 
         // DB 저장 (개선된 파싱 로직 사용)
         String qnaResponse = generatedContent.get("qna");
@@ -128,20 +126,7 @@ public class GenerateQnaService {
 
         try {
             log.info("=== JSON 파싱 시작 ===");
-            log.info("Q&A 응답 길이: {} 문자", qnaResponse.length());
-            
-            // 디버깅을 위해 AI 응답을 파일로 저장
-            try {
-                java.nio.file.Files.write(
-                    java.nio.file.Paths.get("debug_ai_response_" + System.currentTimeMillis() + ".txt"),
-                    qnaResponse.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                );
-                log.info("🔍 AI 응답을 debug_ai_response_*.txt 파일로 저장했습니다");
-            } catch (Exception fileError) {
-                log.warn("AI 응답 파일 저장 실패: {}", fileError.getMessage());
-            }
-            
-            log.debug("Q&A 응답 첫 500자:\n{}", qnaResponse.substring(0, Math.min(500, qnaResponse.length())));
+            log.info("Q&A 응답 전체 내용:\n{}", qnaResponse);
 
             // Jackson ObjectMapper를 사용한 JSON 파싱 (UTF-8 인코딩 및 제어문자 허용)
             ObjectMapper objectMapper = new ObjectMapper();
@@ -168,36 +153,13 @@ public class GenerateQnaService {
                 log.debug("정리된 JSON:\n{}", cleanedResponse);
             }
 
-            JsonNode rootNode;
-            try {
-                rootNode = objectMapper.readTree(cleanedResponse);
-                log.info("✅ JSON 루트 노드 파싱 성공");
-            } catch (com.fasterxml.jackson.core.JsonParseException jpe) {
-                log.error("❌ JSON 구문 오류: {}", jpe.getMessage());
-                log.error("오류 발생 위치: line {}, column {}", jpe.getLocation().getLineNr(), jpe.getLocation().getColumnNr());
-                log.error("문제가 된 JSON 내용 (처음 1000자):\n{}", cleanedResponse.substring(0, Math.min(1000, cleanedResponse.length())));
-                throw new QnaGenerationException("JSON 구문 오류: " + jpe.getMessage(), jpe);
-            } catch (Exception parseError) {
-                log.error("❌ JSON 파싱 실패: {}", parseError.getMessage());
-                log.error("JSON 파싱 실패 상세: {}", parseError.getClass().getSimpleName());
-                log.error("문제가 된 JSON 내용 (처음 1000자):\n{}", cleanedResponse.substring(0, Math.min(1000, cleanedResponse.length())));
-                throw new QnaGenerationException("JSON 파싱 실패: " + parseError.getMessage(), parseError);
-            }
-            
+            JsonNode rootNode = objectMapper.readTree(cleanedResponse);
             JsonNode itemsNode = rootNode.get("items");
 
-            if (itemsNode == null) {
-                log.error("❌ JSON 형식 오류: 'items' 필드가 없습니다");
-                log.error("실제 JSON 구조의 필드들: {}", rootNode.fieldNames());
-                log.error("전체 JSON 내용: {}", rootNode.toPrettyString());
+            if (itemsNode == null || !itemsNode.isArray()) {
+                log.error("JSON 형식 오류: 'items' 배열을 찾을 수 없음");
+                log.error("파싱된 JSON 구조: {}", rootNode.toString());
                 throw new QnaGenerationException("JSON 형식 오류: 'items' 배열을 찾을 수 없습니다");
-            }
-            
-            if (!itemsNode.isArray()) {
-                log.error("❌ JSON 형식 오류: 'items'가 배열이 아닙니다");
-                log.error("'items' 필드의 실제 타입: {}", itemsNode.getNodeType());
-                log.error("'items' 필드 내용: {}", itemsNode.toString());
-                throw new QnaGenerationException("JSON 형식 오류: 'items'가 배열이 아닙니다");
             }
 
             log.info("✅ JSON 파싱 성공! 파싱된 아이템 수: {}", itemsNode.size());
@@ -205,35 +167,18 @@ public class GenerateQnaService {
             // 각 Q&A 아이템 처리
             for (JsonNode item : itemsNode) {
                 try {
-                    log.info("=== 새 아이템 처리 시작 ===");
-                    
-                    // 필수 필드 존재 여부 체크
-                    String[] requiredFields = {"index", "category", "question", "answer"};
-                    for (String field : requiredFields) {
-                        if (!item.has(field)) {
-                            log.error("❌ 필수 필드 '{}' 누락", field);
-                            log.error("현재 아이템의 실제 필드들: {}", item.fieldNames());
-                            throw new QnaGenerationException("필수 필드 '" + field + "'가 누락되었습니다");
-                        }
-                        if (item.get(field).isNull()) {
-                            log.error("❌ 필드 '{}'가 null입니다", field);
-                            throw new QnaGenerationException("필드 '" + field + "'가 null입니다");
-                        }
-                    }
-                    
                     int index = item.get("index").asInt();
                     String category = item.get("category").asText();
                     String questionText = item.get("question").asText();
                     String answerText = item.get("answer").asText();
 
-                    log.info("🔄 Q{} 처리 시작 - 카테고리: [{}]", index, category);
-                    log.info("질문 길이: {} 문자, 답변 길이: {} 문자", questionText.length(), answerText.length());
-                    log.debug("질문 내용: {}", questionText.substring(0, Math.min(100, questionText.length())));
-                    log.debug("답변 내용: {}", answerText.substring(0, Math.min(100, answerText.length())));
+                    log.info("처리 중인 Q{} - 카테고리: [{}]", index, category);
+                    log.info("질문: {}", questionText.substring(0, Math.min(100, questionText.length())));
+                    log.info("답변: {}", answerText.substring(0, Math.min(100, answerText.length())));
 
                     // 내용 검증
                     if (questionText.trim().isEmpty() || answerText.trim().isEmpty()) {
-                        log.warn("⚠️ Q{}: 질문 또는 답변이 비어있어서 건너뜀", index);
+                        log.warn("Q{}: 질문 또는 답변이 비어있음", index);
                         continue;
                     }
 
@@ -251,31 +196,13 @@ public class GenerateQnaService {
                     question.setCreated_at(LocalDateTime.now());
                     question.setUpdated_at(LocalDateTime.now());
 
-                    log.info("💾 Q{} 질문 엔티티 생성 완료 - presentationFile ID: {}", index, 
-                            question.getPresentationFile() != null ? question.getPresentationFile().getFileId() : "NULL");
-
                     // 질문 엔티티 유효성 검사 로그
                     log.debug("질문 엔티티 생성 완료 - presentationFile ID: {}, body length: {}",
                             presentationFile.getFileId(), questionText.trim().length());
 
                     log.info("Q{} 질문 저장 중...", index);
-                    QnaQuestion savedQuestion;
-                    try {
-                        // DB 제약 체크를 위한 상세 로깅
-                        log.debug("💾 질문 저장 시도 - fileId: {}, body length: {}, prompt_hash: {}", 
-                                presentationFile.getFileId(), questionText.trim().length(), 
-                                question.getPrompt_hash());
-                        
-                        savedQuestion = qnaQuestionRepository.save(question);
-                        log.info("✅ Q{} 질문 저장 성공, ID: {}", index, savedQuestion.getQnaId());
-                    } catch (org.springframework.dao.DataIntegrityViolationException dive) {
-                        log.error("❌ DB 제약 위반 - Q{} 질문 저장 실패: {}", index, dive.getMessage());
-                        log.error("제약 위반 상세: {}", dive.getMostSpecificCause().getMessage());
-                        throw new QnaGenerationException("DB 제약 위반으로 질문 저장 실패: " + dive.getMostSpecificCause().getMessage(), dive);
-                    } catch (Exception saveError) {
-                        log.error("❌ Q{} 질문 저장 실패: {}", index, saveError.getMessage(), saveError);
-                        throw new QnaGenerationException("질문 저장 실패: " + saveError.getMessage(), saveError);
-                    }
+                    QnaQuestion savedQuestion = qnaQuestionRepository.save(question);
+                    log.info("Q{} 질문 저장 완료, ID: {}", index, savedQuestion.getQnaId());
 
                     // 트랜잭션 상태 확인
                     log.debug("트랜잭션 활성 상태: {}",
@@ -300,38 +227,16 @@ public class GenerateQnaService {
                             savedQuestion.getQnaId(), answerText.trim().length());
 
                     log.info("Q{} 답변 저장 중...", index);
-                    try {
-                        // DB 제약 체크를 위한 상세 로깅
-                        log.debug("💾 답변 저장 시도 - questionId: {}, body length: {}", 
-                                savedQuestion.getQnaId(), answerText.trim().length());
-                        
-                        qnaAnswerRepository.save(answer);
-                        log.info("✅ Q{} 답변 저장 성공", index);
-                    } catch (org.springframework.dao.DataIntegrityViolationException dive) {
-                        log.error("❌ DB 제약 위반 - Q{} 답변 저장 실패: {}", index, dive.getMessage());
-                        log.error("제약 위반 상세: {}", dive.getMostSpecificCause().getMessage());
-                        throw new QnaGenerationException("DB 제약 위반으로 답변 저장 실패: " + dive.getMostSpecificCause().getMessage(), dive);
-                    } catch (Exception saveError) {
-                        log.error("❌ Q{} 답변 저장 실패: {}", index, saveError.getMessage(), saveError);
-                        throw new QnaGenerationException("답변 저장 실패: " + saveError.getMessage(), saveError);
-                    }
+                    qnaAnswerRepository.save(answer);
+                    log.info("Q{} 답변 저장 완료", index);
 
                     log.info("✅ Q{} 저장 완료 - 질문: {}", index,
                             questionText.substring(0, Math.min(50, questionText.length())) + "...");
 
                 } catch (Exception e) {
-                    log.error("❌ 개별 Q&A 처리 실패: {}", e.getMessage(), e);
+                    log.error("개별 Q&A 처리 실패: {}", e.getMessage(), e);
                     log.error("실패한 아이템의 index: {}", item.has("index") ? item.get("index").asText() : "N/A");
-                    
-                    // DB 관련 에러인지 구체적으로 확인
-                    if (e instanceof org.springframework.dao.DataIntegrityViolationException) {
-                        log.error("🚨 DB 제약 위반 감지: {}", e.getCause() != null ? e.getCause().getMessage() : "알 수 없는 제약 위반");
-                    } else if (e instanceof org.springframework.dao.DataAccessException) {
-                        log.error("🚨 DB 접근 오류 감지: {}", e.getMessage());
-                    }
-                    
-                    // 개별 실패는 전체를 중단시키지 않음 (옵션에 따라 변경 가능)
-                    throw new QnaGenerationException("Q&A 저장 중 오류: " + e.getMessage(), e);
+                    // 개별 실패는 전체를 중단시키지 않음
                 }
             }
 
