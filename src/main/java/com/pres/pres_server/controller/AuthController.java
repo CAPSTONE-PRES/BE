@@ -22,6 +22,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 
 import com.pres.pres_server.service.auth.UserAuthService;
 import com.pres.pres_server.service.auth.KakaoOAuthService;
@@ -50,6 +52,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
+@SecurityRequirements() // 클래스 전체에서 보안 요구사항 제거
 public class AuthController {
 
     private final EmailService emailService;
@@ -59,11 +62,13 @@ public class AuthController {
     private final TokenService tokenService;
     private final TokenProvider tokenProvider;
 
-    @Operation(summary = "로그인", description = "이메일과 비밀번호로 로그인합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Login", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
-            @ApiResponse(responseCode = "401", description = "인증 실패"),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청")
-    })
+    @Operation(summary = "로그인", description = "이메일과 비밀번호로 로그인합니다.", security = {}, // 빈 배열로 보안 요구사항 제거
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Login", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
+                    @ApiResponse(responseCode = "401", description = "인증 실패"),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청")
+            })
+    @SecurityRequirements() // 메소드 레벨에서도 보안 요구사항 제거
     @PostMapping("/login")
     public ResponseEntity<CreateAccessTokenResponse> login(@RequestBody @Valid LoginRequest req) {
         // 인증 로직은 UserAuthService에서 처리
@@ -79,11 +84,13 @@ public class AuthController {
         return ResponseEntity.ok(tokenDto);
     }
 
-    @Operation(summary = "로그아웃", description = "현재 로그인된 사용자를 로그아웃합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Successful Logout", value = "logout success"))),
-            @ApiResponse(responseCode = "401", description = "인증 실패"),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청")
-    })
+    @Operation(summary = "로그아웃", description = "현재 로그인된 사용자를 로그아웃합니다.", security = {
+            @SecurityRequirement(name = "Authentication") }, // 인증 필요
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Successful Logout", value = "logout success"))),
+                    @ApiResponse(responseCode = "401", description = "인증 실패"),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청")
+            })
     @PostMapping("/logout")
     public ResponseEntity<String> logout(HttpServletRequest request, HttpServletResponse response) {
         new SecurityContextLogoutHandler().logout(
@@ -93,10 +100,12 @@ public class AuthController {
         return ResponseEntity.ok("logout success");
     }
 
-    @Operation(summary = "이메일 인증 코드 전송", description = "회원가입을 위해 이메일로 인증 코드를 전송합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthSendResponse.class), examples = @ExampleObject(name = "Successful Email Send", value = "{ \"message\": \"인증 코드 발송 완료\" }"))),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청")
-    })
+    @Operation(summary = "이메일 인증 코드 전송", description = "회원가입을 위해 이메일로 인증 코드를 전송합니다.", security = {
+            @SecurityRequirement(name = "") }, // 인증 불필요 명시
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthSendResponse.class), examples = @ExampleObject(name = "Successful Email Send", value = "{ \"message\": \"인증 코드 발송 완료\" }"))),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청")
+            })
     @PostMapping("/email/sendcode")
     // requestBody로 요청 값 매핑
     public ResponseEntity<EmailAuthSendResponse> sendSignupEmail(@RequestBody @Valid EmailAuthSendRequest req) {
@@ -104,10 +113,12 @@ public class AuthController {
         return ResponseEntity.ok(new EmailAuthSendResponse("인증 코드 발송 완료"));
     }
 
-    @Operation(summary = "이메일 인증 코드 검증", description = "전송된 이메일 인증 코드를 검증합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthVerifyResponse.class), examples = @ExampleObject(name = "Successful Verification", value = "{ \"success\": true, \"message\": \"인증 성공\" }"))),
-            @ApiResponse(responseCode = "400", description = "인증 실패", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthVerifyResponse.class), examples = @ExampleObject(name = "Failed Verification", value = "{ \"success\": false, \"message\": \"인증 실패\" }")))
-    })
+    @Operation(summary = "이메일 인증 코드 검증", description = "전송된 이메일 인증 코드를 검증합니다.", security = {
+            @SecurityRequirement(name = "") }, // 인증 불필요 명시
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthVerifyResponse.class), examples = @ExampleObject(name = "Successful Verification", value = "{ \"success\": true, \"message\": \"인증 성공\" }"))),
+                    @ApiResponse(responseCode = "400", description = "인증 실패", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthVerifyResponse.class), examples = @ExampleObject(name = "Failed Verification", value = "{ \"success\": false, \"message\": \"인증 실패\" }")))
+            })
     @PostMapping("/email/verify")
     public ResponseEntity<EmailAuthVerifyResponse> verifySignupEmail(
             @RequestBody @Valid EmailAuthVerifyRequest req) {
@@ -119,10 +130,12 @@ public class AuthController {
         }
     }
 
-    @Operation(summary = "이메일 인증 후 회원가입", description = "이메일 인증 후 회원가입을 처리합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Signup", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Bad Request", value = "{ \"message\": \"잘못된 요청\" }")))
-    })
+    @Operation(summary = "이메일 인증 후 회원가입", description = "이메일 인증 후 회원가입을 처리합니다.", security = {
+            @SecurityRequirement(name = "") }, // 인증 불필요 명시
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Signup", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Bad Request", value = "{ \"message\": \"잘못된 요청\" }")))
+            })
     @PostMapping("/email/signup")
     public ResponseEntity<CreateAccessTokenResponse> signup(@RequestBody @Valid SignupRequest dto) {
         // 이메일 인증 확인
@@ -138,22 +151,27 @@ public class AuthController {
         return ResponseEntity.ok(tokenDto);
     }
 
-    @Operation(summary = "카카오 로그인", description = "카카오 계정으로 로그인합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Successful Redirect", value = "Redirecting to Kakao OAuth"))),
-            @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Failed Redirect", value = "Failed to redirect to Kakao OAuth"))),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Bad Request", value = "Bad request")))
-    })
+    @Operation(summary = "카카오 로그인", description = "카카오 계정으로 로그인합니다.", security = { @SecurityRequirement(name = "") }, // 인증
+                                                                                                                      // 불필요
+                                                                                                                      // 명시
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Successful Redirect", value = "Redirecting to Kakao OAuth"))),
+                    @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Failed Redirect", value = "Failed to redirect to Kakao OAuth"))),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Bad Request", value = "Bad request")))
+            })
     @PostMapping("/kakao/login")
     public void kakaoLogin(HttpServletResponse response) throws IOException {
         String redirectUrl = kakaoAuthService.getOauthRedirectURL();
         response.sendRedirect(redirectUrl);
     }
 
-    @Operation(summary = "카카오 토큰 생성", description = "카카오 로그인 후 콜백으로 전달된 코드를 통해 토큰을 생성합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Token Creation", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
-            @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Unauthorized", value = "Unauthorized"))),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Bad Request", value = "Bad request")))
-    })
+    @Operation(summary = "카카오 토큰 생성", description = "카카오 로그인 후 콜백으로 전달된 코드를 통해 토큰을 생성합니다.", security = {
+            @SecurityRequirement(name = "") }, // 인증 불필요 명시
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class), examples = @ExampleObject(name = "Successful Token Creation", value = "{ \"accessToken\": \".accessToken value\", \"refreshToken\": \"refreshToken value\" }"))),
+                    @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Unauthorized", value = "Unauthorized"))),
+                    @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Bad Request", value = "Bad request")))
+            })
     @GetMapping("/kakao/callback")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "성공"),

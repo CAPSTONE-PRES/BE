@@ -5,6 +5,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,6 +24,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<?> handleIllegalState(IllegalStateException ex) {
+        log.warn("잘못된 상태 요청: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<?> handleValidationException(MethodArgumentNotValidException ex) {
         String errorMsg = ex.getBindingResult().getFieldErrors().stream()
@@ -34,6 +43,27 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         String errorMsg = "파라미터 타입이 올바르지 않습니다: " + ex.getName();
         return ResponseEntity.badRequest().body(Map.of("error", errorMsg));
+    }
+
+    // Spring Security 인증 예외 처리
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<?> handleAuthenticationException(AuthenticationException ex) {
+        log.warn("인증 실패: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "인증이 필요합니다."));
+    }
+
+    // OAuth2 인증 예외 처리
+    @ExceptionHandler(OAuth2AuthenticationException.class)
+    public ResponseEntity<?> handleOAuth2AuthenticationException(OAuth2AuthenticationException ex) {
+        log.warn("OAuth2 인증 실패: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "OAuth2 인증에 실패했습니다."));
+    }
+
+    // JSON 파싱 오류 처리
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<?> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("JSON 파싱 오류: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", "잘못된 JSON 형식입니다."));
     }
 
     @ExceptionHandler(Exception.class)

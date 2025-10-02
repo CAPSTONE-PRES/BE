@@ -50,8 +50,13 @@ public class WebOAuthSecurityConfig {
                                 .authorizeHttpRequests(auth -> auth
                                                 // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
                                                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                                                .requestMatchers("/api/token").permitAll()
-                                                .requestMatchers("/api/**").authenticated()
+                                                // 토큰 관련 API (테스트용 포함)
+                                                .requestMatchers("/api/token", "/test-token").permitAll()
+                                                // 인증 관련 API (회원가입, 로그인, 이메일 인증)
+                                                .requestMatchers("/auth/**").permitAll()
+                                                // 나머지 모든 API는 인증 필요
+                                                .requestMatchers("/api/**", "/user/**", "/projects/**", "/workspace/**")
+                                                .authenticated()
                                                 .anyRequest().permitAll())
                                 .oauth2Login(oauth2 -> oauth2
                                                 .loginPage("/login")
