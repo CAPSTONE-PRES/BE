@@ -7,8 +7,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "workspaces")
-@Getter
-@Setter
+@Getter @Setter
 public class WorkSpace {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,5 +22,5 @@ public class WorkSpace {
 
     @ManyToOne
     @JoinColumn(name = "owner_user_id", nullable = false)
-    private User owner_user;
+    private User ownerUser;
 }
