@@ -10,6 +10,7 @@ uploads/
 #gradle
 .gradle/
 build/
+bin/
 
 # IDE
 /.idea/
