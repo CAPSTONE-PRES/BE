@@ -30,7 +30,7 @@ public class User implements UserDetails {
     @Column(name = "password")
     private String password;
 
-    @Column(name = "username", nullable = false, unique = true, length = 50)
+    @Column(name = "username", nullable = false, length = 50)
     private String username;
 
     @Column(name = "email_verified", nullable = false)
@@ -46,6 +46,7 @@ public class User implements UserDetails {
     private String profileImageUrl;
 
     @Column(name = "push_enabled", nullable = false)
+    @Builder.Default
     private boolean pushEnabled = false;
 
     @CreationTimestamp

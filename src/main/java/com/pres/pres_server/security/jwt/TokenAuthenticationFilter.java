@@ -25,12 +25,25 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
+        String path = request.getRequestURI();
+
+        // 인증이 필요하지 않은 경로들은 JWT 체크 없이 통과
+        if (path.startsWith("/v3/api-docs") ||
+                path.startsWith("/swagger-ui") ||
+                path.startsWith("/swagger-ui.html") ||
+                path.startsWith("/auth/") || // 인증 관련 API
+                path.equals("/test-token") || // 테스트 토큰 발급
+                path.equals("/api/token")) { // 토큰 관련 API
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // 요청 헤더의 Authorization 키의 값 조회
         String authorizationHeader = request.getHeader(HEADER_AUTHORIZATION);
         // 가져온 값에서 접두사 제거
         String token = getAccessToken(authorizationHeader);
         // 토큰 유효성 검사
-        if (tokenProvider.validToken(token)) {
+        if (token != null && tokenProvider.validToken(token)) {
             Authentication authentication = tokenProvider.getAuthentication(token);
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }

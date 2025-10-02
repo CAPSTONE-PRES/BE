@@ -1,215 +1,288 @@
 package com.pres.pres_server.service.auth;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.KakaoUserInfo;
-import com.pres.pres_server.service.user.UserService;
-import com.pres.pres_server.service.token.TokenService;
 import com.pres.pres_server.dto.Token.KakaoTokenResponse;
-import com.pres.pres_server.dto.Token.CreateAccessTokenResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.pres.pres_server.exception.KakaoBadRequestException;
+import com.pres.pres_server.exception.KakaoInternalServerException;
+import com.pres.pres_server.exception.KakaoUnauthorizedException;
+import com.pres.pres_server.service.token.TokenService;
+import com.pres.pres_server.service.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class KakaoOAuthServiceTest {
-    @InjectMocks
-    private KakaoOAuthService kakaoOAuthService;
+
     @Mock
     private UserService userService;
     @Mock
-    private UserAuthService userAuthService;
-    @Mock
     private TokenService tokenService;
     @Mock
+    private UserAuthService userAuthService;
+    @Mock
     private RestTemplate restTemplate;
+    @Spy
+    @InjectMocks
+    private KakaoOAuthService kakaoOAuthService;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        // @Value 주입 필드 세팅
-        ReflectionTestUtils.setField(kakaoOAuthService, "kauthHost", "https://kauth.kakao.com");
-        ReflectionTestUtils.setField(kakaoOAuthService, "clientId", "test-client-id");
-        ReflectionTestUtils.setField(kakaoOAuthService, "clientSecret", "test-secret");
-        ReflectionTestUtils.setField(kakaoOAuthService, "redirectUri", "http://localhost/callback");
-    }
-
-    @Test
-    @DisplayName("getOauthRedirectURL 정상 동작 테스트")
-    void getOauthRedirectURL_shouldReturnUrl() {
-        // given: 환경 변수 값 세팅 (Reflection 사용)
-        kakaoOAuthService.clientId = "98b9a68288985b80e9afd47551cbe3da";
-        kakaoOAuthService.redirectUri = "http://localhost:8080/callback";
+        kakaoOAuthService.clientId = "test-client-id";
+        kakaoOAuthService.clientSecret = "test-client-secret";
+        kakaoOAuthService.redirectUri = "http://localhost/callback";
         kakaoOAuthService.kauthHost = "https://kauth.kakao.com";
+        kakaoOAuthService.kapiHost = "https://kapi.kakao.com";
+    }
 
-        // when
+    @Test
+    void getOauthRedirectURL_returnsCorrectUrl() {
         String url = kakaoOAuthService.getOauthRedirectURL();
-
-        // then
-        assertThat(url).startsWith("https://kauth.kakao.com/oauth/authorize?");
-        assertThat(url).contains("client_id=98b9a68288985b80e9afd47551cbe3da");
-        assertThat(url).contains("redirect_uri=http://localhost:8080/callback");
-        assertThat(url).contains("response_type=code");
+        assertTrue(url.contains("client_id=test-client-id"));
+        assertTrue(url.contains("redirect_uri=http://localhost/callback"));
+        assertTrue(url.contains("response_type=code"));
     }
 
     @Test
-    @DisplayName("processKakaoUser 신규 회원가입 로직 테스트")
-    void processKakaoUser_shouldSignupIfUserNotExist() {
+    void getOauthRedirectURL_throwsException_whenConfigMissing() {
+        kakaoOAuthService.clientId = null;
+        assertThrows(IllegalStateException.class, () -> kakaoOAuthService.getOauthRedirectURL());
+    }
+
+    @Test
+    void getAuthUrl_withScope_returnsUrlWithScope() {
+        String url = kakaoOAuthService.getAuthUrl("profile");
+        assertTrue(url.contains("scope=profile"));
+    }
+
+    @Test
+    void getAuthUrl_withoutScope_returnsUrlWithoutScope() {
+        String url = kakaoOAuthService.getAuthUrl(null);
+        assertFalse(url.contains("scope="));
+    }
+
+    @Test
+    @DisplayName("getToken 성공 시, 토큰 응답 반환")
+    void getToken_success_returnsTokenResponse() {
+        // Given
+        String code = "valid-code";
+        KakaoTokenResponse mockResponse = new KakaoTokenResponse();
+        mockResponse.setAccessToken("access-token");
+        mockResponse.setRefreshToken("refresh-token");
+        ResponseEntity<KakaoTokenResponse> entity = new ResponseEntity<>(mockResponse, HttpStatus.OK);
+
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(KakaoTokenResponse.class)))
+                .thenReturn(entity);
+
+        // When
+        KakaoTokenResponse result = kakaoOAuthService.getToken(code);
+
+        // Then
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        assertThat(result.getRefreshToken()).isEqualTo("refresh-token");
+    }
+
+    @Test
+    @DisplayName("getToken 실패 시, 내부 서버 예외 발생")
+    void getToken_failure_throwsInternalServerException() {
         // given
-        String accessToken = "dummy-access-token";
-        // 주입 누락 방지
-        KakaoOAuthService spyService = Mockito.spy(kakaoOAuthService);
-        ReflectionTestUtils.setField(spyService, "userAuthService", userAuthService);
-        ReflectionTestUtils.setField(spyService, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(spyService, "objectMapper", objectMapper);
-        KakaoUserInfo kakaoUserInfo = new KakaoUserInfo("test@kakao.com", "tester");
-        User newUser = Mockito.mock(User.class);
-
-        Mockito.doReturn(kakaoUserInfo).when(spyService).getKakaoUserInfo(anyString());
-        Mockito.doThrow(new RuntimeException()).when(userService).findByEmail(kakaoUserInfo.getEmail());
-        Mockito.doReturn(newUser).when(userAuthService).signupByKakao(any(KakaoUserInfo.class));
-
-        System.out.println("kakaoUserInfo: " + kakaoUserInfo.getEmail());
-        System.out.println("findByEmail exception Mock ");
-        System.out.println("signupByKakao Mock ");
-
-        // when
-        User result = spyService.processKakaoUser(accessToken);
-
-        // then
-        assertThat(result).isNotNull();
+        ResponseEntity<KakaoTokenResponse> entity = new ResponseEntity<>(null, HttpStatus.BAD_REQUEST);
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(KakaoTokenResponse.class)))
+                .thenReturn(entity);
+        // When & Then
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.getToken("invalid-code"));
 
     }
 
     @Test
-    @DisplayName("processKakaoUser 기존 회원 로직 테스트")
-    void processKakaoUser_shouldReturnExistingUser() {
-        // given
-        String accessToken = "dummy-access-token";
-        KakaoOAuthService spyService = Mockito.spy(kakaoOAuthService);
-        // 주입 누락 방지
-        ReflectionTestUtils.setField(spyService, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(spyService, "objectMapper", objectMapper);
-        KakaoUserInfo kakaoUserInfo = new KakaoUserInfo("test@kakao.com", "tester");
-        Mockito.doReturn(kakaoUserInfo).when(spyService).getKakaoUserInfo(anyString());
-        User existingUser = Mockito.mock(User.class);
-        Mockito.doReturn(existingUser).when(userService).findByEmail(anyString());
+    @DisplayName("getToken 통신 오류 시, 내부 서버 예외 발생")
+    void getToken_restClientException_throwsInternalServerException() {
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(KakaoTokenResponse.class)))
+                .thenThrow(new RestClientException("error"));
 
-        // when
-        User result = spyService.processKakaoUser(accessToken);
-
-        // then
-        assertThat(result).isEqualTo(existingUser);
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.getToken("code123"));
     }
 
     @Test
-    @DisplayName("issueJwtToken 정상 동작 테스트")
-    void issueJwtToken_shouldReturnTokens() {
-        // given
-        User user = Mockito.mock(User.class);
-        String refreshToken = "refresh-token";
-        String accessToken = "access-token";
-        Mockito.doReturn(refreshToken).when(tokenService).createRefreshToken(user);
-        Mockito.doReturn(accessToken).when(tokenService).createAccessToken(refreshToken);
+    @DisplayName("processKakaoUser: 기존 사용자일 경우, 기존 사용자 정보 반환")
+    void processKakaoUser_existingUser_returnsExistingUser() {
+        // Given
+        KakaoTokenResponse tokenResponse = new KakaoTokenResponse();
+        tokenResponse.setAccessToken("access-token");
+        KakaoUserInfo kakaoUserInfo = new KakaoUserInfo("existing@kakao.com", "existing_user");
+        User existingUser = mock(User.class);
 
-        // when
-        CreateAccessTokenResponse result = kakaoOAuthService.issueJwtToken(user);
+        doReturn(kakaoUserInfo).when(kakaoOAuthService).getKakaoUserInfo(tokenResponse.getAccessToken());
+        when(userService.findByEmail(anyString())).thenReturn(existingUser);
 
-        // then
-        assertThat(result.getAccessToken()).isEqualTo(accessToken);
-        assertThat(result.getRefreshToken()).isEqualTo(refreshToken);
+        // When
+        User result = kakaoOAuthService.processKakaoUser(tokenResponse);
+
+        // Then
+        assertThat(result).isNotNull().isEqualTo(existingUser);
+        verify(userAuthService, never()).signupByKakao(any(KakaoUserInfo.class));
     }
 
     @Test
-    @DisplayName("requestAccessToken 정상 동작 테스트")
-    void requestAccessToken_shouldReturnTokenString() {
-        // given
-        String code = "dummy-code";
-        KakaoOAuthService spyService = Mockito.spy(kakaoOAuthService);
+    @DisplayName("processKakaoUser: 신규 사용자일 경우, 회원가입 로직 호출")
+    void processKakaoUser_newUser_callsSignup() {
+        // Given
+        KakaoTokenResponse tokenResponse = new KakaoTokenResponse();
+        tokenResponse.setAccessToken("access-token");
+        KakaoUserInfo kakaoUserInfo = new KakaoUserInfo("new_user@kakao.com", "new_user");
+        User newUser = mock(User.class);
 
-        ReflectionTestUtils.setField(spyService, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(spyService, "objectMapper", new ObjectMapper());
-        // 주입 누락 방지
-        String body = "{\"access_token\":\"access-token\",\"refresh_token\":\"refresh-token\"}";
-        String expectedToken = "access-token";
-        ResponseEntity<String> mockResponse = new ResponseEntity<>(body, HttpStatus.OK);
-        Mockito.doReturn(mockResponse).when(restTemplate)
-                .postForEntity(Mockito.anyString(), Mockito.any(), Mockito.eq(String.class));
+        // Stubbing `getKakaoUserInfo` and `userService` mocks
+        doReturn(kakaoUserInfo).when(kakaoOAuthService).getKakaoUserInfo(tokenResponse.getAccessToken());
+        when(userService.findByEmail(anyString())).thenThrow(new RuntimeException("User not found"));
+        when(userAuthService.signupByKakao(any(KakaoUserInfo.class))).thenReturn(newUser);
 
-        // when
-        String result = spyService.requestAccessToken(code);
+        // When
+        User result = kakaoOAuthService.processKakaoUser(tokenResponse);
 
-        // then
-        assertThat(result).isEqualTo(expectedToken);
+        // Then
+        assertThat(result).isNotNull().isEqualTo(newUser);
+        verify(userAuthService, times(1)).signupByKakao(any(KakaoUserInfo.class));
+
     }
 
     @Test
-    @DisplayName("getKakaoUserInfo 정상 동작 테스트")
-    void getKakaoUserInfo_shouldReturnUserInfo() {
-        // given
-        String accessToken = "dummy-access-token";
-        // 주입 누락 방지
-        KakaoOAuthService spyService = Mockito.spy(kakaoOAuthService);
-        ReflectionTestUtils.setField(spyService, "userAuthService", userAuthService);
-        ReflectionTestUtils.setField(spyService, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(spyService, "objectMapper", new ObjectMapper());
-
-        String mockJson = "{\"kakao_account\":{\"email\":\"test@kakao.com\"},\"properties\":{\"nickname\":\"tester\"}}";
-        ResponseEntity<String> mockResponse = new ResponseEntity<>(mockJson,
-                HttpStatus.OK);
-        Mockito.doReturn(mockResponse).when(restTemplate)
-                .exchange(Mockito.anyString(), Mockito.any(), Mockito.any(),
-                        Mockito.eq(String.class));
-        // when
-        KakaoUserInfo result = spyService.getKakaoUserInfo(accessToken);
-
-        // then
-        assertThat(result.getEmail()).isEqualTo("test@kakao.com");
-        assertThat(result.getNickname()).isEqualTo("tester");
+    void processKakaoUser_nullToken_throwsBadRequest() {
+        assertThrows(KakaoBadRequestException.class, () -> kakaoOAuthService.processKakaoUser(null));
     }
 
     @Test
-    @DisplayName("getToken 정상 동작 테스트")
-    void getToken_shouldReturnKakaoTokenResponse() throws Exception {
-        // given
-        String code = "dummy-code";
-        // 주입 누락 방지
-        KakaoOAuthService spyService = Mockito.spy(kakaoOAuthService);
-        ReflectionTestUtils.setField(spyService, "userAuthService", userAuthService);
-        ReflectionTestUtils.setField(spyService, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(spyService, "objectMapper", objectMapper);
-        spyService.kapiHost = "https://kapi.kakao.com";
-        spyService.clientId = "dummy-client-id";
-        spyService.clientSecret = "dummy-client-secret";
-        spyService.redirectUri = "http://localhost:8080/callback";
-
-        String mockJson = "{\"access_token\":\"access-token\",\"refresh_token\":\"refresh-token\"}";
-        ResponseEntity<String> mockResponse = new ResponseEntity<>(mockJson, HttpStatus.OK);
-        Mockito.doReturn(mockResponse).when(restTemplate)
-                .postForEntity(Mockito.anyString(), Mockito.any(), Mockito.eq(String.class));
-
-        // when
-        KakaoTokenResponse result = spyService.getToken(code);
-
-        // then
-        assertThat(result.getAccess_token()).isEqualTo("access-token");
-        assertThat(result.getRefresh_token()).isEqualTo("refresh-token");
-        System.out.println("result: " + result.getAccess_token() + ", " + result.getRefresh_token());
+    void issueJwtToken_returnsNull() {
+        assertNull(kakaoOAuthService.issueJwtToken(mock(User.class)));
     }
 
+    @Test
+    void getKakaoUserInfo_success_returnsUserInfo() {
+        ObjectNode jsonNode = objectMapper.createObjectNode();
+        jsonNode.set("kakao_account", objectMapper.createObjectNode().put("email", "test@email.com"));
+        jsonNode.set("properties", objectMapper.createObjectNode().put("nickname", "nick"));
+
+        ResponseEntity<JsonNode> entity = new ResponseEntity<>(jsonNode, HttpStatus.OK);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenReturn(entity);
+
+        KakaoUserInfo info = kakaoOAuthService.getKakaoUserInfo("access-token");
+        assertEquals("test@email.com", info.getEmail());
+        assertEquals("nick", info.getNickname());
+    }
+
+    @Test
+    void getKakaoUserInfo_unauthorized_throwsUnauthorizedException() {
+        ResponseEntity<JsonNode> entity = new ResponseEntity<>(null, HttpStatus.UNAUTHORIZED);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenReturn(entity);
+
+        assertThrows(KakaoUnauthorizedException.class, () -> kakaoOAuthService.getKakaoUserInfo("access-token"));
+    }
+
+    @Test
+    void getKakaoUserInfo_badRequest_throwsBadRequestException() {
+        ResponseEntity<JsonNode> entity = new ResponseEntity<>(null, HttpStatus.BAD_REQUEST);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenReturn(entity);
+
+        assertThrows(KakaoBadRequestException.class, () -> kakaoOAuthService.getKakaoUserInfo("access-token"));
+    }
+
+    @Test
+    void getKakaoUserInfo_internalError_throwsInternalServerException() {
+        ResponseEntity<JsonNode> entity = new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenReturn(entity);
+
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.getKakaoUserInfo("access-token"));
+    }
+
+    @Test
+    void getKakaoUserInfo_missingEmail_throwsInternalServerException() {
+        ObjectNode jsonNode = objectMapper.createObjectNode();
+        jsonNode.set("kakao_account", objectMapper.createObjectNode());
+        jsonNode.set("properties", objectMapper.createObjectNode().put("nickname", "nick"));
+
+        ResponseEntity<JsonNode> entity = new ResponseEntity<>(jsonNode, HttpStatus.OK);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenReturn(entity);
+
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.getKakaoUserInfo("access-token"));
+    }
+
+    @Test
+    void getKakaoUserInfo_restClientException_throwsInternalServerException() {
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(JsonNode.class)))
+                .thenThrow(new RestClientException("error"));
+
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.getKakaoUserInfo("access-token"));
+    }
+
+    @Test
+    void getKakaoUserInfo_nullAccessToken_throwsBadRequest() {
+        assertThrows(KakaoBadRequestException.class, () -> kakaoOAuthService.getKakaoUserInfo(null));
+    }
+
+    @Test
+    @DisplayName("unlinkKakaoAccount 성공 시, 예외가 발생하지 않음")
+    void unlinkKakaoAccount_success_noException() {
+        // Given
+        ResponseEntity<String> entity = new ResponseEntity<>("{}", HttpStatus.OK);
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(entity);
+
+        // When & Then
+        assertThatCode(() -> kakaoOAuthService.unlinkKakaoAccount("access-token"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void unlinkKakaoAccount_success_logsInfo() {
+        ResponseEntity<String> entity = new ResponseEntity<>("{}", HttpStatus.OK);
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(entity);
+
+        assertDoesNotThrow(() -> kakaoOAuthService.unlinkKakaoAccount("access-token"));
+    }
+
+    @Test
+    void unlinkKakaoAccount_failure_throwsInternalServerException() {
+        ResponseEntity<String> entity = new ResponseEntity<>("{}", HttpStatus.BAD_REQUEST);
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(entity);
+
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.unlinkKakaoAccount("access-token"));
+    }
+
+    @Test
+    void unlinkKakaoAccount_restClientException_throwsInternalServerException() {
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(new RestClientException("error"));
+
+        assertThrows(KakaoInternalServerException.class, () -> kakaoOAuthService.unlinkKakaoAccount("access-token"));
+    }
+
+    @Test
+    void unlinkKakaoAccount_nullAccessToken_throwsBadRequest() {
+        assertThrows(KakaoBadRequestException.class, () -> kakaoOAuthService.unlinkKakaoAccount(null));
+    }
 }

@@ -5,10 +5,12 @@
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
+uploads/
 
 #gradle
 .gradle/
 build/
+bin/
 
 # IDE
 /.idea/
@@ -33,6 +35,9 @@ Thumbs.db
 # Spring Boot
 src/main/resources/application.yml
 src/main/resources/application-*.yml
+*.yml
 # keep example tracked
 !src/main/resources/application-example.yml
 
+main.py
+/src/test/java/com/pres/pres_server/service/auth

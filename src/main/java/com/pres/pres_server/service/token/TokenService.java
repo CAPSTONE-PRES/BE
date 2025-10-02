@@ -4,6 +4,7 @@ import java.time.Duration;
 
 import org.springframework.stereotype.Service;
 
+import com.pres.pres_server.domain.RefreshToken;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.security.jwt.TokenProvider;
 import com.pres.pres_server.service.user.UserService;
@@ -33,9 +34,13 @@ public class TokenService {
     public String createRefreshToken(User user) {
         // 사용자 id로 리프레시 토큰 생성 (14일 유효)
         String refreshToken = tokenProvider.generateToken(user, Duration.ofDays(14));
-        // DB에 리프레시 토큰 저장
-        refreshTokenService.findByRefreshToken(refreshToken);
+        // 기존 토큰이 있으면 업데이트, 없으면 새로 생성
+        refreshTokenService.saveOrUpdate(user.getId(), refreshToken);
         return refreshToken;
     }
 
+    // JWT 리프레시 토큰 무효화 (예: DB에서 삭제)
+    public void invalidateRefreshToken(String refreshToken) {
+        refreshTokenService.deleteByRefreshToken(refreshToken);
+    }
 }

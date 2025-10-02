@@ -13,11 +13,11 @@ public class Project {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "project_id")
-    private Long project_id;
+    private Long projectId;
 
     @ManyToOne
     @JoinColumn(name = "workspace_id", nullable = false)
-    private WorkSpace workspace;
+    private WorkSpace workspaceId;
 
     @Column(name = "title", nullable = false)
     private String title;
@@ -33,4 +33,5 @@ public class Project {
 
     @Column(name = "due_date")
     private LocalDateTime dueDate;
+
 }
