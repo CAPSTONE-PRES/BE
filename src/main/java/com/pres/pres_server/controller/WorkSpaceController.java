@@ -25,7 +25,7 @@ public class WorkSpaceController {
     }
 
     @GetMapping("/{workspaceId}/info")
-    public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId) {
-        return workSpaceService.getWorkspaceInfo(workspaceId);
+    public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
+        return workSpaceService.getWorkspaceInfo(user, workspaceId);
     }
 }

@@ -25,6 +25,7 @@ public class WorkSpaceService {
     private final WorkSpaceRepository workSpaceRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
+    private final VisitLogService visitLogService;
 
 
     @Transactional
@@ -55,9 +56,12 @@ public class WorkSpaceService {
         return workspace;
     }
 
-    public WorkspaceInfoDTO getWorkspaceInfo(Long workspaceId) {
+    public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {
         WorkSpace workspace = workSpaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new RuntimeException("워크스페이스 없음"));
+
+        // 방문 로그 upsert
+        visitLogService.upsertVisitLog(user, workspace, null);
 
         WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
         dto.setWorkspaceName(workspace.getWorkspaceName());

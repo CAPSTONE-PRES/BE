@@ -5,7 +5,12 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 @Entity
-@Table(name = "visit_logs")
+@Table(
+        name = "visit_logs",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"user_id", "workspace_id", "project_id"})
+        }
+)
 @Getter
 @Setter
 public class VisitLog {
