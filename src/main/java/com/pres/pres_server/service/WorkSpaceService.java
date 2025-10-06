@@ -2,12 +2,14 @@ package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.TeamMember;
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.VisitLog;
 import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import com.pres.pres_server.repository.UserRepository;
+import com.pres.pres_server.repository.VisitLogRepository;
 import com.pres.pres_server.repository.WorkSpaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ public class WorkSpaceService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final VisitLogService visitLogService;
+    private final VisitLogRepository visitLogRepository;
 
 
     @Transactional
@@ -88,5 +91,48 @@ public class WorkSpaceService {
 
         return dto;
     }
+
+    public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type) {
+
+        List<WorkSpace> workspaces;
+
+        if (type == 2) {
+            // 제목순 정렬
+            workspaces = workSpaceRepository.findAllByOrderByWorkspaceNameAsc();
+        } else if (type == 1) {
+            // 최근 방문순
+            List<VisitLog> logs = visitLogRepository.findByUserOrderByVisitedAtDesc(user);
+
+            // VisitLog 기준으로 WorkSpace 추출
+            workspaces = logs.stream()
+                    .map(VisitLog::getWorkspace)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            List<WorkSpace> notVisited = workSpaceRepository.findAll();
+            notVisited.removeAll(workspaces);
+            workspaces.addAll(notVisited);
+        } else {
+            throw new IllegalArgumentException("Invalid type: " + type);
+        }
+
+        return workspaces.stream()
+                .map(ws -> {
+                    WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
+                    dto.setWorkspaceName(ws.getWorkspaceName());
+                    dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
+                    dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
+
+                    List<String> timeList = new ArrayList<>();
+                    if (ws.getClasstime1() != null) timeList.add(ws.getClasstime1());
+                    if (ws.getClasstime2() != null) timeList.add(ws.getClasstime2());
+                    if (ws.getClasstime3() != null) timeList.add(ws.getClasstime3());
+                    dto.setWorkspaceTimeList(timeList);
+
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
 
 }

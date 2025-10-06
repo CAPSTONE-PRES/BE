@@ -5,9 +5,13 @@ import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import com.pres.pres_server.service.WorkSpaceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/workspace")
@@ -27,5 +31,17 @@ public class WorkSpaceController {
     @GetMapping("/{workspaceId}/info")
     public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
         return workSpaceService.getWorkspaceInfo(user, workspaceId);
+    }
+
+    @GetMapping("/list")
+    public List<WorkspaceInfoDTO> getWorkspaceList(
+            @RequestParam int type,
+            @AuthenticationPrincipal User user
+    ) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
+
+        return workSpaceService.getWorkspaceList(user, type);
     }
 }
