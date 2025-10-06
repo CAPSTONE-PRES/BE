@@ -3,7 +3,7 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
-import com.pres.pres_server.service.WorkspaceService;
+import com.pres.pres_server.service.WorkSpaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/workspace")
 @RequiredArgsConstructor
-public class WorkspaceController {
+public class WorkSpaceController {
 
-    private final WorkspaceService workSpaceService;
+    private final WorkSpaceService workSpaceService;
 
     @PostMapping("/create")
     public ResponseEntity<?> createWorkspace(
