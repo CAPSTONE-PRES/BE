@@ -7,6 +7,7 @@ import com.pres.pres_server.dto.EmailAuth.EmailAuthVerifyRequest;
 import com.pres.pres_server.dto.EmailAuth.EmailAuthVerifyResponse;
 import com.pres.pres_server.dto.ResetPassword.ResetPasswordEmailRequest;
 import com.pres.pres_server.dto.ResetPassword.ResetPasswordRequest;
+import com.pres.pres_server.dto.User.UserResponseDto;
 import com.pres.pres_server.service.user.UserService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,27 +41,39 @@ public class UserController {
     private final KakaoOAuthService kakaoAuthService;
 
     @Operation(summary = "내 정보 조회", description = "로그인된 사용자의 정보를 반환합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(schema = @Schema(implementation = User.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }"))),
+            @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }"))),
             @ApiResponse(responseCode = "404", description = "사용자 정보 없음", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = "\"사용자 정보 없음\"")))
     })
     @GetMapping("/me")
-    public ResponseEntity<User> getMyInfo(@AuthenticationPrincipal User user) {
+    public ResponseEntity<UserResponseDto> getMyInfo(@AuthenticationPrincipal User user) {
         try {
             User myInfo = userService.getUser(user.getId());
-            return ResponseEntity.ok(myInfo);
+            UserResponseDto response = UserResponseDto.builder()
+                    .id(myInfo.getId())
+                    .email(myInfo.getEmail())
+                    .username(myInfo.getUsername())
+                    .emailVerified(myInfo.isEmailVerified())
+                    .build();
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
     }
 
     @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "수정할 사용자 정보", required = true, content = @Content(schema = @Schema(implementation = com.pres.pres_server.dto.User.UserUpdateDto.class))), responses = {
-            @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = User.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
+            @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
     })
     @PatchMapping("/me")
-    public ResponseEntity<User> updateMyInfo(@AuthenticationPrincipal User user,
+    public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
             @RequestBody com.pres.pres_server.dto.User.UserUpdateDto updateUserDto) {
         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
-        return ResponseEntity.ok(updatedUser);
+        UserResponseDto response = UserResponseDto.builder()
+                .id(updatedUser.getId())
+                .email(updatedUser.getEmail())
+                .username(updatedUser.getUsername())
+                .emailVerified(updatedUser.isEmailVerified())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "내 계정 삭제", description = "로그인된 사용자의 계정을 삭제(탈퇴)합니다.", responses = {
@@ -88,29 +101,43 @@ public class UserController {
 
     @Operation(summary = "특정 사용자 정보 조회 (관리자)", description = "관리자가 특정 사용자의 정보를 조회합니다.", parameters = {
             @Parameter(name = "id", description = "조회할 사용자 ID", required = true) }, responses = {
-                    @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(schema = @Schema(implementation = User.class), examples = @ExampleObject(value = "{ \"id\": 2, \"email\": \"admin@example.com\", \"username\": \"관리자\", \"emailVerified\": true }"))),
+                    @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 2, \"email\": \"admin@example.com\", \"username\": \"관리자\", \"emailVerified\": true }"))),
                     @ApiResponse(responseCode = "404", description = "사용자 정보 없음", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = "\"사용자 정보 없음\"")))
 
     })
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+    public ResponseEntity<UserResponseDto> getUserById(@PathVariable Long id) {
         User user = userService.findById(id);
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(user);
+        UserResponseDto response = UserResponseDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .username(user.getUsername())
+                .emailVerified(user.isEmailVerified())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "전체 회원 목록 조회 (관리자)", description = "관리자가 전체 회원 목록을 조회합니다.", responses = {
-            @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(array = @ArraySchema(schema = @Schema(implementation = User.class)), examples = @ExampleObject(value = "[{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }, { \"id\": 2, \"email\": \"admin@example.com\", \"username\": \"관리자\", \"emailVerified\": true }]")))
+            @ApiResponse(responseCode = "200", description = "조회 성공", content = @Content(array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)), examples = @ExampleObject(value = "[{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }, { \"id\": 2, \"email\": \"admin@example.com\", \"username\": \"관리자\", \"emailVerified\": true }]")))
     })
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/list")
-    public ResponseEntity<List<User>> getAllUsers() {
+    public ResponseEntity<List<UserResponseDto>> getAllUsers() {
         List<User> users = userService.listUsers();
-        return ResponseEntity.ok(users);
+        List<UserResponseDto> response = users.stream()
+                .map(u -> UserResponseDto.builder()
+                        .id(u.getId())
+                        .email(u.getEmail())
+                        .username(u.getUsername())
+                        .emailVerified(u.isEmailVerified())
+                        .build())
+                .toList();
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "아이디(이메일) 찾기 인증코드 발송", description = "입력한 이메일로 인증코드를 발송합니다.", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "이메일 정보", required = true, content = @Content(schema = @Schema(implementation = EmailAuthSendRequest.class))), responses = {

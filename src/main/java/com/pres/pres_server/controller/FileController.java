@@ -13,6 +13,7 @@ import com.pres.pres_server.service.file.PresentationFileService;
 import com.pres.pres_server.dto.file.CueCardDto;
 import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.dto.file.FileUploadDto;
+import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import com.pres.pres_server.dto.qna.QnaListDto;
 
 import org.springframework.web.bind.annotation.*;
@@ -88,21 +89,22 @@ public class FileController {
     // 추출한 텍스트를 기반으로 예상 질문 및 적절한 답변 생성하고 DB에 저장
     @Operation(summary = "Q&A 생성 및 DB 저장", description = "파일 ID로 추출된 텍스트를 기반으로 예상 질문과 답변을 생성하고 DB에 저장합니다.")
     @PostMapping("/generate-and-save-qna/{fileId}")
-    public ResponseEntity<Map<String, Object>> generateAndSaveQnA(@PathVariable("fileId") Long fileId) {
+    public ResponseEntity<QnaGenerateResponseDto> generateAndSaveQnA(@PathVariable("fileId") Long fileId) {
         // 1. 파일 ID로 추출된 전체 텍스트 조회
         String fullText = extractTextService.getFullTextByFileId(fileId);
 
         // 2. Q&A 생성 및 저장 (fileId 기반) - 예외는 GlobalExceptionHandler가 처리
         var savedQuestions = generateQnaService.generateAndSaveQna(fullText, fileId);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", String.format("Q&A가 성공적으로 생성되고 저장되었습니다. (질문 %d개 생성)", savedQuestions.size()));
-        response.put("questionCount", savedQuestions.size());
+        // 3. 생성된 Q&A 내용을 DTO로 조회
+        QnaListDto qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
 
-        // 3. 생성된 Q&A 내용도 함께 반환
-        var qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
-        response.put("generatedQnA", qnaListDto);
+        // 4. Builder 패턴으로 응답 DTO 생성
+        QnaGenerateResponseDto response = QnaGenerateResponseDto.builder()
+                .success(true)
+                .message(String.format("Q&A가 성공적으로 생성되고 저장되었습니다. (질문 %d개 생성)", savedQuestions.size()))
+                .qnaList(qnaListDto)
+                .build();
 
         return ResponseEntity.ok(response);
     }
@@ -134,21 +136,22 @@ public class FileController {
     // Q&A 재생성 (사용자가 기존 Q&A가 마음에 안 들 때)
     @Operation(summary = "Q&A 재생성", description = "기존 Q&A를 삭제하고 새로운 Q&A를 생성하여 저장합니다.")
     @PostMapping("/regenerate-qna/{fileId}")
-    public ResponseEntity<Map<String, Object>> regenerateQnA(@PathVariable("fileId") Long fileId) {
+    public ResponseEntity<QnaGenerateResponseDto> regenerateQnA(@PathVariable("fileId") Long fileId) {
         // 1. 파일 ID로 추출된 전체 텍스트 조회
         String fullText = extractTextService.getFullTextByFileId(fileId);
 
         // 2. Q&A 재생성 (기존 삭제 후 새로 생성) - 예외는 GlobalExceptionHandler가 처리
         var regeneratedQuestions = generateQnaService.regenerateQna(fullText, fileId);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", String.format("Q&A가 성공적으로 재생성되었습니다. (질문 %d개 생성)", regeneratedQuestions.size()));
-        response.put("questionCount", regeneratedQuestions.size());
+        // 3. 재생성된 Q&A 내용을 DTO로 조회
+        QnaListDto qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
 
-        // 3. 재생성된 Q&A 내용도 함께 반환
-        var qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
-        response.put("regeneratedQnA", qnaListDto);
+        // 4. Builder 패턴으로 응답 DTO 생성
+        QnaGenerateResponseDto response = QnaGenerateResponseDto.builder()
+                .success(true)
+                .message(String.format("Q&A가 성공적으로 재생성되었습니다. (질문 %d개 생성)", regeneratedQuestions.size()))
+                .qnaList(qnaListDto)
+                .build();
 
         return ResponseEntity.ok(response);
     }

@@ -2,6 +2,7 @@ package com.pres.pres_server.controller;
 
 import com.pres.pres_server.service.analyse.AudioAnalysisService;
 import com.pres.pres_server.service.analyse.AudioAnalysisService.AnalysisResult;
+import com.pres.pres_server.dto.analyse.AnalysisResponseDto;
 import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 
@@ -34,7 +35,7 @@ public class AnalyseController {
     }
 
     @PostMapping(consumes = "multipart/form-data")
-    public ResponseEntity<List<WindowDto>> analyse(
+    public ResponseEntity<AnalysisResponseDto> analyse(
             @RequestPart("audio") MultipartFile audioFile,
             @RequestParam("projectId") Long projectId) {
 
@@ -46,34 +47,56 @@ public class AnalyseController {
             AnalysisResult analysisResult = audioAnalysisService.analyzeAudio(audioFile);
             List<WindowDto> windows = analysisResult.getWindows();
 
-            // 2. DB에 분석 결과 저장
-            if (!windows.isEmpty()) {
-                Long sessionId = analysisResultService.saveAnalysisResult(
-                        projectId,
-                        windows,
-                        analysisResult.getTotalDurationSeconds());
+            // 2. DB에 분석 결과 저장 (윈도우가 있을 때만)
+            Long sessionId = saveAnalysisIfPresent(projectId, windows, analysisResult.getTotalDurationSeconds());
 
-                long successCount = windows.stream()
-                        .filter(w -> "SUCCESS".equals(w.getStatus()))
-                        .count();
-                long failCount = windows.stream()
-                        .filter(w -> "FAILED".equals(w.getStatus()))
-                        .count();
+            // 3. 응답 DTO 생성 (통계 계산 로직은 DTO의 정적 팩토리 메서드에 위임)
+            AnalysisResponseDto response = AnalysisResponseDto.from(
+                    sessionId,
+                    projectId,
+                    analysisResult.getTotalDurationSeconds(),
+                    windows);
 
-                log.info("  • DB 저장 완료 - sessionId: {}, 성공: {}, 실패: {}",
-                        sessionId, successCount, failCount);
-            } else {
-                log.warn("  • 분석된 윈도우가 없어 저장하지 않음");
-            }
-
-            log.info("✅ 분석 완료, {} 개 윈도우 반환", windows.size());
-            return ResponseEntity.ok(windows);
+            log.info("✅ 분석 완료, {} 개 윈도우 반환 (sessionId: {})", windows.size(), sessionId);
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             log.error("❌ 분석 실패", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ArrayList<>());
+                    .body(AnalysisResponseDto.builder()
+                            .sessionId(null)
+                            .projectId(projectId)
+                            .totalDurationSeconds(0)
+                            .windows(new ArrayList<>())
+                            .successCount(0)
+                            .failCount(0)
+                            .build());
         }
+    }
+
+    /**
+     * 분석 결과를 DB에 저장 (윈도우가 있을 때만)
+     * Controller의 책임을 명확히 하기 위해 분리
+     */
+    private Long saveAnalysisIfPresent(Long projectId, List<WindowDto> windows, double totalDuration) {
+        if (windows.isEmpty()) {
+            log.warn("  • 분석된 윈도우가 없어 저장하지 않음");
+            return null;
+        }
+
+        Long sessionId = analysisResultService.saveAnalysisResult(projectId, windows, totalDuration);
+
+        long successCount = windows.stream()
+                .filter(w -> "SUCCESS".equals(w.getStatus()))
+                .count();
+        long failCount = windows.stream()
+                .filter(w -> "FAILED".equals(w.getStatus()))
+                .count();
+
+        log.info("  • DB 저장 완료 - sessionId: {}, 성공: {}, 실패: {}",
+                sessionId, successCount, failCount);
+
+        return sessionId;
     }
 
     /**
