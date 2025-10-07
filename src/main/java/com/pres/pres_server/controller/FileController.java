@@ -25,7 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Tag(name = "File Controller", description = "파일 관련 API")
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping("/files")
 public class FileController {
     private final PresentationFileService presentationFileService;
     private final ExtractTextService extractTextService;
