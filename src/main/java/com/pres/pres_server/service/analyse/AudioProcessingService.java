@@ -14,13 +14,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 오디오 파일 처리 서비스
- * 
- * <p>
- * 오디오 파일 변환, 분할, 메타데이터 추출 등의 기능을 제공합니다.
- * </p>
- */
 @Service
 public class AudioProcessingService {
     private static final Logger log = LoggerFactory.getLogger(AudioProcessingService.class);
@@ -28,11 +21,7 @@ public class AudioProcessingService {
     @Value("${ffmpeg.path:C:\\Program Files\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe}")
     private String ffmpegPath;
 
-    // ========== Inner Classes ==========
-
-    /**
-     * 오디오 파일 정보를 담는 내부 클래스
-     */
+    // Audio 파일 정보를 담는 내부 클래스
     public static class AudioFile {
         private final File file;
         private final double durationSeconds;
@@ -51,9 +40,7 @@ public class AudioProcessingService {
         }
     }
 
-    /**
-     * 오디오 윈도우 정보를 담는 내부 클래스
-     */
+    // Audio 윈도우 정보를 담는 내부 클래스
     public static class AudioWindow {
         private final File file;
         private final double startTime;
@@ -83,9 +70,7 @@ public class AudioProcessingService {
             return windowIndex;
         }
 
-        /**
-         * 임시 파일 정리
-         */
+        // audio window 내부 임시 파일 정리
         public void cleanup() {
             if (file != null && file.exists()) {
                 boolean deleted = file.delete();
@@ -96,7 +81,43 @@ public class AudioProcessingService {
         }
     }
 
-    // ========== Public Methods ==========
+    /**
+     * 저장된 파일 경로를 사용하여 16kHz mono WAV로 변환하고 메타데이터 추출
+     * 
+     * @param filePath 저장된 오디오 파일 경로
+     * @return 변환된 오디오 파일 정보
+     * @throws IOException          파일 처리 실패 시
+     * @throws InterruptedException ffmpeg 프로세스 중단 시
+     */
+    public AudioFile convertToWav(String filePath) throws IOException, InterruptedException {
+        if (filePath == null || filePath.isEmpty()) {
+            throw new IllegalArgumentException("파일 경로가 비어있습니다.");
+        }
+
+        File inputFile = new File(filePath);
+        if (!inputFile.exists()) {
+            throw new IOException("파일이 존재하지 않습니다: " + filePath);
+        }
+
+        log.info("▶ 오디오 변환 시작: filePath='{}', size={} bytes",
+                filePath, inputFile.length());
+
+        try {
+            // ffmpeg로 16kHz mono WAV 변환
+            File wavFile = convertWithFfmpeg(inputFile);
+            log.info("  • WAV 변환 완료: {}", wavFile.getAbsolutePath());
+
+            // 오디오 길이 추출
+            double duration = extractDuration(wavFile);
+            log.info("  • 오디오 길이: {:.2f}초", duration);
+
+            return new AudioFile(wavFile, duration);
+
+        } catch (Exception e) {
+            log.error("오디오 변환 실패: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
 
     /**
      * MultipartFile을 16kHz mono WAV로 변환하고 메타데이터 추출
@@ -179,7 +200,7 @@ public class AudioProcessingService {
     }
 
     /**
-     * 오디오 파일 정리 (임시 파일 삭제)
+     * 파라미터로 받은 오디오 파일 정리 (임시 파일 삭제)
      * 
      * @param audioFile 정리할 오디오 파일
      */

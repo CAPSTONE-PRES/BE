@@ -12,5 +12,5 @@ public interface PracticeSessionRepository extends JpaRepository<PracticeSession
     /**
      * 특정 프로젝트의 모든 연습 세션 조회
      */
-    List<PracticeSession> findByProjectIdProjectIdOrderByPracticedAtDesc(Long projectId);
+    List<PracticeSession> findByProjectProjectIdOrderByPracticedAtDesc(Long projectId);
 }

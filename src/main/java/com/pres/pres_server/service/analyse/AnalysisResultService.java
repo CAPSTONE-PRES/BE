@@ -5,9 +5,10 @@ import com.pres.pres_server.domain.Feedback;
 import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.SessionWindow;
-import com.pres.pres_server.dto.WindowDto;
+import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.repository.FeedbackRepository;
 import com.pres.pres_server.repository.PracticeSessionRepository;
+import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.SessionWindowRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -29,10 +30,11 @@ public class AnalysisResultService {
     private final PracticeSessionRepository sessionRepository;
     private final SessionWindowRepository windowRepository;
     private final FeedbackRepository feedbackRepository;
+    private final ProjectRepository projectRepository;
     private final ObjectMapper objectMapper;
 
     /**
-     * 분석 결과를 DB에 저장
+     * 분석 결과를 DB에 저장 (신규 세션 생성)
      * 
      * @param projectId     프로젝트 ID
      * @param windows       윈도우별 분석 결과 리스트
@@ -62,29 +64,59 @@ public class AnalysisResultService {
     }
 
     /**
+     * 분석 결과를 DB에 저장 (기존 세션 업데이트)
+     * 
+     * @param session        기존 PracticeSession 엔티티
+     * @param analysisResult 분석 결과
+     */
+    @Transactional
+    public void saveAnalysisResult(PracticeSession session, AudioAnalysisService.AnalysisResult analysisResult) {
+        log.info("▶ 분석 결과 업데이트 시작 - sessionId: {}, windows: {}",
+                session.getSessionId(), analysisResult.getWindows().size());
+
+        // 1. STT 텍스트 업데이트
+        String fullText = analysisResult.getWindows().stream()
+                .map(WindowDto::getTranscript)
+                .reduce((a, b) -> a + " " + b)
+                .orElse("");
+        session.updateSttText(fullText);
+        sessionRepository.save(session);
+        log.info("  • PracticeSession STT 업데이트 완료 - sessionId: {}", session.getSessionId());
+
+        // 2. SessionWindow 리스트 생성 및 저장
+        saveSessionWindows(session, analysisResult.getWindows());
+        log.info("  • SessionWindow {} 개 저장 완료", analysisResult.getWindows().size());
+
+        // 3. Feedback 계산 및 저장
+        Feedback feedback = calculateAndSaveFeedback(session, analysisResult.getWindows());
+        log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}",
+                feedback.getTotalScore(), feedback.getGrade());
+
+        log.info("✅ 분석 결과 업데이트 완료 - sessionId: {}", session.getSessionId());
+    }
+
+    /**
      * PracticeSession 엔티티 생성
      */
     private PracticeSession createPracticeSession(Long projectId, List<WindowDto> windows, double totalDuration) {
-        PracticeSession session = new PracticeSession();
-
-        // Project 설정 (실제로는 ProjectRepository에서 조회해야 하지만 임시로 ID만 설정)
-        Project project = new Project();
-        project.setProjectId(projectId);
-        session.setProjectId(project);
+        // Project 조회
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. projectId: " + projectId));
 
         // 전체 STT 텍스트 합치기
         String fullText = windows.stream()
                 .map(WindowDto::getTranscript)
                 .reduce((a, b) -> a + " " + b)
                 .orElse("");
-        session.setSttText(fullText);
 
-        session.setPracticedAt(LocalDateTime.now());
-        // duration은 Time 타입이라 일단 null (나중에 수정 필요)
-        session.setDuration(null);
-        session.setAudioUrl(null); // 오디오 파일 저장 안 함
-
-        return session;
+        // Builder 패턴으로 생성
+        return PracticeSession.builder()
+                .project(project)
+                .sttText(fullText)
+                .practicedAt(LocalDateTime.now())
+                .duration(null) // duration은 Time 타입이라 일단 null (나중에 수정 필요)
+                .audioUrl(null) // 오디오 파일 저장 안 함
+                .build();
     }
 
     /**

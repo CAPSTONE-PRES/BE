@@ -16,11 +16,8 @@ import java.util.Map;
 
 /**
  * 오디오 분석 전체 플로우를 조율하는 서비스
- * 
- * <p>
  * 오디오 파일을 받아서 변환 → 분할 → 각 윈도우 분석 → 결과 반환까지의
- * 전체 프로세스를 관리합니다.
- * </p>
+ * 전체 프로세스를 관리
  */
 @Service
 @RequiredArgsConstructor
@@ -32,6 +29,51 @@ public class AudioAnalysisService {
     private final WhisperService whisperService;
     private final FillerService fillerService;
     private final SpeechSpeedService speechSpeedService;
+
+    /**
+     * 저장된 오디오 파일 경로를 사용한 전체 분석
+     * 
+     * @param filePath 저장된 오디오 파일 경로
+     * @return 윈도우별 분석 결과 리스트
+     * @throws Exception 변환, 분할, 분석 중 오류 발생 시
+     */
+    public AnalysisResult analyzeAudio(String filePath) throws Exception {
+        log.info("▶ 오디오 분석 시작: filePath='{}'", filePath);
+
+        AudioFile convertedAudio = null;
+
+        try {
+            // 1. 오디오 파일 변환 (16kHz mono WAV)
+            convertedAudio = audioProcessingService.convertToWav(filePath);
+            log.info("  • 오디오 변환 완료: duration={} sec", convertedAudio.getDurationSeconds());
+
+            // 2. 30초 윈도우로 분할
+            List<AudioWindow> audioWindows = audioProcessingService.splitIntoWindows(convertedAudio, WINDOW_SEC);
+            log.info("  • 윈도우 분할 완료: {} 개 ({} sec each)", audioWindows.size(), WINDOW_SEC);
+
+            // 3. 각 윈도우 분석
+            List<WindowDto> windowResults = analyzeWindows(audioWindows);
+
+            // 4. 분석 결과 요약
+            long successCount = windowResults.stream()
+                    .filter(w -> "SUCCESS".equals(w.getStatus()))
+                    .count();
+            long failCount = windowResults.stream()
+                    .filter(w -> "FAILED".equals(w.getStatus()))
+                    .count();
+
+            log.info("✅ 오디오 분석 완료: 총 {} 윈도우, 성공 {}, 실패 {}",
+                    windowResults.size(), successCount, failCount);
+
+            return new AnalysisResult(windowResults, convertedAudio.getDurationSeconds());
+
+        } finally {
+            // 변환된 오디오 파일 정리
+            if (convertedAudio != null) {
+                audioProcessingService.cleanup(convertedAudio);
+            }
+        }
+    }
 
     /**
      * 오디오 파일 전체 분석

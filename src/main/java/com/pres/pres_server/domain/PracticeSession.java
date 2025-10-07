@@ -1,8 +1,7 @@
 package com.pres.pres_server.domain;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.sql.Time;
 import java.time.LocalDateTime;
@@ -10,7 +9,9 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "practice_session")
 @Getter
-@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
+@Builder
 public class PracticeSession {
 
     @Id
@@ -32,6 +33,26 @@ public class PracticeSession {
 
     @ManyToOne
     @JoinColumn(name = "project_id", nullable = false)
-    private Project projectId;
+    private Project project;
 
+    /**
+     * 오디오 URL 업데이트
+     */
+    public void updateAudioUrl(String audioUrl) {
+        this.audioUrl = audioUrl;
+    }
+
+    /**
+     * STT 텍스트 업데이트
+     */
+    public void updateSttText(String sttText) {
+        this.sttText = sttText;
+    }
+
+    /**
+     * 세션 종료 (duration 계산)
+     */
+    public void updateDuration(Time duration) {
+        this.duration = duration;
+    }
 }
