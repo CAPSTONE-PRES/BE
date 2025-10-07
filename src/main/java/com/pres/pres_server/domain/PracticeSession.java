@@ -21,7 +21,7 @@ public class PracticeSession {
     @Column(name = "audio_url")
     private String audioUrl;
 
-    @Column(name = "stt_text")
+    @Column(name = "stt_text", columnDefinition = "TEXT")
     private String sttText;
 
     @Column(name = "practiced_at")
