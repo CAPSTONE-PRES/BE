@@ -1,4 +1,4 @@
-package com.pres.pres_server.dto;
+package com.pres.pres_server.dto.file;
 
 import java.util.List;
 

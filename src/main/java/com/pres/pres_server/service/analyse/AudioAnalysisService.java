@@ -1,6 +1,6 @@
 package com.pres.pres_server.service.analyse;
 
-import com.pres.pres_server.dto.WindowDto;
+import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.service.WhisperService;
 import com.pres.pres_server.service.analyse.AudioProcessingService.AudioFile;
 import com.pres.pres_server.service.analyse.AudioProcessingService.AudioWindow;

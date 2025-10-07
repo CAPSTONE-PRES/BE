@@ -1,8 +1,8 @@
 package com.pres.pres_server.controller;
 
-import com.pres.pres_server.dto.WindowDto;
 import com.pres.pres_server.service.analyse.AudioAnalysisService;
 import com.pres.pres_server.service.analyse.AudioAnalysisService.AnalysisResult;
+import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 
 import org.slf4j.Logger;

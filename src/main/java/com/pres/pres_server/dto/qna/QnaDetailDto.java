@@ -1,4 +1,4 @@
-package com.pres.pres_server.dto;
+package com.pres.pres_server.dto.qna;
 
 import lombok.Data;
 import java.time.LocalDateTime;

@@ -1,8 +1,8 @@
 package com.pres.pres_server.service.file;
 
 import com.pres.pres_server.domain.PresentationFile;
+import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.domain.ExtractedText;
-import com.pres.pres_server.dto.ExtractedTextDto;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.ExtractedTextRepository;
 

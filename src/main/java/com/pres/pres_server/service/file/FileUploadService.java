@@ -2,7 +2,8 @@ package com.pres.pres_server.service.file;
 
 import org.springframework.web.multipart.MultipartFile;
 
-import com.pres.pres_server.dto.FileInfoDto;
+import com.pres.pres_server.dto.file.FileInfoDto;
+
 import org.springframework.beans.factory.annotation.Value;
 
 import java.util.UUID;

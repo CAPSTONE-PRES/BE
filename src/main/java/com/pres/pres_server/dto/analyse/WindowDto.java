@@ -1,4 +1,4 @@
-package com.pres.pres_server.dto;
+package com.pres.pres_server.dto.analyse;
 
 import java.util.Map;
 

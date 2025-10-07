@@ -6,14 +6,14 @@ import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 
-import com.pres.pres_server.dto.CueCardDto;
-import com.pres.pres_server.dto.ExtractedTextDto;
-import com.pres.pres_server.dto.FileUploadDto;
 import com.pres.pres_server.service.file.ExtractTextService;
 import com.pres.pres_server.service.file.GenerateCueService;
 import com.pres.pres_server.service.file.GenerateQnaService;
 import com.pres.pres_server.service.file.PresentationFileService;
-import com.pres.pres_server.dto.QnaListDto;
+import com.pres.pres_server.dto.file.CueCardDto;
+import com.pres.pres_server.dto.file.ExtractedTextDto;
+import com.pres.pres_server.dto.file.FileUploadDto;
+import com.pres.pres_server.dto.qna.QnaListDto;
 
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
