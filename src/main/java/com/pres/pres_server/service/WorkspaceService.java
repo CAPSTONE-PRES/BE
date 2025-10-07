@@ -20,12 +20,11 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class WorkSpaceService {
+public class WorkspaceService {
 
     private final WorkSpaceRepository workSpaceRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
-
 
     @Transactional
     public WorkSpace createWorkspace(WorkspaceRequest request, User ownerUser) {
@@ -66,9 +65,12 @@ public class WorkSpaceService {
 
         // classtime1~3 -> 리스트 변환 (String)
         List<String> timeList = new ArrayList<>();
-        if (workspace.getClasstime1() != null) timeList.add(workspace.getClasstime1());
-        if (workspace.getClasstime2() != null) timeList.add(workspace.getClasstime2());
-        if (workspace.getClasstime3() != null) timeList.add(workspace.getClasstime3());
+        if (workspace.getClasstime1() != null)
+            timeList.add(workspace.getClasstime1());
+        if (workspace.getClasstime2() != null)
+            timeList.add(workspace.getClasstime2());
+        if (workspace.getClasstime3() != null)
+            timeList.add(workspace.getClasstime3());
         dto.setWorkspaceTimeList(timeList);
 
         // 팀 멤버 조회
@@ -77,8 +79,7 @@ public class WorkSpaceService {
                 .map(member -> new WorkspaceMemberDTO(
                         member.getMemberId(), // Long
                         member.getUser().getUsername(),
-                        member.getUser().getProfileImageUrl()
-                ))
+                        member.getUser().getProfileImageUrl()))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
 
