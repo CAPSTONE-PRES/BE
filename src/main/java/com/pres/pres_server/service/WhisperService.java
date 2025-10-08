@@ -14,7 +14,10 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import java.nio.charset.StandardCharsets;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import com.pres.pres_server.service.analyse.SilenceDetectionService.WhisperSegment;
 
 /**
  * OpenAI Whisper API를 사용한 음성-텍스트 변환 서비스
@@ -49,6 +52,46 @@ public class WhisperService {
     }
 
     /**
+     * 음성 파일을 텍스트로 변환 (timestamp 정보 포함)
+     * 
+     * @param wavFile           변환할 WAV 파일
+     * @param includeTimestamps timestamp 정보를 포함할지 여부
+     * @return TranscriptionResult (text + segments)
+     */
+    public TranscriptionResult transcribeWithTimestamps(File wavFile, boolean includeTimestamps) {
+        validateInputFile(wavFile);
+
+        log.info("      ▶ Preparing Whisper request for file: {} (timestamps: {})",
+                wavFile.getName(), includeTimestamps);
+
+        try {
+            HttpEntity<MultiValueMap<String, Object>> request = buildRequest(wavFile, includeTimestamps);
+
+            log.info("      ▶ Sending Whisper API request...");
+            Map<String, Object> response = callWhisperApi(request);
+
+            String text = extractTextFromResponse(response);
+            List<WhisperSegment> segments = includeTimestamps ? extractSegments(response) : null;
+
+            log.info("      ▶ Whisper API responded, text length = {}, segments = {}",
+                    text.length(), segments != null ? segments.size() : 0);
+
+            return TranscriptionResult.builder()
+                    .text(text)
+                    .segments(segments)
+                    .build();
+
+        } catch (RestClientException e) {
+            log.error("      ✗ Whisper API 호출 실패: {}", e.getMessage());
+            return TranscriptionResult.builder().text("").build();
+
+        } catch (Exception e) {
+            log.error("      ✗ Whisper 변환 중 예외 발생", e);
+            return TranscriptionResult.builder().text("").build();
+        }
+    }
+
+    /**
      * 음성 파일을 텍스트로 변환
      * 
      * @param wavFile 변환할 WAV 파일 (null 불가, 존재하는 파일이어야 함)
@@ -56,33 +99,7 @@ public class WhisperService {
      * @throws IllegalArgumentException 파일이 null이거나 존재하지 않는 경우
      */
     public String transcribe(File wavFile) {
-        // 1) 입력 검증 - API 서비스의 책임
-        validateInputFile(wavFile);
-
-        log.info("      ▶ Preparing Whisper request for file: {}", wavFile.getName());
-
-        try {
-            // 2) API 요청 준비
-            HttpEntity<MultiValueMap<String, Object>> request = buildRequest(wavFile);
-
-            // 3) API 호출
-            log.info("      ▶ Sending Whisper API request...");
-            Map<String, Object> response = callWhisperApi(request);
-
-            // 4) 응답 처리 및 null 안전성 보장
-            String text = extractTextFromResponse(response);
-
-            log.info("      ▶ Whisper API responded, text length = {}", text.length());
-            return text;
-
-        } catch (RestClientException e) {
-            log.error("      ✗ Whisper API 호출 실패: {}", e.getMessage());
-            return ""; // API 실패 시 빈 문자열 반환
-
-        } catch (Exception e) {
-            log.error("      ✗ Whisper 변환 중 예외 발생", e);
-            return ""; // 기타 오류 시 빈 문자열 반환
-        }
+        return transcribeWithTimestamps(wavFile, false).getText();
     }
 
     /**
@@ -106,6 +123,13 @@ public class WhisperService {
      * Whisper API 요청 객체 생성
      */
     private HttpEntity<MultiValueMap<String, Object>> buildRequest(File wavFile) {
+        return buildRequest(wavFile, false);
+    }
+
+    /**
+     * Whisper API 요청 객체 생성 (timestamp 옵션 포함)
+     */
+    private HttpEntity<MultiValueMap<String, Object>> buildRequest(File wavFile, boolean includeTimestamps) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
         headers.setBearerAuth(OPENAI_API_KEY);
@@ -113,6 +137,12 @@ public class WhisperService {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", new FileSystemResource(wavFile));
         body.add("model", DEFAULT_MODEL);
+
+        // timestamp 정보를 받으려면 response_format을 verbose_json으로 설정
+        if (includeTimestamps) {
+            body.add("response_format", "verbose_json");
+            body.add("timestamp_granularities[]", "segment"); // segment 단위 timestamp
+        }
 
         return new HttpEntity<>(body, headers);
     }
@@ -148,5 +178,56 @@ public class WhisperService {
 
         String text = textObj.toString();
         return text != null ? text : "";
+    }
+
+    /**
+     * API 응답에서 segments 추출 (verbose_json 형식)
+     */
+    @SuppressWarnings("unchecked")
+    private List<WhisperSegment> extractSegments(Map<String, Object> response) {
+        Object segmentsObj = response.get("segments");
+
+        if (segmentsObj == null || !(segmentsObj instanceof List)) {
+            log.warn("      ⚠ 응답에 'segments' 필드가 없거나 형식이 다름");
+            return null;
+        }
+
+        List<Map<String, Object>> segmentsList = (List<Map<String, Object>>) segmentsObj;
+        List<WhisperSegment> segments = new ArrayList<>();
+
+        for (Map<String, Object> seg : segmentsList) {
+            try {
+                segments.add(WhisperSegment.builder()
+                        .start(getDoubleValue(seg, "start"))
+                        .end(getDoubleValue(seg, "end"))
+                        .text((String) seg.get("text"))
+                        .build());
+            } catch (Exception e) {
+                log.warn("      ⚠ segment 파싱 실패: {}", e.getMessage());
+            }
+        }
+
+        return segments;
+    }
+
+    /**
+     * Map에서 double 값 추출 (Number 타입 처리)
+     */
+    private double getDoubleValue(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        return 0.0;
+    }
+
+    /**
+     * Whisper API 응답 결과
+     */
+    @lombok.Data
+    @lombok.Builder
+    public static class TranscriptionResult {
+        private String text; // 변환된 텍스트
+        private List<WhisperSegment> segments; // segment 정보 (timestamp 포함)
     }
 }

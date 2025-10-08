@@ -15,6 +15,7 @@ import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 import com.pres.pres_server.service.analyse.AudioAnalysisService;
+import com.pres.pres_server.service.analyse.SilenceDetectionService;
 import com.pres.pres_server.service.file.FileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,7 @@ public class PracticeSessionService {
     private final FileUploadService fileUploadService;
     private final AudioAnalysisService audioAnalysisService;
     private final AnalysisResultService analysisResultService;
+    private final SilenceDetectionService silenceDetectionService;
 
     /**
      * 연습 세션 시작
@@ -216,7 +218,7 @@ public class PracticeSessionService {
 
         log.info("✅ 피드백 조회 완료 - sessionId: {}, grade: {}", sessionId, feedback.getGrade());
 
-        // DTO 변환 및 반환
+        // DTO 변환 및 반환 (공백 정보 포함)
         return PracticeFeedbackDto.builder()
                 .sessionId(sessionId)
                 .feedbackId(feedback.getFeedbackId())
@@ -225,6 +227,10 @@ public class PracticeSessionService {
                 .repeatScore(feedback.getRepeatScore())
                 .totalScore(feedback.getTotalScore())
                 .grade(feedback.getGrade())
+                .silenceCount(feedback.getSilenceCount())
+                .totalSilenceDuration(feedback.getTotalSilenceDuration())
+                .silenceScore(feedback.getSilenceScore())
+                // silenceAnalysisSuccess는 사용자에게 노출하지 않음
                 .build();
     }
 

@@ -18,4 +18,10 @@ public class PracticeFeedbackDto {
     private Integer repeatScore;
     private Integer totalScore;
     private String grade;
+
+    // 공백 감지 관련 필드
+    private Integer silenceCount; // 2.5초 이상 공백 횟수
+    private Double totalSilenceDuration; // 총 공백 시간 (초)
+    private Integer silenceScore; // 공백 점수 (0~100)
+    // silenceAnalysisSuccess는 사용자에게 노출하지 않음 (내부 로그/모니터링용)
 }

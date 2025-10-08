@@ -3,7 +3,6 @@ package com.pres.pres_server.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.sql.Time;
 import java.time.LocalDateTime;
 
 @Entity
@@ -29,7 +28,7 @@ public class PracticeSession {
     private LocalDateTime practicedAt;
 
     @Column(name = "duration")
-    private Time duration; // Time? int?
+    private Double durationSeconds; // 오디오 길이 (초, 소수점 포함)
 
     @ManyToOne
     @JoinColumn(name = "project_id", nullable = false)
@@ -50,9 +49,9 @@ public class PracticeSession {
     }
 
     /**
-     * 세션 종료 (duration 계산)
+     * 오디오 길이 업데이트 (초 단위, 소수점 포함)
      */
-    public void updateDuration(Time duration) {
-        this.duration = duration;
+    public void updateDuration(Double durationSeconds) {
+        this.durationSeconds = durationSeconds;
     }
 }
