@@ -8,7 +8,7 @@ import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import com.pres.pres_server.repository.UserRepository;
-import com.pres.pres_server.repository.WorkSpaceRepository;
+import com.pres.pres_server.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WorkspaceService {
 
-    private final WorkSpaceRepository workSpaceRepository;
+    private final WorkspaceRepository workSpaceRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
 
