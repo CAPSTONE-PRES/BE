@@ -1,5 +1,6 @@
 package com.pres.pres_server.repository;
 
+import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.QnaAnswer;
 import com.pres.pres_server.domain.QnaQuestion;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface QnaAnswerRepository extends JpaRepository<QnaAnswer, Long> {
@@ -18,6 +20,9 @@ public interface QnaAnswerRepository extends JpaRepository<QnaAnswer, Long> {
     // 특정 질문의 특정 타입 답변 찾기
     List<QnaAnswer> findByQnaQuestionAndAnswerType(QnaQuestion qnaQuestion, String answerType);
 
+    // 특정 질문의 특정 타입 답변 찾기 (Optional)
+    Optional<QnaAnswer> findFirstByQnaQuestionAndAnswerType(QnaQuestion qnaQuestion, String answerType);
+
     // AI 생성 답변만 찾기
     List<QnaAnswer> findByOrigin(String origin);
 
@@ -27,4 +32,7 @@ public interface QnaAnswerRepository extends JpaRepository<QnaAnswer, Long> {
     // 질문 ID로 AI 생성 답변 찾기
     @Query("SELECT a FROM QnaAnswer a WHERE a.qnaQuestion.qnaId = :questionId AND a.origin = 'AI_GENERATED'")
     List<QnaAnswer> findAiAnswersByQuestionId(@Param("questionId") Long questionId);
+
+    // 특정 세션의 사용자 답변 찾기
+    List<QnaAnswer> findByPracticeSessionAndAnswerType(PracticeSession practiceSession, String answerType);
 }
