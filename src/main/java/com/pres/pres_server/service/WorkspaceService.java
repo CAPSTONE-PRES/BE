@@ -4,6 +4,7 @@ import com.pres.pres_server.domain.TeamMember;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.VisitLog;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
@@ -12,6 +13,7 @@ import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.repository.VisitLogRepository;
 import com.pres.pres_server.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +58,43 @@ public class WorkspaceService {
         }
 
         return workspace;
+    }
+
+    // 워크스페이스 팀 멤버 수정
+    @Transactional
+    public void editTeamMembers(Long workspaceId, TeamMemberEditRequest request, User currentUser) {
+
+        WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("워크스페이스 없음"));
+
+        // 소유자 체크
+        if (!workspace.getOwnerUserId().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("워크스페이스 소유자가 아닙니다");
+        }
+
+        // 이메일로 유저 조회
+        List<User> users = userRepository.findByEmailIn(request.getEmails());
+
+        if (users.size() != request.getEmails().size()) {
+            throw new IllegalArgumentException("존재하지 않는 이메일이 포함되어 있습니다");
+        }
+
+        // 기존 팀 멤버 삭제
+        teamMemberRepository.deleteByWorkspace(workspace);
+
+        // 새 팀 멤버 생성
+        List<TeamMember> newMembers = users.stream()
+                .map(u -> {
+                    TeamMember tm = new TeamMember();
+                    tm.setWorkspace(workspace);
+                    tm.setUser(u);
+                    tm.setRole("MEMBER"); // 기본 역할 설정, 필요시 변경 가능
+                    tm.setInvited_at(LocalDateTime.now());
+                    return tm;
+                })
+                .collect(Collectors.toList());
+
+        teamMemberRepository.saveAll(newMembers);
     }
 
     public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {

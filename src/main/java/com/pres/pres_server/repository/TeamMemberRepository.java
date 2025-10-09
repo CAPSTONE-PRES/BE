@@ -12,4 +12,7 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     List<TeamMember> findByUser_Id(Long userId);
     List<TeamMember> findByWorkspace(WorkSpace workspace);
     List<TeamMember> findByWorkspace_WorkspaceId(Long workspaceId);
+
+    void deleteByWorkspace(WorkSpace workspace);
+
 }

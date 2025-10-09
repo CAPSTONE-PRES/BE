@@ -1,6 +1,7 @@
 package com.pres.pres_server.controller;
 
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +31,17 @@ public class WorkspaceController {
             @AuthenticationPrincipal User user) {
         System.out.println("로그인한 유저 이메일: " + user.getEmail());
         return ResponseEntity.ok(workspaceService.createWorkspace(request, user));
+    }
+
+    @PatchMapping("/{workspaceId}/teammember/edit")
+    @Operation(summary = "워크스페이스 팀 멤버 수정", description = "이메일 리스트로 팀 멤버를 덮어씌웁니다")
+    public ResponseEntity<String> editTeamMembers(
+            @PathVariable Long workspaceId,
+            @RequestBody TeamMemberEditRequest request,
+            @AuthenticationPrincipal User user) {
+
+        workspaceService.editTeamMembers(workspaceId, request, user);
+        return ResponseEntity.ok("워크스페이스 멤버가 성공적으로 업데이트되었습니다.");
     }
 
     @Operation(summary = "워크스페이스 정보 반환", description = "워크스페이스에 저장된 정보를 불러옵니다.")
