@@ -1,17 +1,14 @@
 package com.pres.pres_server.service;
 
-import com.pres.pres_server.domain.Project;
-import com.pres.pres_server.domain.TeamMember;
-import com.pres.pres_server.domain.User;
-import com.pres.pres_server.domain.VisitLog;
+import com.pres.pres_server.domain.*;
+import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
-import com.pres.pres_server.repository.ProjectRepository;
-import com.pres.pres_server.repository.TeamMemberRepository;
-import com.pres.pres_server.repository.VisitLogRepository;
+import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
@@ -22,6 +19,8 @@ public class ProjectService {
         private final ProjectRepository projectRepository;
         private final TeamMemberRepository teamMemberRepository;
         private final VisitLogRepository visitLogRepository;
+        private final WorkspaceRepository workspaceRepository;
+        private final UserRepository userRepository;
 
         public List<ProjectListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
@@ -163,6 +162,25 @@ public class ProjectService {
                         .collect(Collectors.toList());
         }
 
+        public Project createProject(User creator, Long workspaceId, ProjectCreateRequest request) {
+                WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                        .orElseThrow(() -> new IllegalArgumentException("워크스페이스 없음"));
 
+                User presenter;
+                if (request.getPresenterId() != null) {
+                        presenter = userRepository.findById(request.getPresenterId())
+                                .orElseThrow(() -> new IllegalArgumentException("발표자 없음"));
+                } else {
+                        presenter = creator; // 선택 안하면 생성하는 유저로 저장
+                }
 
+                Project project = new Project();
+                project.setWorkspaceId(workspace);
+                project.setTitle(request.getTitle());
+                project.setDueDate(request.getDueDate());
+                project.setLimitedTime(request.getLimitedTime()); // 제한 시간 세팅
+                project.setCreatedAt(LocalDateTime.now());
+
+                return projectRepository.save(project);
+        }
 }

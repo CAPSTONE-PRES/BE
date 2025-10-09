@@ -34,4 +34,7 @@ public class Project {
     @Column(name = "due_date")
     private LocalDateTime dueDate;
 
+    @Column(name = "limited_time")
+    private LocalDateTime limitedTime; // 발표 제한 시간
+
 }
