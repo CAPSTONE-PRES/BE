@@ -17,6 +17,9 @@ public interface VisitLogRepository extends JpaRepository<VisitLog, Long> {
     // 특정 사용자의 방문 로그를 '최근 방문순'으로 정렬해서 전부 가져오기
     List<VisitLog> findByUserOrderByVisitedAtDesc(User user);
 
+    // 특정 사용자가 방문한 프로젝트 기록, 최근 순
+    List<VisitLog> findByUserAndProjectIsNotNullOrderByVisitedAtDesc(User user);
+
     // 특정 사용자 + 특정 워크스페이스 조합의 가장 최근 방문 로그 가져오기
     Optional<VisitLog> findTopByUserAndWorkspaceOrderByVisitedAtDesc(User user, WorkSpace workspace);
 

@@ -10,4 +10,6 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     // WorkSpace ID 리스트로 프로젝트 조회 (due_date 오름차순)
     List<Project> findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(List<Long> workspaceIds);
+
+    List<Project> findAllByOrderByTitleAsc();
 }

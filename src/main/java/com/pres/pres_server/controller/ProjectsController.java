@@ -9,8 +9,10 @@ import com.pres.pres_server.service.user.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -23,7 +25,7 @@ public class ProjectsController {
     private final ProjectService projectService;
     private final UserService userService;
 
-    @GetMapping("/list")
+    @GetMapping("/list/all")
     public List<ProjectListDTO> getMyProjects(
             @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
 
@@ -63,5 +65,17 @@ public class ProjectsController {
             @AuthenticationPrincipal User user,
             @RequestParam("title") String title) {
         return projectService.searchProjectsByTitle(user.getId(), title);
+    }
+
+    @GetMapping("/list")
+    public List<ProjectListDTO> getProjectList(
+            @RequestParam int type,
+            @AuthenticationPrincipal User user
+    ) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
+
+        return projectService.getProjectList(user, type);
     }
 }

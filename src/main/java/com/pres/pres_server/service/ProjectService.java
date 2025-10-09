@@ -2,21 +2,26 @@ package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.TeamMember;
+import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.VisitLog;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
+import com.pres.pres_server.repository.VisitLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.time.format.DateTimeFormatter;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
         private final ProjectRepository projectRepository;
         private final TeamMemberRepository teamMemberRepository;
+        private final VisitLogRepository visitLogRepository;
 
         public List<ProjectListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
@@ -126,5 +131,38 @@ public class ProjectService {
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
         }
+
+        public List<ProjectListDTO> getProjectList(User user, int type) {
+
+                List<Project> projects;
+
+                if (type == 2) {
+                        // 제목순 정렬
+                        projects = projectRepository.findAllByOrderByTitleAsc();
+                } else if (type == 1) {
+                        // 최근 방문순
+                        List<VisitLog> logs = visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
+                        projects = logs.stream()
+                                .map(VisitLog::getProject)
+                                .distinct()
+                                .collect(Collectors.toList());
+
+                        List<Project> allProjects = projectRepository.findAll();
+                        allProjects.removeAll(projects);
+                        projects.addAll(allProjects);
+                } else {
+                        throw new IllegalArgumentException("Invalid type: " + type);
+                }
+
+                return projects.stream()
+                        .map(project -> new ProjectListDTO(
+                                project.getCreatedAt() != null ? project.getCreatedAt().toLocalDate().toString() : "",
+                                project.getTitle(),
+                                project.getWorkspaceId().getWorkspaceName()
+                        ))
+                        .collect(Collectors.toList());
+        }
+
+
 
 }
