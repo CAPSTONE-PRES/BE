@@ -23,4 +23,3 @@ public interface QnaAnswerComparisonRepository extends JpaRepository<QnaAnswerCo
             PracticeSession practiceSession,
             QnaQuestion qnaQuestion);
 }
-
