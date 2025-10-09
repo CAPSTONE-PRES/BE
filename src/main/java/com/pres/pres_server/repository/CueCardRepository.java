@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import com.pres.pres_server.domain.CueCard;
+import com.pres.pres_server.domain.PresentationFile;
 
 @Repository
 public interface CueCardRepository extends JpaRepository<CueCard, Long> {
@@ -22,4 +23,7 @@ public interface CueCardRepository extends JpaRepository<CueCard, Long> {
 
     // 특정 파일의 모든 큐카드 삭제
     void deleteByPresentationFile_FileId(Long fileId);
+
+    // PresentationFile 객체로 모든 큐카드 조회 (슬라이드 번호 순)
+    List<CueCard> findByPresentationFile(PresentationFile presentationFile);
 }

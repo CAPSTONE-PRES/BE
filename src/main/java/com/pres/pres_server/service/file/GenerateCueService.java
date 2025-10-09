@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import com.pres.pres_server.dto.CueCardDto;
-import com.pres.pres_server.dto.ExtractedTextDto;
+import com.pres.pres_server.dto.file.CueCardDto;
+import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.repository.CueCardRepository;

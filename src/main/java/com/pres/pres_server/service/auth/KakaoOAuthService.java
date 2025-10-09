@@ -17,7 +17,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Token.KakaoTokenResponse;
-import com.pres.pres_server.dto.KakaoUserInfo;
+import com.pres.pres_server.dto.User.KakaoUserInfo;
 import com.pres.pres_server.dto.Token.CreateAccessTokenResponse;
 import com.pres.pres_server.service.user.UserService;
 import com.pres.pres_server.service.token.TokenService;

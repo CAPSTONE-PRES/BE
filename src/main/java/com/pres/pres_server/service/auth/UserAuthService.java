@@ -1,8 +1,8 @@
 package com.pres.pres_server.service.auth;
 
 import com.pres.pres_server.domain.User;
-import com.pres.pres_server.dto.KakaoUserInfo;
 import com.pres.pres_server.dto.Signup.SignupRequest;
+import com.pres.pres_server.dto.User.KakaoUserInfo;
 import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.service.email.EmailService;
 import lombok.RequiredArgsConstructor;

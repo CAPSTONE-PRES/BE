@@ -10,7 +10,7 @@ import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.repository.VisitLogRepository;
-import com.pres.pres_server.repository.WorkSpaceRepository;
+import com.pres.pres_server.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,14 +22,13 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class WorkSpaceService {
+public class WorkspaceService {
 
-    private final WorkSpaceRepository workSpaceRepository;
+    private final WorkspaceRepository workspaceRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final VisitLogService visitLogService;
     private final VisitLogRepository visitLogRepository;
-
 
     @Transactional
     public WorkSpace createWorkspace(WorkspaceRequest request, User ownerUser) {
@@ -38,7 +37,7 @@ public class WorkSpaceService {
         workspace.setWorkspaceName(request.getWorkspaceName());
         workspace.setOwnerUserId(ownerUser);
         workspace.setCreatedAt(LocalDateTime.now());
-        workSpaceRepository.save(workspace);
+        workspaceRepository.save(workspace);
 
         // 팀 멤버가 있다면 TeamMember로 저장
         if (request.getWorkspaceMemberList() != null && !request.getWorkspaceMemberList().isEmpty()) {
@@ -60,7 +59,7 @@ public class WorkSpaceService {
     }
 
     public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {
-        WorkSpace workspace = workSpaceRepository.findById(workspaceId)
+        WorkSpace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new RuntimeException("워크스페이스 없음"));
 
         // 방문 로그 upsert
@@ -73,9 +72,12 @@ public class WorkSpaceService {
 
         // classtime1~3 -> 리스트 변환 (String)
         List<String> timeList = new ArrayList<>();
-        if (workspace.getClasstime1() != null) timeList.add(workspace.getClasstime1());
-        if (workspace.getClasstime2() != null) timeList.add(workspace.getClasstime2());
-        if (workspace.getClasstime3() != null) timeList.add(workspace.getClasstime3());
+        if (workspace.getClasstime1() != null)
+            timeList.add(workspace.getClasstime1());
+        if (workspace.getClasstime2() != null)
+            timeList.add(workspace.getClasstime2());
+        if (workspace.getClasstime3() != null)
+            timeList.add(workspace.getClasstime3());
         dto.setWorkspaceTimeList(timeList);
 
         // 팀 멤버 조회
@@ -84,8 +86,7 @@ public class WorkSpaceService {
                 .map(member -> new WorkspaceMemberDTO(
                         member.getMemberId(), // Long
                         member.getUser().getUsername(),
-                        member.getUser().getProfileImageUrl()
-                ))
+                        member.getUser().getProfileImageUrl()))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
 
@@ -98,7 +99,7 @@ public class WorkSpaceService {
 
         if (type == 2) {
             // 제목순 정렬
-            workspaces = workSpaceRepository.findAllByOrderByWorkspaceNameAsc();
+            workspaces = workspaceRepository.findAllByOrderByWorkspaceNameAsc();
         } else if (type == 1) {
             // 최근 방문순
             List<VisitLog> logs = visitLogRepository.findByUserOrderByVisitedAtDesc(user);
@@ -109,7 +110,7 @@ public class WorkSpaceService {
                     .distinct()
                     .collect(Collectors.toList());
 
-            List<WorkSpace> notVisited = workSpaceRepository.findAll();
+            List<WorkSpace> notVisited = workspaceRepository.findAll();
             notVisited.removeAll(workspaces);
             workspaces.addAll(notVisited);
         } else {
