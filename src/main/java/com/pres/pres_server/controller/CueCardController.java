@@ -3,11 +3,14 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.Comment.CommentRequestDTO;
+import com.pres.pres_server.dto.Comment.CommentResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
+import com.pres.pres_server.service.CommentService;
 import com.pres.pres_server.service.CueCardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,13 +28,14 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
-@Tag(name = "CueCard Controller", description = "큐카드 및 발표자료 관련 API")
+@Tag(name = "CueCard Controller", description = "큐카드 및 코멘트 관련 API")
 @RequestMapping("/projects")
 public class CueCardController {
 
     private final CueCardService cueCardService;
     private final PresentationFileRepository presentationFileRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final CommentService commentService;
 
     @Operation(summary = "큐카드 내용 업데이트",
             description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
@@ -92,5 +96,21 @@ public class CueCardController {
         CueCardUncheckedDTO response = cueCardService.getUncheckedMembers(fileId, slideNumber);
         return ResponseEntity.ok(response);
     }
+
+    // ----------------------------------- 코멘트 api -----------------------------------
+
+    // 코멘트 생성 api
+    @PostMapping("/{fileId}/{slideNumber}/comment/create")
+    public ResponseEntity<CommentResponseDTO> addComment(
+            @PathVariable Long fileId,
+            @PathVariable Integer slideNumber,
+            @RequestBody CommentRequestDTO request,
+            @AuthenticationPrincipal User user) {
+
+        CommentResponseDTO response = commentService.addComment(fileId, slideNumber, request, user);
+        return ResponseEntity.ok(response);
+    }
+
+
 
 }
