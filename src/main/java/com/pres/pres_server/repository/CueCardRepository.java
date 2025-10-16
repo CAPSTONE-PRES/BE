@@ -16,7 +16,7 @@ public interface CueCardRepository extends JpaRepository<CueCard, Long> {
     List<CueCard> findByPresentationFile_FileIdOrderBySlideNumber(Long fileId);
 
     // 특정 파일의 특정 슬라이드 큐카드 조회
-    Optional<CueCard> findByPresentationFile_FileIdAndSlideNumber(Long fileId, int slideNumber);
+    List<CueCard> findByPresentationFile_FileIdAndSlideNumber(Long fileId, int slideNumber);
 
     // 특정 파일의 큐카드 존재 여부 확인
     boolean existsByPresentationFile_FileId(Long fileId);
@@ -26,4 +26,5 @@ public interface CueCardRepository extends JpaRepository<CueCard, Long> {
 
     // PresentationFile 객체로 모든 큐카드 조회 (슬라이드 번호 순)
     List<CueCard> findByPresentationFile(PresentationFile presentationFile);
+    
 }
