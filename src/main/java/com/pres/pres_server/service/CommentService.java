@@ -21,7 +21,7 @@ public class CommentService {
     private final CueCardRepository cueCardRepository;
 
     @Transactional
-    public CommentResponseDTO addComment(Long fileId, int slideNumber, CommentRequestDTO request, User user) {
+    public CommentResponseDTO addComment(CommentRequestDTO request, User user) {
 
         CueCard cueCard = cueCardRepository.findById(request.getCueId())
                 .orElseThrow(() -> new IllegalArgumentException("큐카드가 존재하지 않습니다: " + request.getCueId()));

@@ -100,14 +100,12 @@ public class CueCardController {
     // ----------------------------------- 코멘트 api -----------------------------------
 
     // 코멘트 생성 api
-    @PostMapping("/{fileId}/{slideNumber}/comment/create")
+    @PostMapping("/comment/create")
     public ResponseEntity<CommentResponseDTO> addComment(
-            @PathVariable Long fileId,
-            @PathVariable Integer slideNumber,
             @RequestBody CommentRequestDTO request,
             @AuthenticationPrincipal User user) {
 
-        CommentResponseDTO response = commentService.addComment(fileId, slideNumber, request, user);
+        CommentResponseDTO response = commentService.addComment(request, user);
         return ResponseEntity.ok(response);
     }
 
