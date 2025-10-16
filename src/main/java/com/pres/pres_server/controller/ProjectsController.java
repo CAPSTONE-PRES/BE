@@ -5,6 +5,7 @@ import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
+import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 
@@ -38,6 +39,27 @@ public class ProjectsController {
 
         projectService.createProject(user, workspaceId, request);
         return ResponseEntity.ok("발표가 성공적으로 추가되었습니다.");
+    }
+
+    @Operation(summary = "프로젝트 수정", description = "프로젝트 정보를 수정합니다")
+    @PatchMapping("/projects/{projectId}/update")
+    public ResponseEntity<String> updateProject(
+            @PathVariable Long projectId,
+            @RequestBody ProjectUpdateRequest request,
+            @AuthenticationPrincipal User user) {
+
+        projectService.updateProject(projectId, request, user);
+        return ResponseEntity.ok("프로젝트 정보가 성공적으로 수정되었습니다.");
+    }
+
+    @Operation(summary = "프로젝트 삭제", description = "특정 프로젝트를 삭제합니다")
+    @DeleteMapping("/projects/{projectId}/delete")
+    public ResponseEntity<String> deleteProject(
+            @PathVariable Long projectId,
+            @AuthenticationPrincipal User user) {
+
+        projectService.deleteProject(projectId, user);
+        return ResponseEntity.ok("프로젝트가 성공적으로 삭제되었습니다.");
     }
 
     @Operation(summary = "프로젝트 전체 리스트 반환", description = "달력에 표기할 프로젝트 리스트 반환")

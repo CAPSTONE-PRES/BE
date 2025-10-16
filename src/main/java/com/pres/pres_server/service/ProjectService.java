@@ -3,6 +3,7 @@ package com.pres.pres_server.service;
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
+import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -164,6 +165,8 @@ public class ProjectService {
                         .collect(Collectors.toList());
         }
 
+
+        // 프로젝트 생성 서비스
         @Transactional
         public Project createProject(User creator, Long workspaceId, ProjectCreateRequest request) {
                 // 1. 워크스페이스 조회
@@ -198,6 +201,46 @@ public class ProjectService {
                 }
 
                 return project;
+        }
+
+        // 프로젝트 수정 서비스
+        @Transactional
+        public void updateProject(Long projectId, ProjectUpdateRequest request, User user) {
+                Project project = projectRepository.findById(projectId)
+                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+
+                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 수정 가능
+                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
+                        && !project.getPresenter().getId().equals(user.getId())) {
+                        throw new RuntimeException("권한이 없습니다.");
+                }
+
+                // 수정 가능한 항목만 업데이트
+                if (request.getTitle() != null) project.setTitle(request.getTitle());
+                if (request.getDueDate() != null) project.setDueDate(request.getDueDate());
+                if (request.getLimitedTime() != null) project.setLimitedTime(request.getLimitedTime());
+                if (request.getPresenterId() != null) {
+                        User newPresenter = userRepository.findById(request.getPresenterId())
+                                .orElseThrow(() -> new IllegalArgumentException("발표자가 존재하지 않습니다."));
+                        project.setPresenter(newPresenter);
+                }
+
+                projectRepository.save(project);
+        }
+
+        // 프로젝트 삭제 서비스
+        @Transactional
+        public void deleteProject(Long projectId, User user) {
+                Project project = projectRepository.findById(projectId)
+                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+
+                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
+                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
+                        && !project.getPresenter().getId().equals(user.getId())) {
+                        throw new RuntimeException("권한이 없습니다.");
+                }
+
+                projectRepository.delete(project);
         }
 
 }

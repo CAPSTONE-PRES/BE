@@ -34,6 +34,10 @@ public class Project {
     @Column(name = "due_date")
     private LocalDateTime dueDate;
 
+    @ManyToOne
+    @JoinColumn(name = "presenter_id") // 발표자
+    private User presenter;
+
     @Column(name = "limited_time")
     private LocalDateTime limitedTime; // 발표 제한 시간
 
