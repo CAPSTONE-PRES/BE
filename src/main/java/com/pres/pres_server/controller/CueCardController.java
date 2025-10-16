@@ -50,6 +50,18 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "큐카드 + 비언어적 요소 조회", description = "슬라이드별 큐카드 내용 조회 (비언어적 요소 on/off)")
+    @GetMapping("/{fileId}/{slideNumber}/cuecard/nonverbal")
+    public ResponseEntity<CueCardCreateResponseDTO> getCueCardsNonVerbal(
+            @PathVariable Long fileId,
+            @PathVariable int slideNumber,
+            @RequestParam String type,
+            @AuthenticationPrincipal User user) {
+
+        CueCardCreateResponseDTO response = cueCardService.getCueCardsNonVerbal(fileId, slideNumber, type, user);
+        return ResponseEntity.ok(response);
+    }
+
     @Operation(summary = "큐카드 내용 업데이트",
             description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
     @PatchMapping("/{fileId}/{slideNumber}/cuecard/edit")

@@ -56,6 +56,36 @@ public class CueCardService {
         return new CueCardCreateResponseDTO(fileId, slideNumber, cueCardContents);
     }
 
+    // 비언어적 요소 on/off 서비스 코드
+    @Transactional(readOnly = true)
+    public CueCardCreateResponseDTO getCueCardsNonVerbal(Long fileId, int slideNumber, String type, User user) {
+
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 파일이 존재하지 않습니다."));
+
+        // 권한 확인
+        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
+                file.getProject().getWorkspaceId().getWorkspaceId(), user.getId()
+        );
+        if (!isMember) throw new RuntimeException("권한이 없습니다.");
+
+        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
+
+        List<CueCardContentDTO> cueCardContents = cueCards.stream()
+                .map(c -> {
+                    String content = c.getContent();
+                    // type=off이면 비언어적 요소 제거
+                    if ("off".equalsIgnoreCase(type)) {
+                        content = content.replaceAll("<[^>]*>", "");
+                    }
+                    return new CueCardContentDTO(c.getCueId(), content);
+                })
+                .toList();
+
+        return new CueCardCreateResponseDTO(fileId, slideNumber, cueCardContents);
+    }
+
+
     // 큐카드 내용 업데이트
     @Transactional
     public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
