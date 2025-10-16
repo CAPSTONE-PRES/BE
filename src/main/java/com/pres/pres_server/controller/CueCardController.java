@@ -47,7 +47,7 @@ public class CueCardController {
 
     @Operation(summary = "큐카드 내용 업데이트",
             description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
-    @PatchMapping("/projects/{fileId}/{slideNumber}/cuecard/edit")
+    @PatchMapping("/{fileId}/{slideNumber}/cuecard/edit")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCards(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
@@ -81,7 +81,7 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 체크 안 한 멤버 조회", description = "슬라이드별 큐카드 체크 여부 확인")
-    @GetMapping("/projects/{fileId}/{slideNumber}/cuecard/check/list")
+    @GetMapping("/{fileId}/{slideNumber}/cuecard/check/list")
     public ResponseEntity<CueCardUncheckedDTO> getUncheckedMembers(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
