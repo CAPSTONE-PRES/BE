@@ -55,6 +55,37 @@ public class WorkspaceController {
         return ResponseEntity.ok("워크스페이스 멤버가 성공적으로 업데이트되었습니다.");
     }
 
+    @PatchMapping("/workspace/{workspaceId}/update")
+    @Operation(summary = "워크스페이스 수정", description = "워크스페이스 정보를 수정합니다")
+    public ResponseEntity<Map<String, Object>> editWorkspace(
+            @PathVariable Long workspaceId,
+            @RequestBody WorkspaceRequest request,
+            @AuthenticationPrincipal User user) {
+
+        workspaceService.editWorkspace(workspaceId, request, user);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workspaceId", workspaceId);
+        response.put("status", "워크스페이스 정보가 성공적으로 수정되었습니다.");
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/workspace/{workspaceId}/delete")
+    @Operation(summary = "워크스페이스 삭제", description = "워크스페이스를 삭제합니다")
+    public ResponseEntity<Map<String, Object>> deleteWorkspace(
+            @PathVariable Long workspaceId,
+            @AuthenticationPrincipal User user) {
+
+        workspaceService.deleteWorkspace(workspaceId, user);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workspaceId", workspaceId);
+        response.put("status", "워크스페이스가 성공적으로 삭제되었습니다.");
+
+        return ResponseEntity.ok(response);
+    }
+
     @Operation(summary = "워크스페이스 정보 반환", description = "워크스페이스에 저장된 정보를 불러옵니다.")
     @GetMapping("/{workspaceId}/info")
     public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {

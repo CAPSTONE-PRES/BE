@@ -95,6 +95,55 @@ public class WorkspaceService {
         teamMemberRepository.saveAll(newMembers);
     }
 
+    // 워크스페이스 정보 수정
+    @Transactional
+    public void editWorkspace(Long workspaceId, WorkspaceRequest request, User user) {
+        WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
+
+        if (!workspace.getOwnerUserId().getId().equals(user.getId())) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        // 워크스페이스 이름 업데이트
+        workspace.setWorkspaceName(request.getWorkspaceName());
+
+        // 기존 팀 멤버 삭제
+        teamMemberRepository.deleteByWorkspace(workspace);
+
+        // 새로운 팀 멤버 등록
+        if (request.getWorkspaceMemberList() != null) {
+            for (String memberEmail : request.getWorkspaceMemberList()) {
+                User memberUser = userRepository.findByEmail(memberEmail)
+                        .orElseThrow(() -> new RuntimeException("User not found: " + memberEmail));
+
+                TeamMember teamMember = new TeamMember();
+                teamMember.setWorkspace(workspace);
+                teamMember.setUser(memberUser);
+                teamMember.setRole("MEMBER");
+                teamMember.setInvited_at(LocalDateTime.now());
+                teamMemberRepository.save(teamMember);
+            }
+        }
+
+        // 필요 시 워크스페이스 시간 업데이트 가능
+        // workspace.setWorkspaceTimeList(request.getWorkspaceTimeList()); // List<String>로 관리 시
+    }
+
+    // 특정 워크스페이스 삭제 서비스
+    @Transactional
+    public void deleteWorkspace(Long workspaceId, User user) {
+        WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
+
+        if (!workspace.getOwnerUserId().getId().equals(user.getId())) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        workspaceRepository.delete(workspace);
+    }
+
+
     public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {
         WorkSpace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new RuntimeException("워크스페이스 없음"));
