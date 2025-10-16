@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface CueCardCheckMemberRepository extends JpaRepository<CueCardCheckMember, Long> {
     Optional<CueCardCheckMember> findByCueCardAndUser(CueCard cueCard, User user);
+    boolean existsByCueCardAndUser(CueCard cueCard, User user);
     List<CueCardCheckMember> findByCueCard(CueCard cueCard);
-    List<CueCardCheckMember> findByCueCardInAndCheckedTrue(List<CueCard> cueCards);
-    List<CueCardCheckMember> findByUserAndCueCardIn(User user, List<CueCard> cueCards);
+
 }

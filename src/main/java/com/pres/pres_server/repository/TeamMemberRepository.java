@@ -10,7 +10,10 @@ import java.util.List;
 public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     // userId 기준으로 팀 멤버 조회
     List<TeamMember> findByUser_Id(Long userId);
-    List<TeamMember> findByWorkspace(WorkSpace workspace);
+
+    // 워크스페이스 ID와 유저 ID로 멤버 존재 여부 확인
+    boolean existsByWorkspace_WorkspaceIdAndUser_Id(Long workspaceId, Long userId);
+
     List<TeamMember> findByWorkspace_WorkspaceId(Long workspaceId);
 
     void deleteByWorkspace(WorkSpace workspace);
