@@ -3,12 +3,16 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.Comment.CommentRequestDTO;
+import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
+import com.pres.pres_server.service.CommentService;
 import com.pres.pres_server.service.CueCardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,13 +30,14 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
-@Tag(name = "CueCard Controller", description = "큐카드 및 발표자료 관련 API")
+@Tag(name = "CueCard & Comment Controller", description = "큐카드 및 코멘트 관련 API")
 @RequestMapping("/projects")
 public class CueCardController {
 
     private final CueCardService cueCardService;
     private final PresentationFileRepository presentationFileRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final CommentService commentService;
 
     @Operation(summary = "큐카드 내용 조회", description = "슬라이드별 큐카드 내용 조회")
     @GetMapping("/{fileId}/{slideNumber}/cuecard")
@@ -103,6 +108,52 @@ public class CueCardController {
 
         CueCardUncheckedDTO response = cueCardService.getUncheckedMembers(fileId, slideNumber);
         return ResponseEntity.ok(response);
+    }
+
+    // ----------------------------------- 코멘트 api -----------------------------------
+
+    // 코멘트 생성 api
+    @Operation(summary = "코멘트 생성", description = "특정 키워드에 코멘트를 생성합니다.")
+    @PostMapping("/comment/create")
+    public ResponseEntity<CommentResponseDTO> addComment(
+            @RequestBody CommentRequestDTO request,
+            @AuthenticationPrincipal User user) {
+
+        CommentResponseDTO response = commentService.addComment(request, user);
+        return ResponseEntity.ok(response);
+    }
+
+    // 코멘트 수정 api
+    @Operation(summary = "코멘트 수정", description = "본인이 작성한 코멘트를 수정합니다.")
+    @PatchMapping("/comment/{commentId}/update")
+    public ResponseEntity<CommentResponseDTO> updateComment(
+            @PathVariable Long commentId,
+            @RequestBody CommentRequestDTO request,
+            @AuthenticationPrincipal User user) {
+
+        return ResponseEntity.ok(commentService.updateComment(commentId, request, user));
+    }
+
+    // 코멘트 삭제 api
+    @Operation(summary = "코멘트 삭제", description = "본인이 작성한 코멘트를 삭제합니다.")
+    @DeleteMapping("/comment/{commentId}/delete")
+    public ResponseEntity<CommentResponseDTO> deleteComment(
+            @PathVariable Long commentId,
+            @AuthenticationPrincipal User user) {
+
+        return ResponseEntity.ok(commentService.deleteComment(commentId, user));
+    }
+
+    // 코멘트 슬라이드별 리스트로 불러오기 api
+    @Operation(summary = "코멘트 리스트 불러오기", description = "특정 슬라이드에 해당하는 코멘트 리스트 불러오기.")
+    @GetMapping("/{fileId}/{slideNumber}/comment/list")
+    public ResponseEntity<List<CueCardCommentDTO>> getCommentsBySlide(
+            @PathVariable Long fileId,
+            @PathVariable int slideNumber,
+            @AuthenticationPrincipal User user) {
+
+        List<CueCardCommentDTO> comments = commentService.getCommentsBySlide(fileId, slideNumber, user);
+        return ResponseEntity.ok(comments);
     }
 
 }

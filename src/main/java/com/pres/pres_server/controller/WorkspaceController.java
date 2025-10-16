@@ -44,7 +44,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(response);
     }
 
-    @PatchMapping("/{workspaceId}/teammember/edit")
+    @PatchMapping("/{workspaceId}/teammember/update")
     @Operation(summary = "워크스페이스 팀 멤버 수정", description = "이메일 리스트로 팀 멤버를 덮어씌웁니다")
     public ResponseEntity<String> editTeamMembers(
             @PathVariable Long workspaceId,
@@ -55,8 +55,8 @@ public class WorkspaceController {
         return ResponseEntity.ok("워크스페이스 멤버가 성공적으로 업데이트되었습니다.");
     }
 
-    @PatchMapping("/workspace/{workspaceId}/update")
-    @Operation(summary = "워크스페이스 수정", description = "워크스페이스 정보를 수정합니다")
+    @PatchMapping("/{workspaceId}/update")
+    @Operation(summary = "워크스페이스 정보 수정", description = "워크스페이스 정보[워크페이스 이름, 수업 시간]를 수정합니다")
     public ResponseEntity<Map<String, Object>> editWorkspace(
             @PathVariable Long workspaceId,
             @RequestBody WorkspaceRequest request,
@@ -71,7 +71,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/workspace/{workspaceId}/delete")
+    @DeleteMapping("/{workspaceId}/delete")
     @Operation(summary = "워크스페이스 삭제", description = "워크스페이스를 삭제합니다")
     public ResponseEntity<Map<String, Object>> deleteWorkspace(
             @PathVariable Long workspaceId,
