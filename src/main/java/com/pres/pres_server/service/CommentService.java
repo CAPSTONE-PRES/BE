@@ -41,4 +41,42 @@ public class CommentService {
 
         return response;
     }
+
+    // 코멘트 수정 서비스 코드
+    @Transactional
+    public CommentResponseDTO updateComment(Long commentId, CommentRequestDTO request, User user) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("코멘트가 존재하지 않습니다: " + commentId));
+
+        if (!comment.getAuthorUser().getId().equals(user.getId())) {
+            throw new RuntimeException("수정 권한이 없습니다.");
+        }
+
+        comment.setContent(request.getContent());
+        comment.setLocation(request.getLocation());
+        commentRepository.save(comment);
+
+        return CommentResponseDTO.builder()
+                .commentId(comment.getCommentId())
+                .message("코멘트가 성공적으로 수정되었습니다.")
+                .build();
+    }
+
+    // 코멘트 삭제 서비스 코드
+    @Transactional
+    public CommentResponseDTO deleteComment(Long commentId, User user) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("코멘트가 존재하지 않습니다: " + commentId));
+
+        if (!comment.getAuthorUser().getId().equals(user.getId())) {
+            throw new RuntimeException("삭제 권한이 없습니다.");
+        }
+
+        commentRepository.delete(comment);
+
+        return CommentResponseDTO.builder()
+                .commentId(commentId)
+                .message("코멘트가 성공적으로 삭제되었습니다.")
+                .build();
+    }
 }

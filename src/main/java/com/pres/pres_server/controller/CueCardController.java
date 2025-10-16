@@ -28,7 +28,7 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
-@Tag(name = "CueCard Controller", description = "큐카드 및 코멘트 관련 API")
+@Tag(name = "CueCard & Comment Controller", description = "큐카드 및 코멘트 관련 API")
 @RequestMapping("/projects")
 public class CueCardController {
 
@@ -39,7 +39,7 @@ public class CueCardController {
 
     @Operation(summary = "큐카드 내용 업데이트",
             description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
-    @PatchMapping("/projects/{fileId}/{slideNumber}/cuecard/edit")
+    @PatchMapping("/{fileId}/{slideNumber}/cuecard/edit")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCards(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
@@ -73,7 +73,7 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 체크 안 한 멤버 조회", description = "슬라이드별 큐카드 체크 여부 확인")
-    @GetMapping("/projects/{fileId}/{slideNumber}/cuecard/check/list")
+    @GetMapping("/{fileId}/{slideNumber}/cuecard/check/list")
     public ResponseEntity<CueCardUncheckedDTO> getUncheckedMembers(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
@@ -111,6 +111,25 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
+    // 코멘트 수정 api
+    @Operation(summary = "코멘트 수정", description = "본인이 작성한 코멘트를 수정합니다.")
+    @PatchMapping("/comment/{commentId}/update")
+    public ResponseEntity<CommentResponseDTO> updateComment(
+            @PathVariable Long commentId,
+            @RequestBody CommentRequestDTO request,
+            @AuthenticationPrincipal User user) {
 
+        return ResponseEntity.ok(commentService.updateComment(commentId, request, user));
+    }
+
+    // 코멘트 삭제 api
+    @Operation(summary = "코멘트 삭제", description = "본인이 작성한 코멘트를 삭제합니다.")
+    @DeleteMapping("/comment/{commentId}/delete")
+    public ResponseEntity<CommentResponseDTO> deleteComment(
+            @PathVariable Long commentId,
+            @AuthenticationPrincipal User user) {
+
+        return ResponseEntity.ok(commentService.deleteComment(commentId, user));
+    }
 
 }
