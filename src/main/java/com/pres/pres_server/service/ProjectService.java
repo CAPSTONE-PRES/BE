@@ -2,7 +2,7 @@ package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
-import com.pres.pres_server.dto.Projects.ProjectListDTO;
+import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ public class ProjectService {
         private final UserRepository userRepository;
         private final PresentationFileRepository presentationFileRepository;
 
-        public List<ProjectListDTO> getProjectsByUserId(Long userId) {
+        public List<ProjectCalenderListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
@@ -39,14 +39,14 @@ public class ProjectService {
                 // 3. DTO 변환
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
-                                .map(p -> new ProjectListDTO(
+                                .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
         }
 
-        public List<ProjectListDTO> getProjectsByUserIdAndDate(Long userId, LocalDate targetDate) {
+        public List<ProjectCalenderListDTO> getProjectsByUserIdAndDate(Long userId, LocalDate targetDate) {
                 // 1. user가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
@@ -61,14 +61,14 @@ public class ProjectService {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
                                 .filter(p -> p.getDueDate() != null && p.getDueDate().toLocalDate().equals(targetDate))
-                                .map(p -> new ProjectListDTO(
+                                .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate().format(formatter),
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
         }
 
-        public ProjectListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
+        public ProjectCalenderListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
                 Project project = projectRepository.findById(projectId)
                                 .orElseThrow(() -> new IllegalArgumentException("Project not found"));
 
@@ -86,13 +86,13 @@ public class ProjectService {
 
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-                return new ProjectListDTO(
+                return new ProjectCalenderListDTO(
                                 project.getDueDate() != null ? project.getDueDate().format(formatter) : "",
                                 project.getTitle(),
                                 project.getWorkspaceId().getWorkspaceName());
         }
 
-        public List<ProjectListDTO> getBookmarkedProjects(Long userId) {
+        public List<ProjectCalenderListDTO> getBookmarkedProjects(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
@@ -106,14 +106,14 @@ public class ProjectService {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
                                 .filter(Project::isBookmarked)
-                                .map(p -> new ProjectListDTO(
+                                .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
         }
 
-        public List<ProjectListDTO> searchProjectsByTitle(Long userId, String title) {
+        public List<ProjectCalenderListDTO> searchProjectsByTitle(Long userId, String title) {
                 // 1. 사용자가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
@@ -127,14 +127,14 @@ public class ProjectService {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
                                 .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase())) // 제목 포함 검색
-                                .map(p -> new ProjectListDTO(
+                                .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
         }
 
-        public List<ProjectListDTO> getProjectList(User user, int type) {
+        public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
 
                 List<Project> projects;
 
@@ -157,7 +157,7 @@ public class ProjectService {
                 }
 
                 return projects.stream()
-                        .map(project -> new ProjectListDTO(
+                        .map(project -> new ProjectCalenderListDTO(
                                 project.getCreatedAt() != null ? project.getCreatedAt().toLocalDate().toString() : "",
                                 project.getTitle(),
                                 project.getWorkspaceId().getWorkspaceName()

@@ -9,7 +9,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProjectListDTO {
+public class ProjectCalenderListDTO {
     private String date;
     private String projectTitle;
     private String workspaceName;
