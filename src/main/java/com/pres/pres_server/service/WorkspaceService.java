@@ -108,26 +108,13 @@ public class WorkspaceService {
         // 워크스페이스 이름 업데이트
         workspace.setWorkspaceName(request.getWorkspaceName());
 
-        // 기존 팀 멤버 삭제
-        teamMemberRepository.deleteByWorkspace(workspace);
+        // 수업 시간 업데이트
+        List<String> times = request.getWorkspaceTimeList();
+        workspace.setClasstime1(times.size() > 0 ? times.get(0) : null);
+        workspace.setClasstime2(times.size() > 1 ? times.get(1) : null);
+        workspace.setClasstime3(times.size() > 2 ? times.get(2) : null);
 
-        // 새로운 팀 멤버 등록
-        if (request.getWorkspaceMemberList() != null) {
-            for (String memberEmail : request.getWorkspaceMemberList()) {
-                User memberUser = userRepository.findByEmail(memberEmail)
-                        .orElseThrow(() -> new RuntimeException("User not found: " + memberEmail));
-
-                TeamMember teamMember = new TeamMember();
-                teamMember.setWorkspace(workspace);
-                teamMember.setUser(memberUser);
-                teamMember.setRole("MEMBER");
-                teamMember.setInvited_at(LocalDateTime.now());
-                teamMemberRepository.save(teamMember);
-            }
-        }
-
-        // 필요 시 워크스페이스 시간 업데이트 가능
-        // workspace.setWorkspaceTimeList(request.getWorkspaceTimeList()); // List<String>로 관리 시
+        workspaceRepository.save(workspace);
     }
 
     // 특정 워크스페이스 삭제 서비스
