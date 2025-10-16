@@ -33,18 +33,16 @@ public class WorkspaceService {
     private final VisitLogRepository visitLogRepository;
 
     @Transactional
-    public WorkSpace createWorkspace(WorkspaceRequest request, User ownerUser) {
-        // 워크스페이스 생성
+    public Long createWorkspace(WorkspaceRequest request, User ownerUser) {
         WorkSpace workspace = new WorkSpace();
         workspace.setWorkspaceName(request.getWorkspaceName());
         workspace.setOwnerUserId(ownerUser);
         workspace.setCreatedAt(LocalDateTime.now());
         workspaceRepository.save(workspace);
 
-        // 팀 멤버가 있다면 TeamMember로 저장
+        // 팀 멤버 이메일 리스트 등록
         if (request.getWorkspaceMemberList() != null && !request.getWorkspaceMemberList().isEmpty()) {
             for (String memberEmail : request.getWorkspaceMemberList()) {
-                // 이메일로 User 조회
                 User memberUser = userRepository.findByEmail(memberEmail)
                         .orElseThrow(() -> new RuntimeException("User not found: " + memberEmail));
 
@@ -57,7 +55,7 @@ public class WorkspaceService {
             }
         }
 
-        return workspace;
+        return workspace.getWorkspaceId();
     }
 
     // 워크스페이스 팀 멤버 수정

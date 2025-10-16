@@ -1,9 +1,11 @@
 package com.pres.pres_server.controller;
 
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
+import com.pres.pres_server.service.user.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.pres.pres_server.service.WorkspaceService;
@@ -14,7 +16,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Workspace Controller", description = "워크스페이스 관련 API")
 @RestController
@@ -23,14 +27,21 @@ import java.util.List;
 public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
+    private final UserService userService;
 
     @Operation(summary = "워크스페이스 생성", description = "워크스페이스 생성에 필요한 정보를 저장합니다")
     @PostMapping("/create")
-    public ResponseEntity<?> createWorkspace(
+    public ResponseEntity<Map<String, Object>> createWorkspace(
             @RequestBody WorkspaceRequest request,
-            @AuthenticationPrincipal User user) {
-        System.out.println("로그인한 유저 이메일: " + user.getEmail());
-        return ResponseEntity.ok(workspaceService.createWorkspace(request, user));
+            @AuthenticationPrincipal User ownerUser) {
+
+        Long workspaceId = workspaceService.createWorkspace(request, ownerUser);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workspaceId", workspaceId);
+        response.put("message", "워크스페이스가 성공적으로 생성되었습니다.");
+
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{workspaceId}/teammember/edit")

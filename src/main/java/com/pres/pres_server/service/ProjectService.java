@@ -6,6 +6,7 @@ import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ public class ProjectService {
         private final VisitLogRepository visitLogRepository;
         private final WorkspaceRepository workspaceRepository;
         private final UserRepository userRepository;
+        private final PresentationFileRepository presentationFileRepository;
 
         public List<ProjectListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
@@ -162,25 +164,40 @@ public class ProjectService {
                         .collect(Collectors.toList());
         }
 
+        @Transactional
         public Project createProject(User creator, Long workspaceId, ProjectCreateRequest request) {
+                // 1. 워크스페이스 조회
                 WorkSpace workspace = workspaceRepository.findById(workspaceId)
                         .orElseThrow(() -> new IllegalArgumentException("워크스페이스 없음"));
 
+                // 2. 발표자 설정
                 User presenter;
                 if (request.getPresenterId() != null) {
                         presenter = userRepository.findById(request.getPresenterId())
                                 .orElseThrow(() -> new IllegalArgumentException("발표자 없음"));
                 } else {
-                        presenter = creator; // 선택 안하면 생성하는 유저로 저장
+                        presenter = creator;
                 }
 
+                // 3. 프로젝트 생성
                 Project project = new Project();
                 project.setWorkspaceId(workspace);
                 project.setTitle(request.getTitle());
                 project.setDueDate(request.getDueDate());
-                project.setLimitedTime(request.getLimitedTime()); // 제한 시간 세팅
+                project.setLimitedTime(request.getLimitedTime());
                 project.setCreatedAt(LocalDateTime.now());
+                project = projectRepository.save(project);
 
-                return projectRepository.save(project);
+                // 4. 파일과 연관
+                if (request.getFileIds() != null && !request.getFileIds().isEmpty()) {
+                        List<PresentationFile> files = presentationFileRepository.findAllById(request.getFileIds());
+                        for (PresentationFile file : files) {
+                                file.setProject(project); // 문제 없음
+                                presentationFileRepository.save(file);
+                        }
+                }
+
+                return project;
         }
+
 }
