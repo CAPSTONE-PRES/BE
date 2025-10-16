@@ -8,6 +8,7 @@ import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.dto.file.FileInfoDto;
 import com.pres.pres_server.dto.practice.PracticeFeedbackDto;
 import com.pres.pres_server.dto.practice.PracticeSessionStartDto;
+import com.pres.pres_server.dto.qna.QnaComparisonDto;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.FeedbackRepository;
 import com.pres.pres_server.repository.PracticeSessionRepository;
@@ -30,11 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * 연습 세션 관리 서비스
- * 
- * 연습 시작/종료, 슬라이드 및 큐카드 조회를 담당합니다.
- */
+// 연습 세션 시작/종료, 슬라이드 및 큐카드 조회를 담당
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -50,6 +47,7 @@ public class PracticeSessionService {
     private final AudioAnalysisService audioAnalysisService;
     private final AnalysisResultService analysisResultService;
     private final SilenceDetectionService silenceDetectionService;
+    private final PracticeQnaService practiceQnaService;
 
     /**
      * 연습 세션 시작
@@ -212,13 +210,27 @@ public class PracticeSessionService {
     public PracticeFeedbackDto getFeedback(Long sessionId) {
         log.info("📊 피드백 조회 시작 - sessionId: {}", sessionId);
 
-        // 피드백 조회
+        // 1. 발표 피드백 조회
         Feedback feedback = feedbackRepository.findByPracticeSessionIdSessionId(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("피드백을 찾을 수 없습니다. sessionId: " + sessionId));
 
         log.info("✅ 피드백 조회 완료 - sessionId: {}, grade: {}", sessionId, feedback.getGrade());
 
-        // DTO 변환 및 반환 (공백 정보 포함)
+        // 2. QnA 비교 결과 조회 (있으면 포함)
+        QnaComparisonDto qnaComparison = null;
+        try {
+            qnaComparison = practiceQnaService.getComparison(sessionId);
+            log.info("✅ QnA 비교 결과 포함 - sessionId: {}, similarity: {}",
+                    sessionId, qnaComparison.getSimilarity());
+        } catch (IllegalStateException e) {
+            // QnA 답변 제출 안 함 - null 유지
+            log.info("ℹ️ QnA 답변 없음 - sessionId: {}", sessionId);
+        } catch (Exception e) {
+            // 기타 예외 - null 유지, 로그만 남김
+            log.warn("⚠️ QnA 비교 결과 조회 실패 - sessionId: {}, error: {}", sessionId, e.getMessage());
+        }
+
+        // 3. DTO 변환 및 반환 (발표 피드백 + QnA 결과)
         return PracticeFeedbackDto.builder()
                 .sessionId(sessionId)
                 .feedbackId(feedback.getFeedbackId())
@@ -230,6 +242,7 @@ public class PracticeSessionService {
                 .silenceCount(feedback.getSilenceCount())
                 .totalSilenceDuration(feedback.getTotalSilenceDuration())
                 .silenceScore(feedback.getSilenceScore())
+                .qnaComparison(qnaComparison) // QnA 있으면 포함, 없으면 null
                 // silenceAnalysisSuccess는 사용자에게 노출하지 않음
                 .build();
     }
@@ -250,4 +263,5 @@ public class PracticeSessionService {
         // 임시: fileUrl을 그대로 반환 (프론트에서 PDF 렌더링 가정)
         return presentationFile.getFileUrl() + "#page=" + pageNumber;
     }
+
 }

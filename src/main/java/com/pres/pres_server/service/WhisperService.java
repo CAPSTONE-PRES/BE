@@ -122,13 +122,6 @@ public class WhisperService {
     /**
      * Whisper API 요청 객체 생성
      */
-    private HttpEntity<MultiValueMap<String, Object>> buildRequest(File wavFile) {
-        return buildRequest(wavFile, false);
-    }
-
-    /**
-     * Whisper API 요청 객체 생성 (timestamp 옵션 포함)
-     */
     private HttpEntity<MultiValueMap<String, Object>> buildRequest(File wavFile, boolean includeTimestamps) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);

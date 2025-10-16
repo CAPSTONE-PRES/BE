@@ -15,47 +15,47 @@ public class QnaAnswerComparison {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "comparison_id")
-    private Long comparison_id;
+    private Long comparisonId;
 
     @ManyToOne
     @JoinColumn(name = "qna_id", nullable = false)
-    private QnaQuestion qna_question;
+    private QnaQuestion qnaQuestion;
 
     @ManyToOne
     @JoinColumn(name = "ideal_answer_id", nullable = false)
-    private QnaAnswer ideal_answer;
+    private QnaAnswer idealAnswer;
 
     @ManyToOne
     @JoinColumn(name = "user_answer_id", nullable = false)
-    private QnaAnswer user_answer;
+    private QnaAnswer userAnswer;
 
     @ManyToOne
     @JoinColumn(name = "practice_session_id", nullable = false)
-    private PracticeSession practice_session;
+    private PracticeSession practiceSession;
 
     @Column(name = "sim_cosine")
-    private Float sim_cosine;
+    private Float simCosine;
 
     @Column(name = "bert_score_f1")
-    private Float bert_score_f1;
+    private Float bertScoreF1;
 
     @Column(name = "rouge_l")
-    private Float rouge_l;
+    private Float rougeL;
 
     @Column(name = "keyword_recall")
-    private Float keyword_recall;
+    private Float keywordRecall;
 
     @Column(name = "coverage")
     private Float coverage;
 
     @Column(name = "hallucination_risk")
-    private Float hallucination_risk;
+    private Float hallucinationRisk;
 
     @Column(name = "grammar_score")
-    private Float grammar_score;
+    private Float grammarScore;
 
     @Column(name = "structure_score")
-    private Float structure_score;
+    private Float structureScore;
 
     @Column(name = "timestamp", columnDefinition = "json")
     private String timestamp;
@@ -64,5 +64,5 @@ public class QnaAnswerComparison {
     private String notes;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at;
+    private LocalDateTime createdAt;
 }

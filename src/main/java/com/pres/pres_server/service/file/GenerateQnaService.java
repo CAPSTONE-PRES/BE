@@ -522,4 +522,46 @@ public class GenerateQnaService {
         }
     }
 
+    /**
+     * 순차적으로 질문 조회 (연습 세션용)
+     * 
+     * @param fileId 파일 ID
+     * @param index  질문 인덱스 (0부터 시작, 0~4)
+     * @return 해당 인덱스의 질문
+     */
+    public com.pres.pres_server.dto.qna.QnaQuestionDto getQuestionByIndex(Long fileId, int index) {
+        validateFileId(fileId);
+
+        List<QnaQuestion> questions = qnaQuestionRepository.findActiveByFileId(fileId);
+
+        if (questions.isEmpty()) {
+            throw new IllegalStateException("저장된 질문이 없습니다. fileId: " + fileId);
+        }
+
+        if (index < 0 || index >= questions.size()) {
+            throw new IllegalArgumentException(
+                    String.format("유효하지 않은 인덱스입니다. index: %d, 전체 질문 수: %d", index, questions.size()));
+        }
+
+        // 순차적 선택
+        QnaQuestion question = questions.get(index);
+
+        return com.pres.pres_server.dto.qna.QnaQuestionDto.builder()
+                .questionId(question.getQnaId())
+                .questionBody(question.getBody())
+                .build();
+    }
+
+    /**
+     * 모범 답변 조회 (내부용)
+     */
+    public QnaAnswer getIdealAnswer(Long questionId) {
+        QnaQuestion question = qnaQuestionRepository.findById(questionId)
+                .orElseThrow(() -> new IllegalArgumentException("질문을 찾을 수 없습니다: " + questionId));
+
+        return qnaAnswerRepository
+                .findFirstByQnaQuestionAndAnswerType(question, "AI_GENERATED")
+                .orElseThrow(() -> new IllegalArgumentException("모범 답변을 찾을 수 없습니다: " + questionId));
+    }
+
 }

@@ -1,0 +1,278 @@
+package com.pres.pres_server.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.pres.pres_server.domain.*;
+import com.pres.pres_server.dto.qna.*;
+import com.pres.pres_server.repository.*;
+import com.pres.pres_server.service.WhisperService;
+import com.pres.pres_server.service.file.GenerateQnaService;
+
+import java.io.File;
+import java.time.LocalDateTime;
+import java.util.List;
+
+//사용자 답변과 모범 답변 비교 및 피드백 생성
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class QnaComparisonService {
+
+    private final WhisperService whisperService;
+    private final GenerateQnaService generateQnaService;
+    private final QnaAnswerRepository qnaAnswerRepository;
+    private final QnaQuestionRepository qnaQuestionRepository;
+    private final QnaAnswerComparisonRepository qnaAnswerComparisonRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
+
+    /**
+     * 사용자의 음성 답변을 텍스트로 변환하고 저장
+     * 
+     * @param sessionId  연습 세션 ID
+     * @param questionId 질문 ID
+     * @param audioFile  사용자 음성 파일
+     * @return STT 결과
+     */
+    @Transactional
+    public QnaAnswerResponseDto submitAnswer(Long sessionId, Long questionId, MultipartFile audioFile)
+            throws Exception {
+        log.info("📝 QnA 답변 제출 - sessionId: {}, questionId: {}", sessionId, questionId);
+
+        // 1. 세션 및 질문 조회
+        PracticeSession session = practiceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
+
+        QnaQuestion question = qnaQuestionRepository.findById(questionId)
+                .orElseThrow(() -> new IllegalArgumentException("질문을 찾을 수 없습니다"));
+
+        // 2. 음성 파일 → WAV 변환 (필요시)
+        File wavFile = convertToWav(audioFile);
+
+        // 3. STT 변환
+        String sttText = whisperService.transcribe(wavFile);
+        log.info("✅ STT 변환 완료 - length: {}", sttText.length());
+
+        // 4. QnaAnswer 엔티티 저장 (사용자 답변)
+        QnaAnswer userAnswer = new QnaAnswer();
+        userAnswer.setQnaQuestion(question);
+        userAnswer.setPracticeSession(session);
+        userAnswer.setAnswerType("user");
+        userAnswer.setBody(sttText);
+        userAnswer.setOrigin("USER_SPEECH");
+        userAnswer.setRawStt(sttText);
+        userAnswer.setCreatedAt(LocalDateTime.now());
+        userAnswer.setUpdatedAt(LocalDateTime.now());
+
+        QnaAnswer savedAnswer = qnaAnswerRepository.save(userAnswer);
+        log.info("✅ 사용자 답변 저장 완료 - answerId: {}", savedAnswer.getAnswerId());
+
+        // 5. 응답 DTO 생성
+        return QnaAnswerResponseDto.builder()
+                .answerId(savedAnswer.getAnswerId())
+                .questionId(questionId)
+                .sttText(sttText)
+                .message("답변이 저장되었습니다")
+                .build();
+    }
+
+    /**
+     * 저장된 QnA 비교 결과 조회 (피드백용)
+     * 
+     * @param sessionId 연습 세션 ID
+     * @return 저장된 비교 결과
+     */
+    @Transactional(readOnly = true)
+    public QnaComparisonDto getComparisonResult(Long sessionId) {
+        log.info("📊 저장된 QnA 비교 결과 조회 - sessionId: {}", sessionId);
+
+        // 1. 세션 조회
+        PracticeSession session = practiceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
+
+        // 2. 저장된 비교 결과 조회
+        QnaAnswerComparison comparison = qnaAnswerComparisonRepository
+                .findByPracticeSession(session)
+                .orElseThrow(() -> new IllegalStateException("QnA 비교 결과가 없습니다"));
+
+        log.info("✅ 비교 결과 조회 완료 - comparisonId: {}", comparison.getComparisonId());
+
+        // 3. DTO 변환
+        QnaQuestion question = comparison.getQnaQuestion();
+        QnaAnswer idealAnswer = comparison.getIdealAnswer();
+        QnaAnswer userAnswer = comparison.getUserAnswer();
+
+        String feedback = generateFeedback(
+                comparison.getSimCosine(),
+                comparison.getKeywordRecall(),
+                comparison.getCoverage());
+
+        List<String> missingKeywords = extractMissingKeywords(
+                userAnswer.getBody(),
+                idealAnswer.getBody());
+
+        return QnaComparisonDto.builder()
+                .comparisonId(comparison.getComparisonId())
+                .questionId(question.getQnaId())
+                .question(question.getBody())
+                .idealAnswer(idealAnswer.getBody())
+                .userAnswer(userAnswer.getBody())
+                .similarity(comparison.getSimCosine())
+                .keywordRecall(comparison.getKeywordRecall())
+                .coverage(comparison.getCoverage())
+                .feedback(feedback)
+                .missingKeywords(missingKeywords)
+                .build();
+    }
+
+    /**
+     * 사용자 답변과 모범 답변 비교 및 피드백 생성 (최초 비교 시)
+     * 
+     * @param sessionId 연습 세션 ID
+     * @return 비교 결과 및 피드백
+     */
+    @Transactional
+    public QnaComparisonDto compareAnswer(Long sessionId) {
+        log.info("🔍 QnA 답변 비교 시작 - sessionId: {}", sessionId);
+
+        // 1. 세션 조회
+        PracticeSession session = practiceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
+
+        // 2. 사용자 답변 조회
+        List<QnaAnswer> userAnswers = qnaAnswerRepository
+                .findByPracticeSessionAndAnswerType(session, "user");
+
+        if (userAnswers.isEmpty()) {
+            throw new IllegalStateException("제출된 답변이 없습니다");
+        }
+
+        QnaAnswer userAnswer = userAnswers.get(0); // 최초 1개만 처리
+        QnaQuestion question = userAnswer.getQnaQuestion();
+
+        log.info("📝 사용자 답변 조회 완료 - questionId: {}", question.getQnaId());
+
+        // 3. 모범 답변 조회
+        QnaAnswer idealAnswer = qnaAnswerRepository
+                .findFirstByQnaQuestionAndAnswerType(question, "AI_GENERATED")
+                .orElseThrow(() -> new IllegalArgumentException("모범 답변을 찾을 수 없습니다"));
+
+        log.info("📚 모범 답변 조회 완료 - answerId: {}", idealAnswer.getAnswerId());
+
+        // 4. 유사도 계산 (OpenAI Embeddings API)
+        float cosineSimilarity = calculateCosineSimilarity(
+                userAnswer.getBody(),
+                idealAnswer.getBody());
+
+        // 5. 키워드 재현율 계산
+        float keywordRecall = calculateKeywordRecall(
+                userAnswer.getBody(),
+                idealAnswer.getBody());
+
+        // 6. 커버리지 계산
+        float coverage = calculateCoverage(
+                userAnswer.getBody(),
+                idealAnswer.getBody());
+
+        log.info("✅ 유사도 분석 완료 - cosine: {}, keywordRecall: {}, coverage: {}",
+                cosineSimilarity, keywordRecall, coverage);
+
+        // 7. QnaAnswerComparison 저장
+        QnaAnswerComparison comparison = new QnaAnswerComparison();
+        comparison.setQnaQuestion(question);
+        comparison.setIdealAnswer(idealAnswer);
+        comparison.setUserAnswer(userAnswer);
+        comparison.setPracticeSession(session);
+        comparison.setSimCosine(cosineSimilarity);
+        comparison.setKeywordRecall(keywordRecall);
+        comparison.setCoverage(coverage);
+        comparison.setCreatedAt(LocalDateTime.now());
+
+        qnaAnswerComparisonRepository.save(comparison);
+        log.info("✅ 비교 결과 저장 완료 - comparisonId: {}", comparison.getComparisonId());
+
+        // 8. AI 피드백 생성
+        String feedback = generateFeedback(cosineSimilarity, keywordRecall, coverage);
+        List<String> missingKeywords = extractMissingKeywords(
+                userAnswer.getBody(),
+                idealAnswer.getBody());
+
+        // 9. 응답 DTO 생성
+        return QnaComparisonDto.builder()
+                .comparisonId(comparison.getComparisonId())
+                .questionId(question.getQnaId())
+                .question(question.getBody())
+                .idealAnswer(idealAnswer.getBody())
+                .userAnswer(userAnswer.getBody())
+                .similarity(cosineSimilarity)
+                .keywordRecall(keywordRecall)
+                .coverage(coverage)
+                .feedback(feedback)
+                .missingKeywords(missingKeywords)
+                .build();
+    }
+
+    /**
+     * 코사인 유사도 계산 (OpenAI Embeddings API 사용)
+     */
+    private float calculateCosineSimilarity(String text1, String text2) {
+        // TODO: OpenAI Embeddings API 호출
+        // 1. text1과 text2를 각각 임베딩 벡터로 변환
+        // 2. 코사인 유사도 계산
+        // 임시로 0.85 반환
+        return 0.85f;
+    }
+
+    /**
+     * 키워드 재현율 계산
+     */
+    private float calculateKeywordRecall(String userAnswer, String idealAnswer) {
+        // TODO: 키워드 추출 및 매칭
+        // 임시로 0.75 반환
+        return 0.75f;
+    }
+
+    /**
+     * 커버리지 계산
+     */
+    private float calculateCoverage(String userAnswer, String idealAnswer) {
+        // TODO: 내용 커버리지 계산
+        // 임시로 0.60 반환
+        return 0.60f;
+    }
+
+    /**
+     * AI 피드백 생성
+     */
+    private String generateFeedback(float similarity, float keywordRecall, float coverage) {
+        if (similarity >= 0.8 && keywordRecall >= 0.7) {
+            return "훌륭합니다! 핵심 내용을 잘 전달했습니다.";
+        } else if (similarity >= 0.6) {
+            return "주요 내용은 언급했으나 세부 설명이 부족합니다.";
+        } else {
+            return "핵심 내용을 더 구체적으로 설명해보세요.";
+        }
+    }
+
+    /**
+     * 부족한 키워드 추출
+     */
+    private List<String> extractMissingKeywords(String userAnswer, String idealAnswer) {
+        // TODO: 모범 답변의 키워드 중 사용자 답변에 없는 것 추출
+        return List.of("딥러닝", "자연어 처리"); // 임시
+    }
+
+    /**
+     * MultipartFile을 WAV로 변환
+     */
+    private File convertToWav(MultipartFile audioFile) throws Exception {
+        // TODO: 오디오 파일 변환 로직
+        // 임시로 그대로 반환
+        File tempFile = File.createTempFile("qna_answer_", ".wav");
+        audioFile.transferTo(tempFile);
+        return tempFile;
+    }
+}
