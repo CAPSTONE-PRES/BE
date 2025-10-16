@@ -2,6 +2,7 @@ package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.CueCard.CueCardContentDTO;
+import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
@@ -33,6 +34,29 @@ public class CueCardService {
     private final CueCardCheckMemberRepository cueCardCheckMemberRepository;
     private final PresentationFileRepository presentationFileRepository;
 
+    // 큐카드 페이지별 불러오기
+    @Transactional(readOnly = true)
+    public CueCardCreateResponseDTO getCueCards(Long fileId, int slideNumber, User user) {
+
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 파일이 존재하지 않습니다."));
+
+        // 권한 확인: 로그인한 유저가 워크스페이스 멤버인지
+        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
+                file.getProject().getWorkspaceId().getWorkspaceId(), user.getId()
+        );
+        if (!isMember) throw new RuntimeException("권한이 없습니다.");
+
+        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
+
+        List<CueCardContentDTO> cueCardContents = cueCards.stream()
+                .map(c -> new CueCardContentDTO(c.getCueId(), c.getContent()))
+                .toList();
+
+        return new CueCardCreateResponseDTO(fileId, slideNumber, cueCardContents);
+    }
+
+    // 큐카드 내용 업데이트
     @Transactional
     public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
                                                    CueCardUpdateRequest request, User user) {

@@ -3,6 +3,7 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
@@ -32,6 +33,17 @@ public class CueCardController {
     private final CueCardService cueCardService;
     private final PresentationFileRepository presentationFileRepository;
     private final TeamMemberRepository teamMemberRepository;
+
+    @Operation(summary = "큐카드 내용 조회", description = "슬라이드별 큐카드 내용 조회")
+    @GetMapping("/{fileId}/{slideNumber}/cuecard")
+    public ResponseEntity<CueCardCreateResponseDTO> getCueCards(
+            @PathVariable Long fileId,
+            @PathVariable int slideNumber,
+            @AuthenticationPrincipal User user) {
+
+        CueCardCreateResponseDTO response = cueCardService.getCueCards(fileId, slideNumber, user);
+        return ResponseEntity.ok(response);
+    }
 
     @Operation(summary = "큐카드 내용 업데이트",
             description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
