@@ -5,6 +5,8 @@ import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Comment.CommentRequestDTO;
 import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.CueCard.CommentDetailDTO;
+import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.repository.CommentRepository;
 import com.pres.pres_server.repository.CueCardRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -79,4 +84,36 @@ public class CommentService {
                 .message("코멘트가 성공적으로 삭제되었습니다.")
                 .build();
     }
+
+    // 코멘트 슬라이드별 불러오기
+    @Transactional(readOnly = true)
+    public List<CueCardCommentDTO> getCommentsBySlide(Long fileId, int slideNumber, User user) {
+
+        // 슬라이드 큐카드 리스트 조회
+        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
+        if (cueCards.isEmpty()) return Collections.emptyList();
+
+        List<CueCardCommentDTO> result = new ArrayList<>();
+
+        for (CueCard cueCard : cueCards) {
+            List<Comment> cueComments = commentRepository.findByCueCard(cueCard);
+
+            List<CommentDetailDTO> commentDetails = cueComments.stream()
+                    .map(c -> CommentDetailDTO.builder()
+                            .commentId(c.getCommentId())
+                            .authorUserId(c.getAuthorUser().getId())
+                            .authorName(c.getAuthorUser().getUsername())
+                            .authorProfileImageUrl(c.getAuthorUser().getProfileImageUrl())
+                            .content(c.getContent())
+                            .location(c.getLocation())
+                            .createdAt(c.getCreatedAt())
+                            .build())
+                    .toList();
+
+            result.add(new CueCardCommentDTO(cueCard.getCueId(), commentDetails));
+        }
+
+        return result;
+    }
+
 }

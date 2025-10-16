@@ -5,6 +5,7 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Comment.CommentRequestDTO;
 import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
@@ -128,6 +129,17 @@ public class CueCardController {
             @AuthenticationPrincipal User user) {
 
         return ResponseEntity.ok(commentService.deleteComment(commentId, user));
+    }
+
+    // 코멘트 슬라이드별 리스트로 불러오기 api
+    @GetMapping("/{fileId}/{slideNumber}/comment/list")
+    public ResponseEntity<List<CueCardCommentDTO>> getCommentsBySlide(
+            @PathVariable Long fileId,
+            @PathVariable int slideNumber,
+            @AuthenticationPrincipal User user) {
+
+        List<CueCardCommentDTO> comments = commentService.getCommentsBySlide(fileId, slideNumber, user);
+        return ResponseEntity.ok(comments);
     }
 
 }
