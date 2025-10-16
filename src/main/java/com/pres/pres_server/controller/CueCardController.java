@@ -32,7 +32,7 @@ public class CueCardController {
     private final TeamMemberRepository teamMemberRepository;
 
     @Operation(summary = "큐카드 체크/취소 api", description = "슬라이드별 큐카드(1,2)에 대한 체크 표시 생성 및 삭제")
-    @PatchMapping("/{fileId}/cucard/{slideNumber}/{cueId}/check")
+    @PatchMapping("/{fileId}/{slideNumber}/cuecard/{cueId}/check")
     public ResponseEntity<Map<String,Object>> toggleCueCheck(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
@@ -54,7 +54,7 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 체크 안 한 멤버 조회", description = "슬라이드별 큐카드 체크 여부 확인")
-    @GetMapping("/projects/{fileId}/cuecard/{slideNumber}/check/list")
+    @GetMapping("/projects/{fileId}/{slideNumber}/cuecard/check/list")
     public ResponseEntity<CueCardUncheckedDTO> getUncheckedMembers(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
