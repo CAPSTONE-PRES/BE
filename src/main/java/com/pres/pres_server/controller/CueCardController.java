@@ -101,6 +101,7 @@ public class CueCardController {
     // ----------------------------------- 코멘트 api -----------------------------------
 
     // 코멘트 생성 api
+    @Operation(summary = "코멘트 생성", description = "특정 키워드에 코멘트를 생성합니다.")
     @PostMapping("/comment/create")
     public ResponseEntity<CommentResponseDTO> addComment(
             @RequestBody CommentRequestDTO request,
@@ -132,6 +133,7 @@ public class CueCardController {
     }
 
     // 코멘트 슬라이드별 리스트로 불러오기 api
+    @Operation(summary = "코멘트 리스트 불러오기", description = "특정 슬라이드에 해당하는 코멘트 리스트 불러오기.")
     @GetMapping("/{fileId}/{slideNumber}/comment/list")
     public ResponseEntity<List<CueCardCommentDTO>> getCommentsBySlide(
             @PathVariable Long fileId,
