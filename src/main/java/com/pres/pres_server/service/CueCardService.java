@@ -1,9 +1,9 @@
 package com.pres.pres_server.service;
 
-import com.pres.pres_server.domain.CueCard;
-import com.pres.pres_server.domain.CueCardCheckMember;
-import com.pres.pres_server.domain.TeamMember;
-import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.*;
+import com.pres.pres_server.dto.CueCard.CueCardContentDTO;
+import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
+import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedMemberDTO;
@@ -31,6 +31,36 @@ public class CueCardService {
     private final CueCardCheckMemberRepository cueCardCheckRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final CueCardCheckMemberRepository cueCardCheckMemberRepository;
+    private final PresentationFileRepository presentationFileRepository;
+
+    @Transactional
+    public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
+                                                   CueCardUpdateRequest request, User user) {
+
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 파일이 존재하지 않습니다."));
+
+        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
+                file.getProject().getWorkspaceId().getWorkspaceId(), user.getId()
+        );
+        if (!isMember) throw new RuntimeException("권한이 없습니다.");
+
+        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
+
+        for (CueCardContentDTO dto : request.getCueCards()) {
+            CueCard cueCard = cueCards.stream()
+                    .filter(c -> c.getCueId().equals(dto.getCueId()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("큐카드가 존재하지 않습니다: " + dto.getCueId()));
+
+            cueCard.setContent(dto.getContent());
+            cueCardRepository.save(cueCard);
+        }
+
+        return new CueCardUpdateResponseDTO(fileId, slideNumber,
+                "cuecard 내용 업데이트가 성공적으로 완료되었습니다");
+    }
+
 
     @Transactional
     public void setCheckStatus(Long fileId, int slideNumber, Long cueId, User user, boolean status) {

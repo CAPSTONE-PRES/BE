@@ -3,6 +3,8 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
+import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
@@ -30,6 +32,19 @@ public class CueCardController {
     private final CueCardService cueCardService;
     private final PresentationFileRepository presentationFileRepository;
     private final TeamMemberRepository teamMemberRepository;
+
+    @Operation(summary = "큐카드 내용 업데이트",
+            description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
+    @PatchMapping("/projects/{fileId}/{slideNumber}/cuecard/edit")
+    public ResponseEntity<CueCardUpdateResponseDTO> updateCueCards(
+            @PathVariable Long fileId,
+            @PathVariable int slideNumber,
+            @RequestBody CueCardUpdateRequest request,
+            @AuthenticationPrincipal User user) {
+
+        CueCardUpdateResponseDTO response = cueCardService.updateCueCards(fileId, slideNumber, request, user);
+        return ResponseEntity.ok(response);
+    }
 
     @Operation(summary = "큐카드 체크/취소 api", description = "슬라이드별 큐카드(1,2)에 대한 체크 표시 생성 및 삭제")
     @PatchMapping("/{fileId}/{slideNumber}/cuecard/{cueId}/check")
