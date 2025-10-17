@@ -31,5 +31,8 @@ public interface VisitLogRepository extends JpaRepository<VisitLog, Long> {
 
     // 워크스페이스만 방문한 기록 찾기 (project=null 케이스용)
     Optional<VisitLog> findByUserAndWorkspaceAndProjectIsNull(User user, WorkSpace workspace);
+
+    // 특정 워크스페이스 내에서, 특정 유저가 방문한 프로젝트 목록을 최근 방문순으로 조회
+    List<VisitLog> findByWorkspaceAndUserOrderByVisitedAtDesc(WorkSpace workspace, User user);
 }
 

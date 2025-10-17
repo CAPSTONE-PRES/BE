@@ -1,10 +1,13 @@
 package com.pres.pres_server.controller;
 
+import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
+import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,7 +30,7 @@ import java.util.Map;
 public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
-    private final UserService userService;
+    private final ProjectService projectService;
 
     @Operation(summary = "워크스페이스 생성", description = "워크스페이스 생성에 필요한 정보를 저장합니다")
     @PostMapping("/create")
@@ -103,6 +106,22 @@ public class WorkspaceController {
         }
 
         return workspaceService.getWorkspaceList(user, type);
+    }
+
+    @GetMapping("/{workspaceId}/projects/list")
+    @Operation(summary = "워크스페이스 내 프로젝트 정렬 조회", description = "type=1(최근 방문순), 2(발표일자순), 3(제목순)")
+    public ResponseEntity<List<ProjectListDTO>> getProjects(
+            @PathVariable Long workspaceId,
+            @RequestParam int type,
+            @AuthenticationPrincipal User user
+    ) {
+        List<Project> projects = projectService.getProjectsByWorkspace(workspaceId, type, user);
+
+        List<ProjectListDTO> response = projects.stream()
+                .map(ProjectListDTO::from)
+                .toList();
+
+        return ResponseEntity.ok(response);
     }
 
 }

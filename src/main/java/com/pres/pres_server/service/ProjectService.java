@@ -3,6 +3,7 @@ package com.pres.pres_server.service;
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
+import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
@@ -241,6 +243,46 @@ public class ProjectService {
                 }
 
                 projectRepository.delete(project);
+        }
+
+        // 프로젝트 정렬 3가지
+        @Transactional(readOnly = true)
+        public List<Project> getProjectsByWorkspace(Long workspaceId, int type, User user) {
+                WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                        .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
+
+                List<Project> projects;
+
+                // 정렬
+                switch (type) {
+                        case 1: // 최근 방문순
+                                projects = visitLogRepository.findByWorkspaceAndUserOrderByVisitedAtDesc(workspace, user)
+                                        .stream()
+                                        .map(VisitLog::getProject)
+                                        .filter(p -> p != null) // null(워크스페이스만 방문) 제거
+                                        .distinct()             // 같은 프로젝트 여러 번 방문했을 수 있으니 중복 제거
+                                        .toList();
+                                break;
+
+                        case 2: // 발표일자순 (dueDate 오름차순)
+                                projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
+                                        .stream()
+                                        .sorted(Comparator.comparing(Project::getDueDate))
+                                        .toList();
+                                break;
+
+                        case 3: // 제목순 (String 오름차순)
+                                projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
+                                        .stream()
+                                        .sorted(Comparator.comparing(Project::getTitle, String.CASE_INSENSITIVE_ORDER))
+                                        .toList();
+                                break;
+
+                        default:
+                                throw new IllegalArgumentException("유효하지 않은 type 값입니다. (1: 방문순, 2: 발표일자, 3: 제목)");
+                }
+
+                return projects;
         }
 
 }
