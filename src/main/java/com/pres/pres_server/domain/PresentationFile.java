@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "presentation_files")
@@ -23,6 +25,13 @@ public class PresentationFile {
     // 내부 저장 경로 (서버/S3 등)
     @Column(name = "file_path", nullable = false)
     private String filePath;
+
+    // 썸네일 이미지 경로 및 URL (대표 썸네일 1장 기준, 여러 장이면 List로 확장 가능)
+    @Column(name = "thumbnail_path")
+    private String thumbnailPath;
+
+    @Column(name = "thumbnail_url")
+    private String thumbnailUrl;
 
     // 실제 파일 이름
     @Column(name = "original_name", nullable = false)
@@ -60,4 +69,9 @@ public class PresentationFile {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uploader_id", nullable = false)
     private User uploader;
+
+    //presentation file image로 저장
+    @OneToMany(mappedBy = "file", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("pageNumber ASC")
+    private List<PresentationImage> images = new ArrayList<>();
 }

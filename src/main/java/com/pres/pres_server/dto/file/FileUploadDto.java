@@ -10,6 +10,6 @@ import lombok.Getter;
 public class FileUploadDto {
     private Long fileId;
     private String fileUrl;
-
+    private String thumbnailUrl;
     // 필요시 fileName, fileType, fileSize 등 추가
 }

@@ -1,3 +1,4 @@
+
 package com.pres.pres_server.repository;
 
 import com.pres.pres_server.domain.PresentationFile;
@@ -9,6 +10,9 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface PresentationFileRepository extends JpaRepository<PresentationFile, Long> {
+
+    // projectId로 발표 파일 조회
+    Optional<PresentationFile> findByProject_ProjectId(Long projectId);
 
     // 프로젝트에 연결된 발표 파일 조회
     Optional<PresentationFile> findByProject(Project project);
