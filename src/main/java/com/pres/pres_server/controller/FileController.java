@@ -72,11 +72,14 @@ public class FileController {
     // 추출한 텍스트를 기반으로 큐카드 생성
     @Operation(summary = "큐카드 생성", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
     @PostMapping("/generate-cue/{fileId}")
-    public ResponseEntity<CueCardDto> generateCue(@PathVariable("fileId") Long fileId) {
+    public ResponseEntity<CueCardDto> generateCue(@PathVariable("fileId") Long fileId,
+                                                  @RequestParam(name="maxSections", required =
+                                                          false, defaultValue = "5") int maxSections) {
         // 큐카드 생성을 담당하는 서비스 호출 (fileId만 전달)
-        CueCardDto cueCard = generateCueService.generateCueCards(fileId);
+        CueCardDto cueCard = generateCueService.generateCueCards(fileId, maxSections);
         return ResponseEntity.ok(cueCard);
     }
+
 
     // 생성된 큐카드 조회
     @Operation(summary = "큐카드 조회", description = "파일 ID로 저장된 큐카드를 조회합니다.")
@@ -127,6 +130,7 @@ public class FileController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "DB에 저장된 전체 예상 질문 및 답변 조회", description = "파일 ID로 저장된 Q&A 목록을 조회합니다.")
     @GetMapping("/qna/{fileId}")
     public ResponseEntity<QnaListDto> getSavedQnA(@PathVariable("fileId") Long fileId) {
         QnaListDto qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
