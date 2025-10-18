@@ -105,8 +105,8 @@ public class SpeechSpeedService {
         double rawSpm = (double) syllableCount / windowSeconds * SECONDS_PER_MINUTE;
         int spm = (int) Math.round(rawSpm);
 
-        log.debug("SPM 계산: {} 음절 / {:.2f}초 = {} SPM",
-                syllableCount, windowSeconds, spm);
+        log.debug("SPM 계산: {} 음절 / {}초 = {} SPM",
+                syllableCount, String.format("%.2f", windowSeconds), spm);
 
         return spm;
     }

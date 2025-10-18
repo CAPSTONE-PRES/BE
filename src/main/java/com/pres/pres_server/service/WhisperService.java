@@ -17,18 +17,9 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import com.pres.pres_server.service.analyse.SilenceDetectionService.WhisperSegment;
+import com.pres.pres_server.service.analyse.dto.WhisperSegment;
 
-/**
- * OpenAI Whisper API를 사용한 음성-텍스트 변환 서비스
- * 
- * <p>
- * 이 서비스는 음성 파일을 텍스트로 변환하는 외부 API 호출을 담당합니다.
- * </p>
- * <p>
- * <b>보장:</b> 반환값은 절대 null이 아니며, 최소한 빈 문자열("")을 반환합니다.
- * </p>
- */
+// whisper API 연동 서비스, 반환 값은 절대 null이 아님 (최소한 빈 문자열)
 @Service
 public class WhisperService {
     private static final Logger log = LoggerFactory.getLogger(WhisperService.class);
@@ -66,27 +57,31 @@ public class WhisperService {
 
         try {
             HttpEntity<MultiValueMap<String, Object>> request = buildRequest(wavFile, includeTimestamps);
-
             log.info("      ▶ Sending Whisper API request...");
-            Map<String, Object> response = callWhisperApi(request);
-
-            String text = extractTextFromResponse(response);
-            List<WhisperSegment> segments = includeTimestamps ? extractSegments(response) : null;
-
-            log.info("      ▶ Whisper API responded, text length = {}, segments = {}",
-                    text.length(), segments != null ? segments.size() : 0);
-
-            return TranscriptionResult.builder()
-                    .text(text)
-                    .segments(segments)
-                    .build();
-
+            if (includeTimestamps) {
+                // verbose_json: Map 파싱
+                Map<String, Object> response = callWhisperApiJson(request);
+                String text = extractTextFromResponse(response);
+                List<WhisperSegment> segments = extractSegments(response);
+                log.info("      ▶ Whisper API responded, text length = {}, segments = {}",
+                        text.length(), segments != null ? segments.size() : 0);
+                return TranscriptionResult.builder()
+                        .text(text)
+                        .segments(segments)
+                        .build();
+            } else {
+                // text: String 파싱
+                String text = callWhisperApiText(request);
+                log.info("      ▶ Whisper API responded, text length = {}", text.length());
+                return TranscriptionResult.builder()
+                        .text(text)
+                        .build();
+            }
         } catch (RestClientException e) {
-            log.error("      ✗ Whisper API 호출 실패: {}", e.getMessage());
+            log.error("      ✗ Whisper API call failed: {}", e.getMessage());
             return TranscriptionResult.builder().text("").build();
-
         } catch (Exception e) {
-            log.error("      ✗ Whisper 변환 중 예외 발생", e);
+            log.error("      ✗ Exception occurred during Whisper transcription", e);
             return TranscriptionResult.builder().text("").build();
         }
     }
@@ -107,15 +102,15 @@ public class WhisperService {
      */
     private void validateInputFile(File wavFile) {
         if (wavFile == null) {
-            throw new IllegalArgumentException("입력 파일이 null입니다.");
+            throw new IllegalArgumentException("Input file is null.");
         }
         if (!wavFile.exists()) {
             throw new IllegalArgumentException(
-                    String.format("파일이 존재하지 않습니다: %s", wavFile.getAbsolutePath()));
+                    String.format("File does not exist: %s", wavFile.getAbsolutePath()));
         }
         if (!wavFile.canRead()) {
             throw new IllegalArgumentException(
-                    String.format("파일을 읽을 수 없습니다: %s", wavFile.getAbsolutePath()));
+                    String.format("Cannot read file: %s", wavFile.getAbsolutePath()));
         }
     }
 
@@ -130,11 +125,15 @@ public class WhisperService {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", new FileSystemResource(wavFile));
         body.add("model", DEFAULT_MODEL);
+        body.add("language", "ko"); // 한국어 모델 지정
 
         // timestamp 정보를 받으려면 response_format을 verbose_json으로 설정
         if (includeTimestamps) {
             body.add("response_format", "verbose_json");
             body.add("timestamp_granularities[]", "segment"); // segment 단위 timestamp
+        } else {
+            // timestamp 정보가 필요 없으면 간단한 text 형식으로
+            body.add("response_format", "text");
         }
 
         return new HttpEntity<>(body, headers);
@@ -144,28 +143,34 @@ public class WhisperService {
      * Whisper API 호출
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> callWhisperApi(
-            HttpEntity<MultiValueMap<String, Object>> request) {
-
+    // Map 파싱 (verbose_json)
+    private Map<String, Object> callWhisperApiJson(HttpEntity<MultiValueMap<String, Object>> request) {
         Map<String, Object> response = restTemplate.postForObject(
                 WHISPER_API_URL, request, Map.class);
-
         if (response == null) {
-            log.warn("      ⚠ Whisper API 응답이 null");
-            throw new RestClientException("API 응답이 null입니다.");
+            log.warn("      ⚠ Whisper API response is null");
+            throw new RestClientException("API response is null.");
         }
-
         return response;
     }
 
-    /**
-     * API 응답에서 텍스트 추출 및 null 안전성 보장
-     */
+    // String 파싱 (text)
+    private String callWhisperApiText(HttpEntity<MultiValueMap<String, Object>> request) {
+        String response = restTemplate.postForObject(
+                WHISPER_API_URL, request, String.class);
+        if (response == null) {
+            log.warn("      ⚠ Whisper API response is null");
+            throw new RestClientException("API response is null.");
+        }
+        return response;
+    }
+
+    // API 응답에서 텍스트 추출 및 null 안전성 보장
     private String extractTextFromResponse(Map<String, Object> response) {
         Object textObj = response.get("text");
 
         if (textObj == null) {
-            log.warn("      ⚠ 응답에 'text' 필드가 없거나 null");
+            log.warn("      ⚠ 'text' field is missing or null in response");
             return "";
         }
 
@@ -173,15 +178,13 @@ public class WhisperService {
         return text != null ? text : "";
     }
 
-    /**
-     * API 응답에서 segments 추출 (verbose_json 형식)
-     */
+    // API 응답에서 segments 추출 (verbose_json 형식)
     @SuppressWarnings("unchecked")
     private List<WhisperSegment> extractSegments(Map<String, Object> response) {
         Object segmentsObj = response.get("segments");
 
         if (segmentsObj == null || !(segmentsObj instanceof List)) {
-            log.warn("      ⚠ 응답에 'segments' 필드가 없거나 형식이 다름");
+            log.warn("      'segments' field is missing or has invalid type in response");
             return null;
         }
 
@@ -196,16 +199,14 @@ public class WhisperService {
                         .text((String) seg.get("text"))
                         .build());
             } catch (Exception e) {
-                log.warn("      ⚠ segment 파싱 실패: {}", e.getMessage());
+                log.warn("      Failed to parse segment: {}", e.getMessage());
             }
         }
 
         return segments;
     }
 
-    /**
-     * Map에서 double 값 추출 (Number 타입 처리)
-     */
+    // Map에서 double 값 추출 (Number 타입 처리)
     private double getDoubleValue(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value instanceof Number) {
@@ -214,9 +215,7 @@ public class WhisperService {
         return 0.0;
     }
 
-    /**
-     * Whisper API 응답 결과
-     */
+    // Whisper API 응답 결과
     @lombok.Data
     @lombok.Builder
     public static class TranscriptionResult {

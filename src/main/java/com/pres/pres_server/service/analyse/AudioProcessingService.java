@@ -9,15 +9,23 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class AudioProcessingService {
     private static final Logger log = LoggerFactory.getLogger(AudioProcessingService.class);
 
+    // Constants
+    private static final int SAMPLE_RATE = 16000; // 16kHz
+    private static final int CHANNELS = 1; // mono
+    private static final String WAV_EXTENSION = ".wav";
+    private static final long FFMPEG_TIMEOUT_SECONDS = 60; // ffmpeg 타임아웃
     @Value("${ffmpeg.path:C:\\Program Files\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe}")
     private String ffmpegPath;
 
@@ -109,7 +117,7 @@ public class AudioProcessingService {
 
             // 오디오 길이 추출
             double duration = extractDuration(wavFile);
-            log.info("  • 오디오 길이: {:.2f}초", duration);
+            log.info("  • 오디오 길이: {}초", String.format("%.2f", duration));
 
             return new AudioFile(wavFile, duration);
 
@@ -146,7 +154,7 @@ public class AudioProcessingService {
 
             // 3) 오디오 길이 추출
             double duration = extractDuration(wavFile);
-            log.info("  • 오디오 길이: {:.2f}초", duration);
+            log.info("  • 오디오 길이: {}초", String.format("%.2f", duration));
 
             return new AudioFile(wavFile, duration);
 
@@ -191,8 +199,8 @@ public class AudioProcessingService {
             AudioWindow window = splitWindow(audioFile.getFile(), startTime, duration, i);
             windows.add(window);
 
-            log.info("    • 윈도우 {} 생성: {:.2f}초 ~ {:.2f}초",
-                    i, startTime, startTime + duration);
+            log.info("    • 윈도우 {} 생성: {}초 ~ {}초",
+                    i, String.format("%.2f", startTime), String.format("%.2f", startTime + duration));
         }
 
         log.info("  • 윈도우 분할 완료: {} 개", windows.size());
@@ -236,24 +244,71 @@ public class AudioProcessingService {
 
     // ffmpeg를 사용하여 16kHz mono WAV로 변환
     private File convertWithFfmpeg(File inputFile) throws IOException, InterruptedException {
-        File outputFile = File.createTempFile("audio_converted_", ".wav");
+        File outputFile = File.createTempFile("audio_converted_", WAV_EXTENSION);
 
-        String command = String.format(
-                "%s -y -i %s -ar 16000 -ac 1 %s",
-                ffmpegPath,
-                inputFile.getAbsolutePath(),
-                outputFile.getAbsolutePath());
+        try {
+            // ProcessBuilder 사용 (deprecated 메서드 대체)
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    ffmpegPath,
+                    "-y",
+                    "-i", inputFile.getAbsolutePath(),
+                    "-ar", String.valueOf(SAMPLE_RATE),
+                    "-ac", String.valueOf(CHANNELS),
+                    outputFile.getAbsolutePath());
 
-        log.debug("  • ffmpeg 명령: {}", command);
+            processBuilder.redirectErrorStream(true); // stderr를 stdout으로 병합
 
-        Process process = Runtime.getRuntime().exec(command);
-        int exitCode = process.waitFor();
+            log.debug("  • ffmpeg 명령: {}", String.join(" ", processBuilder.command()));
 
-        if (exitCode != 0) {
-            log.warn("  • ffmpeg 변환 경고: exit code {}", exitCode);
+            Process process = processBuilder.start();
+
+            // 출력 로그 수집 (선택적 - 디버깅용)
+            captureProcessOutput(process);
+
+            // 타임아웃 적용
+            boolean finished = process.waitFor(FFMPEG_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            if (!finished) {
+                process.destroyForcibly();
+                if (outputFile.exists()) {
+                    outputFile.delete();
+                }
+                throw new IOException("ffmpeg 프로세스 타임아웃 (" + FFMPEG_TIMEOUT_SECONDS + "초 초과)");
+            }
+
+            // exitCode 검증 (0이 아니면 변환 실패)
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                if (outputFile.exists()) {
+                    outputFile.delete();
+                }
+                throw new IOException("ffmpeg 변환 실패: exit code " + exitCode +
+                        " (입력 파일이 손상되었거나 지원하지 않는 형식일 수 있습니다)");
+            }
+
+            // 출력 파일 존재 및 크기 검증
+            if (!outputFile.exists()) {
+                throw new IOException("ffmpeg 변환 완료되었으나 출력 파일이 생성되지 않았습니다");
+            }
+
+            if (outputFile.length() == 0) {
+                outputFile.delete();
+                throw new IOException("ffmpeg 변환 완료되었으나 출력 파일이 비어있습니다 (입력 파일 확인 필요)");
+            }
+
+            log.debug("  • ffmpeg 변환 성공: size={} bytes", outputFile.length());
+            return outputFile;
+
+        } catch (Exception e) {
+            // 실패 시 임시 파일 정리
+            if (outputFile != null && outputFile.exists()) {
+                boolean deleted = outputFile.delete();
+                if (!deleted) {
+                    log.warn("  • 임시 파일 정리 실패: {}", outputFile.getAbsolutePath());
+                }
+            }
+            throw e;
         }
-
-        return outputFile;
     }
 
     // WAV 파일에서 오디오 길이 추출
@@ -265,7 +320,41 @@ public class AudioProcessingService {
 
             return frameLength / frameRate;
         } catch (Exception e) {
-            throw new IOException("오디오 길이 추출 실패: " + e.getMessage(), e);
+            log.warn("AudioSystem으로 길이 추출 실패, ffprobe로 폴백 시도: {}", e.getMessage());
+
+            // ffprobe 폴백 시도
+            try {
+                String ffprobePath = ffmpegPath.replace("ffmpeg.exe", "ffprobe.exe");
+                ProcessBuilder pb = new ProcessBuilder(
+                        ffprobePath,
+                        "-v", "error",
+                        "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1",
+                        wavFile.getAbsolutePath());
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    String line = reader.readLine();
+                    boolean finished = p.waitFor(10, TimeUnit.SECONDS);
+                    if (!finished) {
+                        p.destroyForcibly();
+                        throw new IOException("ffprobe 타임아웃");
+                    }
+
+                    int exit = p.exitValue();
+                    if (exit != 0 || line == null) {
+                        throw new IOException("ffprobe 실행 실패 or 출력 없음 (exit=" + exit + ")");
+                    }
+
+                    double duration = Double.parseDouble(line.trim());
+                    return duration;
+                }
+            } catch (Exception ex) {
+                log.error("ffprobe 폴백 실패: {}", ex.getMessage());
+                throw new IOException("오디오 길이 추출 실패 (지원되지 않는 WAV 형식 또는 내부 처리 오류). " +
+                        "PCM 16kHz mono WAV로 변환 후 재시도해 주세요. 내부 오류: " + ex.getMessage(), ex);
+            }
         }
     }
 
@@ -273,25 +362,91 @@ public class AudioProcessingService {
     private AudioWindow splitWindow(File sourceFile, double startTime, double duration, int index)
             throws IOException, InterruptedException {
 
-        File windowFile = File.createTempFile("audio_window_" + index + "_", ".wav");
+        File windowFile = File.createTempFile("audio_window_" + index + "_", WAV_EXTENSION);
 
-        String command = String.format(
-                "%s -y -ss %.2f -i %s -t %.2f %s",
-                ffmpegPath,
-                startTime,
-                sourceFile.getAbsolutePath(),
-                duration,
-                windowFile.getAbsolutePath());
+        try {
+            // ProcessBuilder 사용 (deprecated 메서드 대체)
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    ffmpegPath,
+                    "-y",
+                    "-ss", String.format("%.2f", startTime),
+                    "-i", sourceFile.getAbsolutePath(),
+                    "-t", String.format("%.2f", duration),
+                    windowFile.getAbsolutePath());
 
-        log.debug("    • ffmpeg 윈도우 분할 명령: {}", command);
+            processBuilder.redirectErrorStream(true);
 
-        Process process = Runtime.getRuntime().exec(command);
-        int exitCode = process.waitFor();
+            log.debug("    • ffmpeg 윈도우 분할 명령: {}", String.join(" ", processBuilder.command()));
 
-        if (exitCode != 0) {
-            log.warn("    • ffmpeg 분할 경고: exit code {}", exitCode);
+            Process process = processBuilder.start();
+
+            // 타임아웃 적용
+            boolean finished = process.waitFor(FFMPEG_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            if (!finished) {
+                process.destroyForcibly();
+                if (windowFile.exists()) {
+                    windowFile.delete();
+                }
+                throw new IOException("ffmpeg 윈도우 분할 타임아웃 (윈도우 " + index + ")");
+            }
+
+            // exitCode 검증 (0이 아니면 분할 실패)
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                if (windowFile.exists()) {
+                    windowFile.delete();
+                }
+                throw new IOException("ffmpeg 윈도우 분할 실패: exit code " + exitCode +
+                        " (윈도우 " + index + ", 시작: " + startTime + "초)");
+            }
+
+            // 출력 파일 존재 및 크기 검증
+            if (!windowFile.exists()) {
+                throw new IOException("ffmpeg 분할 완료되었으나 윈도우 파일이 생성되지 않았습니다 (윈도우 " + index + ")");
+            }
+
+            if (windowFile.length() == 0) {
+                windowFile.delete();
+                throw new IOException("ffmpeg 분할 완료되었으나 윈도우 파일이 비어있습니다 (윈도우 " + index +
+                        ", 시작: " + startTime + "초)");
+            }
+
+            log.debug("    • 윈도우 {} 분할 성공: size={} bytes", index, windowFile.length());
+            return new AudioWindow(windowFile, startTime, duration, index);
+
+        } catch (Exception e) {
+            // 실패 시 임시 파일 정리
+            if (windowFile != null && windowFile.exists()) {
+                boolean deleted = windowFile.delete();
+                if (!deleted) {
+                    log.warn("    • 윈도우 임시 파일 정리 실패: {}", windowFile.getAbsolutePath());
+                }
+            }
+            throw e;
         }
+    }
 
-        return new AudioWindow(windowFile, startTime, duration, index);
+    /**
+     * 프로세스 출력 로그 수집 (디버깅용)
+     * 별도 스레드에서 실행하여 메인 스레드 블로킹 방지
+     */
+    private void captureProcessOutput(Process process) {
+        Thread outputThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.debug("ffmpeg: {}", line);
+                }
+            } catch (IOException e) {
+                // 프로세스가 강제 종료되면 정상적으로 발생할 수 있음
+                log.trace("ffmpeg 출력 읽기 종료: {}", e.getMessage());
+            }
+        });
+
+        outputThread.setName("ffmpeg-output-capture");
+        outputThread.setDaemon(true); // 메인 스레드 종료 시 자동 종료
+        outputThread.start();
     }
 }

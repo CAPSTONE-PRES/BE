@@ -2,15 +2,17 @@ package com.pres.pres_server.service.analyse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pres.pres_server.domain.Feedback;
+import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.SessionWindow;
 import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.repository.FeedbackRepository;
+import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PracticeSessionRepository;
+import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.SessionWindowRepository;
-import com.pres.pres_server.service.WhisperService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,9 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 분석 결과 저장 서비스
+ * AudioAnalysisService에서 모든 분석을 완료한 결과를 받아서 DB에 저장만 담당
  */
 @Service
 @RequiredArgsConstructor
@@ -32,34 +36,34 @@ public class AnalysisResultService {
     private final SessionWindowRepository windowRepository;
     private final FeedbackRepository feedbackRepository;
     private final ProjectRepository projectRepository;
+    private final CueCardRepository cueCardRepository;
+    private final PresentationFileRepository presentationFileRepository;
     private final ObjectMapper objectMapper;
-    private final WhisperService whisperService;
-    private final SilenceDetectionService silenceDetectionService;
-    private final AudioProcessingService audioProcessingService;
+    private final ScriptAccuracyService scriptAccuracyService;
 
     /**
      * 분석 결과를 DB에 저장 (신규 세션 생성)
      * 
-     * @param projectId     프로젝트 ID
-     * @param windows       윈도우별 분석 결과 리스트
-     * @param totalDuration 전체 오디오 길이 (초)
+     * @param projectId      프로젝트 ID
+     * @param analysisResult 모든 분석 결과 (AudioAnalysisService에서 생성)
      * @return 저장된 PracticeSession ID
      */
     @Transactional
-    public Long saveAnalysisResult(Long projectId, List<WindowDto> windows, double totalDuration) {
-        log.info("▶ 분석 결과 저장 시작 - projectId: {}, windows: {}", projectId, windows.size());
+    public Long saveAnalysisResult(Long projectId, AudioAnalysisService.AnalysisResult analysisResult) {
+        log.info("▶ 분석 결과 저장 시작 - projectId: {}, windows: {}",
+                projectId, analysisResult.getWindows().size());
 
         // 1. PracticeSession 생성 및 저장
-        PracticeSession session = createPracticeSession(projectId, windows, totalDuration);
+        PracticeSession session = createPracticeSession(projectId, analysisResult);
         session = sessionRepository.save(session);
         log.info("  • PracticeSession 저장 완료 - sessionId: {}", session.getSessionId());
 
         // 2. SessionWindow 리스트 생성 및 저장
-        saveSessionWindows(session, windows);
-        log.info("  • SessionWindow {} 개 저장 완료", windows.size());
+        saveSessionWindows(session, analysisResult.getWindows());
+        log.info("  • SessionWindow {} 개 저장 완료", analysisResult.getWindows().size());
 
         // 3. Feedback 계산 및 저장
-        Feedback feedback = calculateAndSaveFeedback(session, windows);
+        Feedback feedback = calculateAndSaveFeedback(session, analysisResult);
         log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}",
                 feedback.getTotalScore(), feedback.getGrade());
 
@@ -71,7 +75,7 @@ public class AnalysisResultService {
      * 분석 결과를 DB에 저장 (기존 세션 업데이트)
      * 
      * @param session        기존 PracticeSession 엔티티
-     * @param analysisResult 분석 결과
+     * @param analysisResult 모든 분석 결과
      */
     @Transactional
     public void saveAnalysisResult(PracticeSession session, AudioAnalysisService.AnalysisResult analysisResult) {
@@ -79,33 +83,20 @@ public class AnalysisResultService {
                 session.getSessionId(), analysisResult.getWindows().size());
 
         // 1. STT 텍스트 및 Duration 업데이트
-        String fullText = analysisResult.getWindows().stream()
-                .map(WindowDto::getTranscript)
-                .reduce((a, b) -> a + " " + b)
-                .orElse("");
-        session.updateSttText(fullText);
-        session.updateDuration(analysisResult.getTotalDurationSeconds()); // 소수점 그대로
+        session.updateSttText(analysisResult.getFullSttText());
+        session.updateDuration(analysisResult.getTotalDurationSeconds());
         sessionRepository.save(session);
-        log.info("  • PracticeSession STT 및 Duration 업데이트 완료 - sessionId: {}, duration: {:.2f}초",
-                session.getSessionId(), analysisResult.getTotalDurationSeconds());
+        log.info("  • PracticeSession STT 및 Duration 업데이트 완료 - sessionId: {}, duration: {}초",
+                session.getSessionId(), String.format("%.2f", analysisResult.getTotalDurationSeconds()));
 
         // 2. SessionWindow 리스트 생성 및 저장
         saveSessionWindows(session, analysisResult.getWindows());
         log.info("  • SessionWindow {} 개 저장 완료", analysisResult.getWindows().size());
 
-        // 3. 공백 감지 (2.5초 이상)
-        SilenceDetectionService.SilenceStatistics silenceStats = detectSilences(session.getAudioUrl());
-        if (silenceStats.isSuccess()) {
-            log.info("  • 공백 감지 완료 - count: {}, totalDuration: {}초",
-                    silenceStats.getSilenceCount(), silenceStats.getTotalSilenceDuration());
-        } else {
-            log.warn("  • 공백 감지 실패 - 기본값 적용 (count=0, score=100)");
-        }
-
-        // 4. Feedback 계산 및 저장 (공백 정보 포함)
-        Feedback feedback = calculateAndSaveFeedback(session, analysisResult.getWindows(), silenceStats);
-        log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}, silenceScore: {}",
-                feedback.getTotalScore(), feedback.getGrade(), feedback.getSilenceScore());
+        // 3. Feedback 계산 및 저장
+        Feedback feedback = calculateAndSaveFeedback(session, analysisResult);
+        log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}",
+                feedback.getTotalScore(), feedback.getGrade());
 
         log.info("✅ 분석 결과 업데이트 완료 - sessionId: {}", session.getSessionId());
     }
@@ -113,23 +104,17 @@ public class AnalysisResultService {
     /**
      * PracticeSession 엔티티 생성
      */
-    private PracticeSession createPracticeSession(Long projectId, List<WindowDto> windows, double totalDuration) {
+    private PracticeSession createPracticeSession(Long projectId, AudioAnalysisService.AnalysisResult analysisResult) {
         // Project 조회
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. projectId: " + projectId));
 
-        // 전체 STT 텍스트 합치기
-        String fullText = windows.stream()
-                .map(WindowDto::getTranscript)
-                .reduce((a, b) -> a + " " + b)
-                .orElse("");
-
         // Builder 패턴으로 생성
         return PracticeSession.builder()
                 .project(project)
-                .sttText(fullText)
+                .sttText(analysisResult.getFullSttText())
                 .practicedAt(LocalDateTime.now())
-                .durationSeconds(totalDuration) // 소수점 그대로 저장
+                .durationSeconds(analysisResult.getTotalDurationSeconds())
                 .audioUrl(null) // 오디오 파일 저장 안 함
                 .build();
     }
@@ -158,30 +143,55 @@ public class AnalysisResultService {
                 String fillerJson = objectMapper.writeValueAsString(windowDto.getFillers());
                 window.setFillerCounts(fillerJson);
             } catch (Exception e) {
-                log.warn("필러 카운트 JSON 변환 실패 - window {}", index, e);
+                // 샘플 정보 수집(보안상 전체는 남기지 않음)
+                String transcriptSample = windowDto.getTranscript() != null
+                        ? windowDto.getTranscript().substring(0, Math.min(120, windowDto.getTranscript().length()))
+                        : "";
+                String fillerSample = (windowDto.getFillers() != null && !windowDto.getFillers().isEmpty())
+                        ? windowDto.getFillers().keySet().stream().limit(5).toList().toString()
+                        : "[]";
+
+                log.warn(
+                        "필러 카운트 JSON 변환 실패 - sessionId={}, windowIndex={}, start={}, end={}, transcriptSample={}, fillerSample={}",
+                        session != null ? session.getSessionId() : null,
+                        index,
+                        windowDto.getStartSec(),
+                        windowDto.getEndSec(),
+                        transcriptSample,
+                        fillerSample,
+                        e);
+
                 window.setFillerCounts("{}");
             }
 
-            windowRepository.save(window);
+            try {
+                windowRepository.save(window);
+            } catch (Exception e) {
+                // 저장 실패 시에도 루프는 계속되어야 함
+                log.error(
+                        "SessionWindow 저장 실패 - sessionId={}, windowIndex={}, start={}, end={}, status={}, errorMessage={}",
+                        session != null ? session.getSessionId() : null,
+                        index,
+                        windowDto.getStartSec(),
+                        windowDto.getEndSec(),
+                        windowDto.getStatus(),
+                        windowDto.getErrorMessage(),
+                        e);
+            }
             index++;
         }
     }
 
     /**
      * Feedback 계산 및 저장
-     * TODO: 점수 계산 로직 개선 필요
+     * AudioAnalysisService에서 이미 분석된 결과를 사용
      */
-    private Feedback calculateAndSaveFeedback(PracticeSession session, List<WindowDto> windows) {
-        return calculateAndSaveFeedback(session, windows, null);
-    }
-
-    /**
-     * Feedback 계산 및 저장 (공백 정보 포함)
-     */
-    private Feedback calculateAndSaveFeedback(PracticeSession session, List<WindowDto> windows,
-            SilenceDetectionService.SilenceStatistics silenceStats) {
+    private Feedback calculateAndSaveFeedback(PracticeSession session,
+            AudioAnalysisService.AnalysisResult analysisResult) {
         Feedback feedback = new Feedback();
-        feedback.setPracticeSessionId(session);
+        feedback.setPracticeSession(session);
+
+        List<WindowDto> windows = analysisResult.getWindows();
 
         // 성공한 윈도우만 필터링
         List<WindowDto> successWindows = windows.stream()
@@ -191,70 +201,46 @@ public class AnalysisResultService {
         if (successWindows.isEmpty()) {
             // 모든 윈도우가 실패한 경우 기본값
             log.warn("모든 윈도우 분석 실패 - 기본 피드백 저장");
-            feedback.setSpmScore(0);
-            feedback.setFillerScore(0);
-            feedback.setRepeatScore(0);
-            feedback.setTotalScore(0);
-            feedback.setGrade("F");
-
-            // 공백 정보 (있으면 설정)
-            if (silenceStats != null) {
-                feedback.setSilenceCount(silenceStats.getSilenceCount());
-                feedback.setTotalSilenceDuration(silenceStats.getTotalSilenceDuration());
-                feedback.setSilenceScore(0);
-                feedback.setSilenceAnalysisSuccess(silenceStats.isSuccess());
-            }
-
+            setDefaultFeedback(feedback);
             return feedbackRepository.save(feedback);
         }
 
-        // SPM 점수 평균 계산 (성공한 윈도우만)
+        // 1. SPM 점수 평균 계산 (성공한 윈도우만)
         double avgSpmScore = successWindows.stream()
                 .mapToInt(WindowDto::getSpmScore)
                 .average()
                 .orElse(0.0);
         feedback.setSpmScore((int) Math.round(avgSpmScore));
 
-        // 필러 점수 계산 (성공한 윈도우만)
+        // 2. 필러 점수 계산 (성공한 윈도우만)
         int totalFillers = successWindows.stream()
                 .mapToInt(w -> w.getFillers().values().stream()
                         .mapToInt(Integer::intValue)
                         .sum())
                 .sum();
-        // 간단한 공식: 100 - (필러개수 * 2), 최소 0점
         int fillerScore = Math.max(0, 100 - (totalFillers * 2));
         feedback.setFillerScore(fillerScore);
 
-        // Repeat 점수 (현재 분석 안 함 - 임시로 0)
-        feedback.setRepeatScore(0);
+        // 3. 반복 점수 (AudioAnalysisService에서 이미 분석됨)
+        int repeatScore = getRepeatScore(analysisResult);
+        feedback.setRepeatScore(repeatScore);
 
-        // 공백 점수 계산 (2.5초 이상 공백 기준)
-        int silenceScore = 100;
-        if (silenceStats != null) {
-            feedback.setSilenceCount(silenceStats.getSilenceCount());
-            feedback.setTotalSilenceDuration(silenceStats.getTotalSilenceDuration());
-            feedback.setSilenceAnalysisSuccess(silenceStats.isSuccess());
+        // 4. 공백 점수 (AudioAnalysisService에서 이미 분석됨)
+        int silenceScore = setSilenceInfo(feedback, analysisResult);
 
-            // 성공한 경우만 점수 계산
-            if (silenceStats.isSuccess()) {
-                silenceScore = Math.max(0, 100 - (silenceStats.getSilenceCount() * 10));
-            } else {
-                // 실패한 경우 만점 처리 (불이익 없음)
-                silenceScore = 100;
-            }
-            feedback.setSilenceScore(silenceScore);
-        } else {
-            feedback.setSilenceCount(0);
-            feedback.setTotalSilenceDuration(0.0);
-            feedback.setSilenceScore(100);
-            feedback.setSilenceAnalysisSuccess(false);
-        }
+        // 5. 정확도 점수 (대본 필요 - 여기서 분석)
+        int accuracyScore = analyzeAndSetAccuracy(session, analysisResult.getFullSttText(), feedback);
 
-        // 총점 계산 (SPM 40% + Filler 30% + Silence 30%)
-        int totalScore = (int) Math.round(avgSpmScore * 0.4 + fillerScore * 0.3 + silenceScore * 0.3);
+        // 6. 총점 계산 (SPM 20% + Filler 15% + Repeat 15% + Silence 15% + Accuracy 35%)
+        int totalScore = (int) Math.round(
+                avgSpmScore * 0.2 +
+                        fillerScore * 0.15 +
+                        repeatScore * 0.15 +
+                        silenceScore * 0.15 +
+                        accuracyScore * 0.35);
         feedback.setTotalScore(totalScore);
 
-        // 등급 계산
+        // 7. 등급 계산
         String grade = calculateGrade(totalScore);
         feedback.setGrade(grade);
 
@@ -262,96 +248,147 @@ public class AnalysisResultService {
     }
 
     /**
-     * 오디오 파일에서 공백 감지
+     * 기본 피드백 값 설정 (모든 윈도우 실패 시)
      */
-    private SilenceDetectionService.SilenceStatistics detectSilences(String audioUrl) {
-        if (audioUrl == null || audioUrl.isEmpty()) {
-            log.warn("audioUrl이 없어 공백 감지 생략");
-            return createEmptyStatistics();
+    private void setDefaultFeedback(Feedback feedback) {
+        feedback.setSpmScore(0);
+        feedback.setFillerScore(0);
+        feedback.setRepeatScore(0);
+        feedback.setSilenceScore(0);
+        feedback.setSilenceCount(0);
+        feedback.setTotalSilenceDuration(0.0);
+        feedback.setSilenceAnalysisSuccess(false);
+        feedback.setAccuracyScore(0);
+        feedback.setTotalScore(0);
+        feedback.setGrade("F");
+    }
+
+    /**
+     * 반복 점수 추출
+     */
+    private int getRepeatScore(AudioAnalysisService.AnalysisResult analysisResult) {
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analysisResult.getRepetitionResult();
+
+        if (repetitionResult != null && repetitionResult.isSuccess()) {
+            int score = repetitionResult.getRepetitionScore();
+            log.info("  • 반복 점수: {} (N-gram: {})",
+                    score,
+                    repetitionResult.getNGramPatterns().size());
+            return score;
         }
 
+        log.warn("  • 반복 분석 결과 없음 - 기본값 100점 적용");
+        return 100; // 기본값: 만점 (불이익 없음)
+    }
+
+    /**
+     * 공백 정보 설정 및 점수 반환
+     */
+    private int setSilenceInfo(Feedback feedback, AudioAnalysisService.AnalysisResult analysisResult) {
+        SilenceDetectionService.SilenceStatistics silenceStats = analysisResult.getSilenceStats();
+
+        if (silenceStats != null) {
+            feedback.setSilenceCount(silenceStats.getSilenceCount());
+            feedback.setTotalSilenceDuration(silenceStats.getTotalSilenceDuration());
+            feedback.setSilenceAnalysisSuccess(silenceStats.isSuccess());
+
+            if (silenceStats.isSuccess()) {
+                int score = Math.max(0, 100 - (silenceStats.getSilenceCount() * 10));
+                feedback.setSilenceScore(score);
+                log.info("  • 공백 점수: {} (횟수: {}, 총 {}초)",
+                        score, silenceStats.getSilenceCount(),
+                        String.format("%.2f", silenceStats.getTotalSilenceDuration()));
+                return score;
+            }
+        }
+
+        // 기본값 설정
+        feedback.setSilenceCount(0);
+        feedback.setTotalSilenceDuration(0.0);
+        feedback.setSilenceScore(100);
+        feedback.setSilenceAnalysisSuccess(false);
+        log.warn("  • 공백 분석 결과 없음 - 기본값 100점 적용");
+        return 100;
+    }
+
+    /**
+     * 정확도 분석 및 설정
+     */
+    private int analyzeAndSetAccuracy(PracticeSession session, String sttText, Feedback feedback) {
         try {
-            // 1. 오디오 파일 경로 추출
-            String filePath = convertUrlToFilePath(audioUrl);
-
-            // 파일 존재 여부 확인
-            java.io.File file = new java.io.File(filePath);
-            if (!file.exists()) {
-                log.warn("오디오 파일이 존재하지 않음: {}", filePath);
-                return createEmptyStatistics();
+            // 1. 프로젝트로 발표 파일 조회
+            if (session.getProject() == null) {
+                log.info("  • 프로젝트 정보 없음 - 정확도 분석 생략");
+                return 100;
             }
 
-            // 2. WAV 변환
-            AudioProcessingService.AudioFile audioFile = audioProcessingService.convertToWav(filePath);
-            if (audioFile == null || audioFile.getFile() == null) {
-                log.warn("WAV 변환 결과가 null");
-                return createEmptyStatistics();
+            Optional<com.pres.pres_server.domain.PresentationFile> presentationFileOpt = presentationFileRepository
+                    .findByProject(session.getProject());
+
+            if (presentationFileOpt.isEmpty()) {
+                log.info("  • 발표 파일 없음 - 정확도 분석 생략");
+                return 100;
             }
 
-            // 3. Whisper API 호출 (timestamp 포함)
-            WhisperService.TranscriptionResult result = whisperService.transcribeWithTimestamps(audioFile.getFile(),
-                    true);
+            Long fileId = presentationFileOpt.get().getFileId();
 
-            // 4. segments 검증
-            if (result == null || result.getSegments() == null || result.getSegments().isEmpty()) {
-                log.warn("Whisper segments가 비어있어 공백 감지 불가");
-                return createEmptyStatistics();
+            // 2. 큐카드 전체 조회
+            List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+
+            if (cueCards.isEmpty()) {
+                log.info("  • 큐카드 없음 - 정확도 분석 생략");
+                return 100;
             }
 
-            // 5. 공백 감지
-            List<SilenceDetectionService.SilenceInterval> silences = silenceDetectionService
-                    .detectSilences(result.getSegments());
+            // 3. 모든 큐카드 내용을 합쳐서 전체 대본 생성
+            String fullScript = cueCards.stream()
+                    .map(CueCard::getContent)
+                    .filter(content -> content != null && !content.trim().isEmpty())
+                    .reduce((a, b) -> a + " " + b)
+                    .orElse("");
 
-            // 6. 통계 계산
-            return silenceDetectionService.calculateStatistics(silences);
+            if (fullScript.isEmpty() || sttText == null || sttText.isEmpty()) {
+                log.warn("  • 대본 또는 STT 텍스트 비어있음 - 정확도 분석 생략");
+                return 100;
+            }
 
-        } catch (java.io.IOException e) {
-            log.error("파일 처리 중 오류 발생: {}", e.getMessage());
-            return createEmptyStatistics();
-        } catch (InterruptedException e) {
-            log.error("오디오 변환 중단됨: {}", e.getMessage());
-            Thread.currentThread().interrupt(); // Interrupted 상태 복원
-            return createEmptyStatistics();
-        } catch (IllegalArgumentException e) {
-            log.error("잘못된 파라미터: {}", e.getMessage());
-            return createEmptyStatistics();
+            // 4. 정확도 분석 수행
+            ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = scriptAccuracyService
+                    .analyzeAccuracy(fullScript, sttText);
+
+            if (accuracyResult.isSuccess()) {
+                int score = accuracyResult.getAccuracyScore();
+                feedback.setScriptSimilarity(accuracyResult.getScriptSimilarity());
+
+                // 누락된 키워드를 JSON 배열 형식으로 저장
+                try {
+                    String missingKeywordsJson = objectMapper.writeValueAsString(
+                            accuracyResult.getMissingKeywords());
+                    feedback.setMissingKeywords(missingKeywordsJson);
+                } catch (Exception e) {
+                    log.warn("누락 키워드 JSON 변환 실패", e);
+                    feedback.setMissingKeywords("[]");
+                }
+
+                log.info("  • 정확도 점수: {} (유사도: {}, 키워드 매칭: {}/{})",
+                        score,
+                        String.format("%.2f", accuracyResult.getScriptSimilarity()),
+                        accuracyResult.getMatchedKeywordCount(),
+                        accuracyResult.getTotalKeywordCount());
+                return score;
+            } else {
+                log.warn("  • 정확도 분석 실패 - 기본값 100점 적용");
+                return 100;
+            }
+
         } catch (Exception e) {
-            log.error("공백 감지 중 예상치 못한 오류: {}", e.getMessage(), e);
-            return createEmptyStatistics();
+            log.error("  • 정확도 분석 중 오류 발생 - 기본값 100점 적용", e);
+            return 100;
         }
-    }
-
-    /**
-     * 빈 공백 통계 객체 생성
-     */
-    private SilenceDetectionService.SilenceStatistics createEmptyStatistics() {
-        return SilenceDetectionService.SilenceStatistics.builder()
-                .silenceCount(0)
-                .totalSilenceDuration(0.0)
-                .averageSilenceDuration(0.0)
-                .longestSilence(0.0)
-                .success(false) // 실패했음을 명시
-                .build();
-    }
-
-    /**
-     * URL을 파일 경로로 변환
-     * TODO: FileUploadService에 실제 구현 필요
-     */
-    private String convertUrlToFilePath(String audioUrl) {
-        // 임시: URL이 파일 경로라고 가정 (실제로는 URL → 파일 시스템 경로 변환 로직 필요)
-        // 예: http://localhost:8080/uploads/abc.m4a → /path/to/uploads/abc.m4a
-        if (audioUrl.startsWith("http")) {
-            // URL에서 파일명 추출
-            String filename = audioUrl.substring(audioUrl.lastIndexOf("/") + 1);
-            return "uploads/" + filename; // 실제 uploads 디렉토리 경로로 변경 필요
-        }
-        return audioUrl;
     }
 
     /**
      * 점수를 기반으로 등급 계산
-     * TODO: 등급 기준 개선 필요
      */
     private String calculateGrade(int totalScore) {
         if (totalScore >= 90)
