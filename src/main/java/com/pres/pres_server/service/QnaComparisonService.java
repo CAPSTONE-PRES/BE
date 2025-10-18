@@ -11,10 +11,13 @@ import com.pres.pres_server.dto.qna.*;
 import com.pres.pres_server.repository.*;
 import com.pres.pres_server.service.WhisperService;
 import com.pres.pres_server.service.file.GenerateQnaService;
+import com.pres.pres_server.service.analyse.TextAnalysisUtils;
 
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.ArrayList;
 
 //사용자 답변과 모범 답변 비교 및 피드백 생성
 @Slf4j
@@ -216,32 +219,57 @@ public class QnaComparisonService {
     }
 
     /**
-     * 코사인 유사도 계산 (OpenAI Embeddings API 사용)
+     * 코사인 유사도 계산
+     * 의미론적 유사도 계산 (AI 우선, 폴백: Levenshtein)
+     * TextAnalysisUtils의 calculateSemanticSimilarity() 사용
      */
     private float calculateCosineSimilarity(String text1, String text2) {
-        // TODO: OpenAI Embeddings API 호출
-        // 1. text1과 text2를 각각 임베딩 벡터로 변환
-        // 2. 코사인 유사도 계산
-        // 임시로 0.85 반환
-        return 0.85f;
+        // AI 기반 의미론적 유사도 계산 (또는 Levenshtein 폴백)
+        double similarity = TextAnalysisUtils.calculateSemanticSimilarity(text1, text2);
+
+        return (float) similarity;
     }
 
     /**
      * 키워드 재현율 계산
+     * TextAnalysisUtils의 키워드 매칭 기능 사용
      */
     private float calculateKeywordRecall(String userAnswer, String idealAnswer) {
-        // TODO: 키워드 추출 및 매칭
-        // 임시로 0.75 반환
-        return 0.75f;
+        // 1. 텍스트 정규화
+        String normalized1 = TextAnalysisUtils.normalizeText(userAnswer);
+        String normalized2 = TextAnalysisUtils.normalizeText(idealAnswer);
+
+        // 2. 단어 토큰화
+        List<String> userWords = TextAnalysisUtils.tokenizeWords(normalized1);
+        List<String> idealWords = TextAnalysisUtils.tokenizeWords(normalized2);
+
+        // 3. 키워드 추출
+        Set<String> userKeywords = TextAnalysisUtils.extractKeywords(userWords);
+        Set<String> idealKeywords = TextAnalysisUtils.extractKeywords(idealWords);
+
+        // 4. 키워드 매칭률 계산
+        double matchRate = TextAnalysisUtils.calculateKeywordMatchRate(idealKeywords, userKeywords);
+
+        return (float) matchRate;
     }
 
     /**
-     * 커버리지 계산
+     * 커버리지 계산 (이상적 답변의 내용을 얼마나 커버했는지)
+     * 단어 수 기반 간단한 계산
      */
     private float calculateCoverage(String userAnswer, String idealAnswer) {
-        // TODO: 내용 커버리지 계산
-        // 임시로 0.60 반환
-        return 0.60f;
+        List<String> userWords = TextAnalysisUtils.tokenizeWords(
+                TextAnalysisUtils.normalizeText(userAnswer));
+        List<String> idealWords = TextAnalysisUtils.tokenizeWords(
+                TextAnalysisUtils.normalizeText(idealAnswer));
+
+        if (idealWords.isEmpty())
+            return 0.0f;
+
+        // 사용자 답변 길이 / 이상적 답변 길이 (최대 1.0)
+        double coverage = Math.min(1.0, (double) userWords.size() / idealWords.size());
+
+        return (float) coverage;
     }
 
     /**
@@ -259,10 +287,24 @@ public class QnaComparisonService {
 
     /**
      * 부족한 키워드 추출
+     * TextAnalysisUtils의 누락 키워드 찾기 기능 사용
      */
     private List<String> extractMissingKeywords(String userAnswer, String idealAnswer) {
-        // TODO: 모범 답변의 키워드 중 사용자 답변에 없는 것 추출
-        return List.of("딥러닝", "자연어 처리"); // 임시
+        // 1. 텍스트 정규화 및 토큰화
+        String normalized1 = TextAnalysisUtils.normalizeText(userAnswer);
+        String normalized2 = TextAnalysisUtils.normalizeText(idealAnswer);
+
+        List<String> userWords = TextAnalysisUtils.tokenizeWords(normalized1);
+        List<String> idealWords = TextAnalysisUtils.tokenizeWords(normalized2);
+
+        // 2. 키워드 추출
+        Set<String> userKeywords = TextAnalysisUtils.extractKeywords(userWords);
+        Set<String> idealKeywords = TextAnalysisUtils.extractKeywords(idealWords);
+
+        // 3. 누락된 키워드 찾기
+        Set<String> missing = TextAnalysisUtils.findMissingKeywords(idealKeywords, userKeywords);
+
+        return new ArrayList<>(missing);
     }
 
     /**

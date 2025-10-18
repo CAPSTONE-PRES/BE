@@ -49,11 +49,11 @@ public class PracticeQnaService {
                         "프로젝트에 발표 파일이 없습니다. projectId: " + project.getProjectId()));
 
         Long fileId = presentationFile.getFileId();
-        log.info("📄 발표 파일 ID: {}", fileId);
+        log.info(" 발표 파일 ID: {}", fileId);
 
         // 3. GenerateQnaService를 통해 순차적으로 질문 조회
         QnaQuestionDto question = generateQnaService.getQuestionByIndex(fileId, index);
-        log.info("✅ 질문 조회 완료 - index: {}, questionId: {}", index, question.getQuestionId());
+        log.info(" 질문 조회 완료 - index: {}, questionId: {}", index, question.getQuestionId());
 
         return question;
     }
