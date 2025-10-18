@@ -17,6 +17,7 @@ import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 import com.pres.pres_server.service.analyse.AudioAnalysisService;
 import com.pres.pres_server.service.analyse.SilenceDetectionService;
+import com.pres.pres_server.service.analyse.dto.SlideTransition;
 import com.pres.pres_server.service.file.FileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,7 +58,7 @@ public class PracticeSessionService {
      */
     @Transactional
     public PracticeSessionStartDto startSession(Long projectId) {
-        log.info("📝 연습 세션 시작 - projectId: {}", projectId);
+        log.info("연습 세션 시작 - projectId: {}", projectId);
 
         // 1. 프로젝트 존재 여부 확인
         Project project = projectRepository.findById(projectId)
@@ -70,7 +71,7 @@ public class PracticeSessionService {
                 .build();
 
         session = practiceSessionRepository.save(session);
-        log.info("✅ PracticeSession 생성 완료 - sessionId: {}", session.getSessionId());
+        log.info("PracticeSession 생성 완료 - sessionId: {}", session.getSessionId());
 
         // 3. PresentationFile 조회 (ExtractedText와 함께 fetch join으로 조회)
         PresentationFile presentationFile = presentationFileRepository.findByProjectWithExtractedText(project)
@@ -82,13 +83,13 @@ public class PracticeSessionService {
         }
 
         List<String> slideTexts = presentationFile.getExtractedText().getSlideTexts();
-        log.info("📄 PresentationFile 조회 완료 - fileId: {}, slides: {} 개",
+        log.info(" PresentationFile 조회 완료 - fileId: {}, slides: {} 개",
                 presentationFile.getFileId(),
                 slideTexts != null ? slideTexts.size() : 0);
 
         // 5. CueCard 목록 조회 (파일에 연결된 큐카드들)
-        List<CueCard> cueCards = cueCardRepository.findByPresentationFile(presentationFile);
-        log.info("📇 CueCard 조회 완료 - {} 개", cueCards.size());
+        List<CueCard> cueCards = cueCardRepository.findByPresentationFileOrderBySlideNumberAscModeAscSectionNumberAsc(presentationFile);
+        log.info("CueCard 조회 완료 - {} 개", cueCards.size());
 
         // 6. slideNumber를 key로 하는 Map 생성 (빠른 조회)
         Map<Integer, CueCard> cueCardMap = cueCards.stream()
@@ -105,7 +106,7 @@ public class PracticeSessionService {
                 PracticeSessionStartDto.SlideInfo slideInfo = PracticeSessionStartDto.SlideInfo.builder()
                         .pageNumber(pageNumber)
                         .slideText(slideTexts.get(i))
-                        .imageUrl(generateSlideImageUrl(presentationFile, pageNumber)) // TODO: 이미지 URL 생성 방식 결정 필요
+                        .imageUrl(generatePdfUrl(presentationFile, pageNumber)) // pdf url 전달
                         .cueCard(cueCard != null ? cueCard.getContent() : null)
                         .qrUrl(cueCard != null ? cueCard.getQrUrl() : null)
                         .build();
@@ -132,7 +133,7 @@ public class PracticeSessionService {
      * @return 완료된 세션 ID
      */
     @Transactional
-    public Long endSession(Long sessionId, MultipartFile audioFile) throws Exception {
+    public Long endSession(Long sessionId, MultipartFile audioFile, String slideTransitionsJson) throws Exception {
         log.info("🎬 연습 세션 종료 시작 - sessionId: {}, audioFile: {}",
                 sessionId, audioFile.getOriginalFilename());
 
@@ -158,7 +159,22 @@ public class PracticeSessionService {
 
         // 5. 오디오 분석 및 결과 저장 (별도 트랜잭션)
         try {
-            processAudioAnalysisAndSaveResult(sessionId, fileInfo.getFilePath());
+            // parse optional slide transitions JSON (if provided)
+            List<SlideTransition> transitions = null;
+            if (slideTransitionsJson != null && !slideTransitionsJson.isBlank()) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.core.type.TypeReference<List<SlideTransition>> tr = new com.fasterxml.jackson.core.type.TypeReference<>() {
+                    };
+                    transitions = mapper.readValue(slideTransitionsJson, tr);
+                    log.info("🔖 슬라이드 전환 타임스탬프 파싱 완료 - count={}", transitions.size());
+                } catch (Exception pe) {
+                    log.warn("⚠️ slideTransitions JSON 파싱 실패, 무시하고 진행함 - error={}", pe.getMessage());
+                    transitions = null;
+                }
+            }
+
+            processAudioAnalysisAndSaveResult(sessionId, fileInfo.getFilePath(), transitions);
         } catch (Exception e) {
             log.error("❌ 오디오 분석 실패 - sessionId: {}, error: {}", sessionId, e.getMessage(), e);
             // 분석 실패 시 저장된 파일 정리
@@ -182,15 +198,18 @@ public class PracticeSessionService {
      * @param filePath  오디오 파일 경로
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    protected void processAudioAnalysisAndSaveResult(Long sessionId, String filePath) throws Exception {
+    protected void processAudioAnalysisAndSaveResult(Long sessionId, String filePath,
+            List<SlideTransition> slideTransitions) throws Exception {
         log.info("🔍 오디오 분석 시작 - sessionId: {}, filePath: {}", sessionId, filePath);
 
         // 1. 세션 다시 조회 (새로운 트랜잭션이므로)
         PracticeSession session = practiceSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다. sessionId: " + sessionId));
 
-        // 2. 오디오 분석
-        AudioAnalysisService.AnalysisResult analysisResult = audioAnalysisService.analyzeAudio(filePath);
+        // 2. 오디오 분석 (projectId 전달)
+        Long projectId = session.getProject() != null ? session.getProject().getProjectId() : null;
+        AudioAnalysisService.AnalysisResult analysisResult = audioAnalysisService.analyzeAudio(filePath, projectId,
+                slideTransitions);
         log.info("✅ 오디오 분석 완료 - sessionId: {}, windows: {}",
                 sessionId, analysisResult.getWindows().size());
 
@@ -211,7 +230,7 @@ public class PracticeSessionService {
         log.info("📊 피드백 조회 시작 - sessionId: {}", sessionId);
 
         // 1. 발표 피드백 조회
-        Feedback feedback = feedbackRepository.findByPracticeSessionIdSessionId(sessionId)
+        Feedback feedback = feedbackRepository.findByPracticeSessionSessionId(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("피드백을 찾을 수 없습니다. sessionId: " + sessionId));
 
         log.info("✅ 피드백 조회 완료 - sessionId: {}, grade: {}", sessionId, feedback.getGrade());
@@ -247,20 +266,9 @@ public class PracticeSessionService {
                 .build();
     }
 
-    /**
-     * 슬라이드 이미지 URL 생성 (TODO: 실제 구현 필요)
-     * 
-     * @param presentationFile 발표 파일
-     * @param pageNumber       페이지 번호
-     * @return 이미지 URL
-     */
-    private String generateSlideImageUrl(PresentationFile presentationFile, int pageNumber) {
-        // TODO: 실제 이미지 저장 방식에 따라 구현 필요
-        // 옵션 1: PDF를 이미지로 변환하여 저장된 경로 반환
-        // 옵션 2: 프론트에서 PDF 렌더링하도록 PDF URL + 페이지 번호 반환
-        // 옵션 3: 별도 이미지 저장 테이블 조회
+    private String generatePdfUrl(PresentationFile presentationFile, int pageNumber) {
 
-        // 임시: fileUrl을 그대로 반환 (프론트에서 PDF 렌더링 가정)
+        // fileUrl을 그대로 반환 (프론트에서 PDF 렌더링)
         return presentationFile.getFileUrl() + "#page=" + pageNumber;
     }
 
