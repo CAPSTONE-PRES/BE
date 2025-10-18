@@ -2,13 +2,15 @@ package com.pres.pres_server.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.annotation.CreatedDate;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(
         name = "presentation_images",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"file_id", "page_no"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"file_id", "page_number"})
 )
 @Getter
 @Setter
@@ -39,6 +41,7 @@ public class PresentationImage {
     @Column(nullable = false)
     private Long size;
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
 }
