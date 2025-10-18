@@ -1,6 +1,7 @@
 package com.pres.pres_server.dto.file;
 
 import java.util.List;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -11,5 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CueCardDto {
     private Long fileId;
-    private List<String> cueCards;
+    private List<CueSlideDto> slides; //슬라이드별 큐카드
+    private Map<Integer, String> errors; //실패한 슬라이드 -> 에러메세지
 }
