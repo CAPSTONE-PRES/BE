@@ -12,5 +12,5 @@ public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
     /**
      * 특정 세션의 피드백 조회
      */
-    Optional<Feedback> findByPracticeSessionIdSessionId(Long sessionId);
+    Optional<Feedback> findByPracticeSessionSessionId(Long sessionId);
 }
