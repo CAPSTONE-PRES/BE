@@ -68,6 +68,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleException(Exception ex) {
+        log.error("서버 오류 발생:", ex);
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", "서버 내부 오류 발생");
+        body.put("details", ex.getMessage()); // dev에서만 노출하고 싶다면 분기
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", ex.getMessage()));
     }
