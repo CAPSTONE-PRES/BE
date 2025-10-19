@@ -1,11 +1,19 @@
 package com.pres.pres_server.service.file;
 
-import java.util.*;
-import java.util.stream.Collectors;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pres.pres_server.domain.CueCard;
+import com.pres.pres_server.domain.CueCard.Mode;
+import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.dto.file.CueBasicDto;
+import com.pres.pres_server.dto.file.CueCardDto;
 import com.pres.pres_server.dto.file.CueSlideDto;
+import com.pres.pres_server.dto.file.ExtractedTextDto;
+import com.pres.pres_server.repository.CueCardRepository;
+import com.pres.pres_server.repository.PresentationFileRepository;
+import org.springframework.transaction.annotation.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -14,17 +22,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import com.pres.pres_server.dto.file.CueCardDto;
-import com.pres.pres_server.dto.file.ExtractedTextDto;
-import com.pres.pres_server.domain.CueCard;
-import com.pres.pres_server.domain.CueCard.Mode;
-import com.pres.pres_server.domain.PresentationFile;
-import com.pres.pres_server.repository.CueCardRepository;
-import com.pres.pres_server.repository.PresentationFileRepository;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +44,7 @@ public class GenerateCueService {
 
     // ======================= Public APIs =======================
 
+    @Transactional
     public CueCardDto generateCueCards(Long fileId, int maxSections) {
         if (fileId == null || fileId <= 0) {
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
@@ -93,6 +93,9 @@ public class GenerateCueService {
         }
         List<CueCard> entities =
                 cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+        //qr slug/url 세팅, 저장 없음
+        generateQrMeta(entities);
+
         log.info("완료: 총 {}슬라이드 중 {}개 실패", slides.size(), failed.size());
         return toDto(fileId, entities, slideErrors);
     }
@@ -107,7 +110,37 @@ public class GenerateCueService {
         return toDto(fileId, cards, Collections.emptyMap());
     }
 
-    /** 엔티티 → 구조화 DTO 변환 */
+    private void generateQrMeta(List<CueCard> cueCards) {
+        //슬라이드별로 그룹핑
+        Map<Integer, List<CueCard>> bySlide = cueCards.stream()
+                .collect(Collectors.groupingBy(CueCard::getSlideNumber));
+
+        for  (Map.Entry<Integer, List<CueCard>> entry : bySlide.entrySet()) {
+            List<CueCard> list = entry.getValue();
+            // 슬라이드의 대표(ADVANCED) 1건만 QR 부여
+            Optional<CueCard> advOpt = list.stream()
+                    .filter(c -> c.getMode() == Mode.ADVANCED)
+                    .findFirst();
+            if (advOpt.isEmpty()) continue; // 없다면 패스(정책에 따라 생성해도 됨)
+
+            CueCard adv = advOpt.get();
+            if (adv.getQrSlug() != null && !adv.getQrSlug().isBlank()) continue;
+
+            String slug;
+            int tries = 0;
+            do {
+                slug = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+                tries++;
+            } while (cueCardRepository.findByQrSlug(slug).isPresent() && tries < 3);
+
+            if (tries >= 3) throw new IllegalStateException("QR slug 충돌 다중 발생");
+
+            adv.setQrSlug(slug);
+            adv.setQrUrl("https://pres.app/cuecard/" + slug);
+        }
+    }
+
+    /** 엔티티 → 구조화 DTO 변환 메서드*/
     private CueCardDto toDto(Long fileId, List<CueCard> entities, Map<Integer, String> slideErrors) {
         Map<Integer, List<CueCard>> bySlide = entities.stream()
                 .collect(Collectors.groupingBy(CueCard::getSlideNumber, TreeMap::new, Collectors.toList()));
@@ -135,12 +168,13 @@ public class GenerateCueService {
             s.setBasic(basic);
 
             // ADVANCED (단일)
-            String adv = items.stream()
+            Optional<CueCard> advOpt = items.stream()
                     .filter(c -> c.getMode() == Mode.ADVANCED)
-                    .map(c -> Optional.ofNullable(c.getContent()).orElse(""))
-                    .findFirst()
-                    .orElse("");
-            s.setAdvanced(adv);
+                    .findFirst();
+
+            s.setAdvanced(advOpt.map(c -> Optional.ofNullable(c.getContent()).orElse("")).orElse(""));
+            s.setQrSlug(advOpt.map(CueCard::getQrSlug).orElse(null));
+            s.setQrUrl(advOpt.map(CueCard::getQrUrl).orElse(null));
 
             slides.add(s);
         }

@@ -1,27 +1,25 @@
 
 package com.pres.pres_server.controller;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import org.springframework.http.ResponseEntity;
-
-import com.pres.pres_server.service.file.ExtractTextService;
-import com.pres.pres_server.service.file.GenerateCueService;
-import com.pres.pres_server.service.file.GenerateQnaService;
-import com.pres.pres_server.service.file.PresentationFileService;
 import com.pres.pres_server.dto.file.CueCardDto;
+import com.pres.pres_server.dto.file.CueSlideDto;
 import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.dto.file.FileUploadDto;
 import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import com.pres.pres_server.dto.qna.QnaListDto;
-
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
+import com.pres.pres_server.service.file.ExtractTextService;
+import com.pres.pres_server.service.file.GenerateCueService;
+import com.pres.pres_server.service.file.GenerateQnaService;
+import com.pres.pres_server.service.file.PresentationFileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Tag(name = "File Controller", description = "파일 관련 API")
@@ -70,7 +68,7 @@ public class FileController {
     }
 
     // 추출한 텍스트를 기반으로 큐카드 생성
-    @Operation(summary = "큐카드 생성", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
+    @Operation(summary = "큐카드,Qr 생성 및 저장", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
     @PostMapping("/generate-cue/{fileId}")
     public ResponseEntity<CueCardDto> generateCue(@PathVariable("fileId") Long fileId,
                                                   @RequestParam(name="maxSections", required =
@@ -157,6 +155,17 @@ public class FileController {
                 .qnaList(qnaListDto)
                 .build();
 
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "qr 조회 시 해당 슬라이드 대본 표시", description = "")
+    @GetMapping("/qr/{slug}")
+    public ResponseEntity<CueSlideDto> getByQrSlug(@PathVariable("slug") String slug) {
+        //TODO: getSlideByQr() : qr slug로 같은 슬라이드에 있는 basic section 수집
+        CueSlideDto response = CueSlideDto.builder()
+                .qrUrl(null)
+                .qrSlug(null)
+                .build();
         return ResponseEntity.ok(response);
     }
 }

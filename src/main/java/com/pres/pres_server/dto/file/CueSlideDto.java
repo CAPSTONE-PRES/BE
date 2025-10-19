@@ -1,11 +1,15 @@
 package com.pres.pres_server.dto.file;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-@Getter @Setter
+@Builder
+@Data @NoArgsConstructor
+@AllArgsConstructor
 public class CueSlideDto {
 
     private int slideNumber;

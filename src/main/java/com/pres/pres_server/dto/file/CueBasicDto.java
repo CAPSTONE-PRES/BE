@@ -1,9 +1,10 @@
 package com.pres.pres_server.dto.file;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter @Setter
+@Data
+@NoArgsConstructor
 public class CueBasicDto {
     private int section;
     private String keyword;
