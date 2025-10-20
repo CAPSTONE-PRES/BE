@@ -34,7 +34,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
@@ -53,6 +55,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/auth")
 @RequiredArgsConstructor
 @SecurityRequirements() // 클래스 전체에서 보안 요구사항 제거
+@Slf4j
 public class AuthController {
 
     private final EmailService emailService;
@@ -113,7 +116,7 @@ public class AuthController {
         return ResponseEntity.ok(new EmailAuthSendResponse("인증 코드 발송 완료"));
     }
 
-    @Operation(summary = "이메일 인증 코드 검증", description = "전송된 이메일 인증 코드를 검증합니다.", security = {
+    @Operation(summary = "이메일 인증 코드 검증 (테스트용)", description = "전송된 이메일 인증 코드를 검증합니다.", security = {
             @SecurityRequirement(name = "") }, // 인증 불필요 명시
             responses = {
                     @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = EmailAuthVerifyResponse.class), examples = @ExampleObject(name = "Successful Verification", value = "{ \"success\": true, \"message\": \"인증 성공\" }"))),
@@ -138,16 +141,23 @@ public class AuthController {
             })
     @PostMapping("/email/signup")
     public ResponseEntity<CreateAccessTokenResponse> signup(@RequestBody @Valid SignupRequest dto) {
-        // 이메일 인증 확인
-        if (!emailService.isVerified(dto.getEmail())) {
+        log.info("sign up 검증 시작");
+        final String email = dto.getEmail().trim();
+        final String code  = dto.getCode().trim();
+
+        // 여기서만 검증
+        if (!emailService.verifyCode(email, code)) {
             return ResponseEntity.badRequest().build();
         }
-        userAuthService.signup(dto);
+
+        //유저 생성 (서비스가 User 반환)
+        User user = userAuthService.signup(dto);
+        log.info("user 생성 완료 :", user.getId());
         // 회원가입 후 accessToken, refreshToken 동시 발급
-        User user = userService.findByEmail(dto.getEmail());
         String refreshToken = tokenService.createRefreshToken(user);
         String accessToken = tokenService.createAccessToken(refreshToken);
         CreateAccessTokenResponse tokenDto = new CreateAccessTokenResponse(accessToken, refreshToken);
+        log.info("token success");
         return ResponseEntity.ok(tokenDto);
     }
 

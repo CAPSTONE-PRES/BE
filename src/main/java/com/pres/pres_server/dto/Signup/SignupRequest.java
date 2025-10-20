@@ -17,4 +17,6 @@ public class SignupRequest {
     private String password;
     @NotBlank
     private String passwordConfirm;
+    @NotBlank
+    private String code;
 }

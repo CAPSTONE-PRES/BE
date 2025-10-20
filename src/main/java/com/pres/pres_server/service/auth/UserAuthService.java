@@ -7,15 +7,20 @@ import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 //회원가입 로직
 //EmailService가 “인증됐는지”만 알려주면, 나머지 “가입 처리”는 UserAuthService가 담당
 
 @RequiredArgsConstructor // final이 붙거나 @NotNull이 붙은 필드의 생성자 추가
 @Service // 빈으로 추가
+@Slf4j
 public class UserAuthService {
 
     private final EmailService emailService;
@@ -23,29 +28,25 @@ public class UserAuthService {
     private final PasswordEncoder passwordEncoder;
 
     // 회원가입
-    public void signup(SignupRequest dto) {
-        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-
-        if (!emailService.isVerified(dto.getEmail())) {
-            throw new IllegalStateException("이메일 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
-        }
-        if (userRepository.findByEmail(dto.getEmail()).isPresent()) {
+    @Transactional
+    public User signup(SignupRequest dto) {
+        log.info("Signup request received");
+        // 전제: 컨트롤러에서 이미 emailService.verifyCode(email, code) 통과함
+        if (userRepository.findByEmail(dto.getEmail()).isPresent())
             throw new IllegalStateException("이미 가입된 이메일입니다.");
-        }
-        if (!dto.getPassword().equals(dto.getPasswordConfirm())) {
+        if (!dto.getPassword().equals(dto.getPasswordConfirm()))
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
-        }
-        if (dto.getPassword().length() < 6) {
+        if (dto.getPassword().length() < 6)
             throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
-        }
-        
+
         User user = User.builder()
                 .email(dto.getEmail())
-                .password(encoder.encode(dto.getPassword()))
+                .password(passwordEncoder.encode(dto.getPassword()))
                 .username(dto.getUsername())
                 .emailVerified(true)
+                .emailVerifiedAt(LocalDateTime.now())
                 .build();
-        userRepository.save(user);
+        return userRepository.save(user);
     }
 
     // 카카오 회원가입
