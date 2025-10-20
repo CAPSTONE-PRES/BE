@@ -7,12 +7,10 @@ import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.dto.file.FileUploadDto;
 import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import com.pres.pres_server.dto.qna.QnaListDto;
-import com.pres.pres_server.service.file.ExtractTextService;
-import com.pres.pres_server.service.file.GenerateCueService;
-import com.pres.pres_server.service.file.GenerateQnaService;
-import com.pres.pres_server.service.file.PresentationFileService;
+import com.pres.pres_server.service.file.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,22 +22,14 @@ import java.util.Map;
 @Slf4j
 @Tag(name = "File Controller", description = "파일 관련 API")
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/files")
 public class FileController {
     private final PresentationFileService presentationFileService;
     private final ExtractTextService extractTextService;
     private final GenerateCueService generateCueService;
     private final GenerateQnaService generateQnaService;
-
-    public FileController(PresentationFileService presentationFileService,
-            ExtractTextService extractTextService,
-            GenerateCueService generateCueService,
-            GenerateQnaService generateQnaService) {
-        this.presentationFileService = presentationFileService;
-        this.extractTextService = extractTextService;
-        this.generateCueService = generateCueService;
-        this.generateQnaService = generateQnaService;
-    }
+    private final CueSlideService cueSlideService;
 
     @Operation(summary = "presentation file 업로드", description = "presentation file을 업로드하고, 파일 ID와 URL을 반환합니다.")
     @PostMapping(value = "/upload", consumes = { "multipart/form-data" })
@@ -158,14 +148,12 @@ public class FileController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "qr 조회 시 해당 슬라이드 대본 표시", description = "")
+    @Operation(summary = "QR로 슬라이드 대본 조회", description = "QR 코드 스캔 시 해당 슬라이드의 BASIC 대본(섹션별 텍스트)만 반환합니다. " +
+            "ADVANCED 대본은 포함되지 않습니다. " +
+            "path variable {slug}는 QR 코드에 포함된 고유 식별자(slug)입니다.")
     @GetMapping("/qr/{slug}")
     public ResponseEntity<CueSlideDto> getByQrSlug(@PathVariable("slug") String slug) {
-        //TODO: getSlideByQr() : qr slug로 같은 슬라이드에 있는 basic section 수집
-        CueSlideDto response = CueSlideDto.builder()
-                .qrUrl(null)
-                .qrSlug(null)
-                .build();
+        CueSlideDto response = cueSlideService.getSlideByQr(slug);
         return ResponseEntity.ok(response);
     }
 }

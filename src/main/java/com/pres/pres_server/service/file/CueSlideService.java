@@ -111,6 +111,38 @@ public class CueSlideService {
         cueCardRepository.save(adv);
     }
 
+    public CueSlideDto getSlideByQr(String slug) {
+        CueCard qrCard = cueCardRepository.findByQrSlug(slug)
+                .orElseThrow(() -> new IllegalArgumentException("QR이 유효하지 않습니다: " + slug));
+
+        Long fileId = qrCard.getPresentationFile().getFileId();
+        int slide = qrCard.getSlideNumber();
+
+        // 같은 슬라이드의 BASIC 전부 조회
+        List<CueCard> basics = cueCardRepository
+                .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide)
+                .stream()
+                .filter(c -> c.getMode() == CueCard.Mode.BASIC)
+                .toList();
+
+        List<CueBasicDto> basicDtos = basics.stream().map(c -> {
+            CueBasicDto dto = new CueBasicDto();
+            dto.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
+            dto.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
+            dto.setText(Optional.ofNullable(c.getContent()).orElse(""));
+            return dto;
+        }).toList();
+
+        return CueSlideDto.builder()
+                .slideNumber(slide)
+                .basic(basicDtos)
+                .advanced(null)
+                .qrSlug(qrCard.getQrSlug()) //null 가능
+                .qrUrl(qrCard.getQrUrl()) //null 가능
+                .build();
+    }
+
+
     private static String safeAdv(String s) {
         if (s == null || s.isBlank()) return "(심화버전 없음)";
         return s.trim();
