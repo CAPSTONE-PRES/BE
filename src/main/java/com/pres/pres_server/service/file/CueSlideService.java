@@ -111,6 +111,7 @@ public class CueSlideService {
         cueCardRepository.save(adv);
     }
 
+    @Transactional(readOnly = true)
     public CueSlideDto getSlideByQr(String slug) {
         CueCard qrCard = cueCardRepository.findByQrSlug(slug)
                 .orElseThrow(() -> new IllegalArgumentException("QR이 유효하지 않습니다: " + slug));
@@ -118,25 +119,34 @@ public class CueSlideService {
         Long fileId = qrCard.getPresentationFile().getFileId();
         int slide = qrCard.getSlideNumber();
 
-        // 같은 슬라이드의 BASIC 전부 조회
-        List<CueCard> basics = cueCardRepository
-                .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide)
-                .stream()
+        // 같은 슬라이드의 모든 큐카드 조회 (BASIC + ADVANCED)
+        List<CueCard> cards = cueCardRepository
+                .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide);
+
+        // BASIC 전용 리스트 변환
+        List<CueBasicDto> basicDtos = cards.stream()
                 .filter(c -> c.getMode() == CueCard.Mode.BASIC)
+                .map(c -> {
+                    CueBasicDto dto = new CueBasicDto();
+                    dto.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
+                    dto.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
+                    dto.setText(Optional.ofNullable(c.getContent()).orElse(""));
+                    return dto;
+                })
                 .toList();
 
-        List<CueBasicDto> basicDtos = basics.stream().map(c -> {
-            CueBasicDto dto = new CueBasicDto();
-            dto.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
-            dto.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
-            dto.setText(Optional.ofNullable(c.getContent()).orElse(""));
-            return dto;
-        }).toList();
+
+        // ADVANCED 텍스트 합치기
+        String advancedText = cards.stream()
+                .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
+                .map(c -> Optional.ofNullable(c.getContent()).orElse(""))
+                .collect(Collectors.joining("\n"));
+
 
         return CueSlideDto.builder()
                 .slideNumber(slide)
                 .basic(basicDtos)
-                .advanced(null)
+                .advanced(advancedText.isBlank() ? null : advancedText)
                 .qrSlug(qrCard.getQrSlug()) //null 가능
                 .qrUrl(qrCard.getQrUrl()) //null 가능
                 .build();
