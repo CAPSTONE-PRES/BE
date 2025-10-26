@@ -10,6 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkspaceInfoDTO {
+    private Long workspaceId;
     private String workspaceName;
     private List<String> workspaceTimeList;  // classtime1~3
     private String workspaceOwnerName;
