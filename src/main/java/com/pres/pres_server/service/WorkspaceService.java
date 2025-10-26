@@ -190,6 +190,7 @@ public class WorkspaceService {
         return workspaces.stream()
                 .map(ws -> {
                     WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
+                    dto.setWorkspaceId(ws.getWorkspaceId());
                     dto.setWorkspaceName(ws.getWorkspaceName());
                     dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
                     dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
