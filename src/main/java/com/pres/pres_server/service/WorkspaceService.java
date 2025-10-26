@@ -1,10 +1,7 @@
 package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
-import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
-import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
-import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
-import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
+import com.pres.pres_server.dto.Workspace.*;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -238,6 +235,29 @@ public class WorkspaceService {
         response.put("workspaceId", workspaceId);
         response.put("status", status ? "즐겨찾기 등록 완료" : "즐겨찾기 해제 완료");
         return response;
+    }
+
+    // 즐겨찾기 목록 불러오기
+    @Transactional(readOnly = true)
+    public List<WorkspaceBookmarkDTO> getBookmarkedWorkspaces(Long userId) {
+
+        // userId로 즐겨찾기된 워크스페이스 조회
+        List<WorkspaceBookmark> bookmarks = workspaceBookmarkRepository.findByUserId(userId);
+
+        return bookmarks.stream().map(b -> {
+            WorkSpace ws = b.getWorkspace();
+
+            List<String> times = new ArrayList<>();
+            if (ws.getClasstime1() != null) times.add(ws.getClasstime1());
+            if (ws.getClasstime2() != null) times.add(ws.getClasstime2());
+            if (ws.getClasstime3() != null) times.add(ws.getClasstime3());
+
+            return new WorkspaceBookmarkDTO(
+                    ws.getWorkspaceId(),
+                    ws.getWorkspaceName(),
+                    times
+            );
+        }).collect(Collectors.toList());
     }
 
 }

@@ -6,6 +6,7 @@ import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
+import com.pres.pres_server.dto.Workspace.WorkspaceBookmarkDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
 import com.pres.pres_server.service.ProjectService;
@@ -135,5 +136,15 @@ public class WorkspaceController {
         Map<String, Object> response = workspaceService.toggleWorkspaceBookmark(workspaceId, user, status);
         return ResponseEntity.ok(response);
     }
+
+    @Operation(summary = "즐겨찾기 워크스페이스 리스트", description = "해당 사용자가 즐겨찾기한 워크스페이스 목록을 반환합니다.")
+    @GetMapping("/heart/list")
+    public ResponseEntity<List<WorkspaceBookmarkDTO>> getBookmarkedWorkspaces(
+            @AuthenticationPrincipal User user) {
+
+        List<WorkspaceBookmarkDTO> response = workspaceService.getBookmarkedWorkspaces(user.getId());
+        return ResponseEntity.ok(response);
+    }
+
 
 }
