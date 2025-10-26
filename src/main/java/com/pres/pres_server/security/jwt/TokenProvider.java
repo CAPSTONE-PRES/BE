@@ -1,5 +1,6 @@
 package com.pres.pres_server.security.jwt;
 
+import com.pres.pres_server.repository.UserRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import java.util.Date;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.security.core.Authentication;
 import java.util.Collections;
@@ -25,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 public class TokenProvider {
 
     private final JwtProperties jwtProperties;
+    private final UserRepository userRepository;
 
     public String generateToken(User user, Duration expiredAt) {
         Date now = new Date();
@@ -63,10 +66,12 @@ public class TokenProvider {
     // 스프링 시큐리티에서 제공하는 객체인 User 클래스 import
     public Authentication getAuthentication(String token) {
         Claims claims = getClaims(token);
-        Set<SimpleGrantedAuthority> authorities = Collections.singleton(new SimpleGrantedAuthority("ROLE_USER"));
-        return new UsernamePasswordAuthenticationToken(
-                new org.springframework.security.core.userdetails.User(claims.getSubject(), "", authorities), token,
-                authorities);
+        Long userId = claims.get("id", Long.class);
+
+        User user =
+                userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found" + userId));
+        return new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
     }
 
     // 토큰 기반으로 유저 id를 가져오는 메서드
