@@ -158,6 +158,7 @@ public class WorkspaceService {
         List<WorkspaceMemberDTO> members = teamMembers.stream()
                 .map(member -> new WorkspaceMemberDTO(
                         member.getMemberId(), // Long
+                        member.getUser().getEmail(),
                         member.getUser().getUsername(),
                         member.getUser().getProfileImageUrl()))
                 .collect(Collectors.toList());

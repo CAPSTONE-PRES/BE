@@ -168,7 +168,7 @@ public class CueCardService {
                     .findByWorkspace_WorkspaceId(cueCard.getPresentationFile().getProject().getWorkspaceId().getWorkspaceId())
                     .stream()
                     .filter(tm -> !checkedUserIds.contains(tm.getUser().getId()))
-                    .map(tm -> new WorkspaceMemberDTO(tm.getMemberId(), tm.getUser().getUsername(), tm.getUser().getProfileImageUrl()))
+                    .map(tm -> new WorkspaceMemberDTO(tm.getMemberId(), tm.getUser().getEmail() ,tm.getUser().getUsername(), tm.getUser().getProfileImageUrl()))
                     .toList();
 
             cueCardDTOs.add(new CueCardUncheckedMemberDTO(cueCard.getCueId(), uncheckedMembers));
