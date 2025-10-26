@@ -5,6 +5,7 @@ import com.pres.pres_server.domain.WorkSpace;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
@@ -14,8 +15,10 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     // 워크스페이스 ID와 유저 ID로 멤버 존재 여부 확인
     boolean existsByWorkspace_WorkspaceIdAndUser_Id(Long workspaceId, Long userId);
 
+    // 워크스페이스 ID 기준으로 멤버 목록 조회
     List<TeamMember> findByWorkspace_WorkspaceId(Long workspaceId);
 
+    // 워크스페이스 삭제 시 멤버 삭제
     void deleteByWorkspace(WorkSpace workspace);
 
 }

@@ -1,25 +1,23 @@
 package com.pres.pres_server.service;
 
-import com.pres.pres_server.domain.TeamMember;
-import com.pres.pres_server.domain.User;
-import com.pres.pres_server.domain.VisitLog;
-import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
-import com.pres.pres_server.repository.TeamMemberRepository;
-import com.pres.pres_server.repository.UserRepository;
-import com.pres.pres_server.repository.VisitLogRepository;
-import com.pres.pres_server.repository.WorkspaceRepository;
+import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,6 +26,7 @@ public class WorkspaceService {
 
     private final WorkspaceRepository workspaceRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final WorkspaceBookmarkRepository workspaceBookmarkRepository;
     private final UserRepository userRepository;
     private final VisitLogService visitLogService;
     private final VisitLogRepository visitLogRepository;
@@ -209,5 +208,36 @@ public class WorkspaceService {
                 .collect(Collectors.toList());
     }
 
+
+    // 워크스페이스 즐겨찾기
+    @Transactional
+    public Map<String, Object> toggleWorkspaceBookmark(Long workspaceId, User user, boolean status) {
+        WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 워크스페이스가 존재하지 않습니다."));
+
+        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(workspaceId, user.getId());
+        if (!isMember) {
+            throw new RuntimeException("해당 워크스페이스 멤버가 아니므로 접근 권한이 없습니다.");
+        }
+
+        if (status) {
+            // 즐겨찾기 등록
+            if (!workspaceBookmarkRepository.existsByUserAndWorkspace(user, workspace)) {
+                WorkspaceBookmark bookmark = WorkspaceBookmark.builder()
+                        .user(user)
+                        .workspace(workspace)
+                        .build();
+                workspaceBookmarkRepository.save(bookmark);
+            }
+        } else {
+            // 즐겨찾기 취소
+            workspaceBookmarkRepository.deleteByUserAndWorkspace(user, workspace);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workspaceId", workspaceId);
+        response.put("status", status ? "즐겨찾기 등록 완료" : "즐겨찾기 해제 완료");
+        return response;
+    }
 
 }

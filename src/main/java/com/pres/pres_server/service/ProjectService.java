@@ -70,7 +70,7 @@ public class ProjectService {
                                 .toList();
         }
 
-        public ProjectCalenderListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
+        /*public ProjectCalenderListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
                 Project project = projectRepository.findById(projectId)
                                 .orElseThrow(() -> new IllegalArgumentException("Project not found"));
 
@@ -92,9 +92,9 @@ public class ProjectService {
                                 project.getDueDate() != null ? project.getDueDate().format(formatter) : "",
                                 project.getTitle(),
                                 project.getWorkspaceId().getWorkspaceName());
-        }
+        }*/
 
-        public List<ProjectCalenderListDTO> getBookmarkedProjects(Long userId) {
+        /*public List<ProjectCalenderListDTO> getBookmarkedProjects(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
@@ -113,7 +113,7 @@ public class ProjectService {
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
-        }
+        }*/
 
         public List<ProjectCalenderListDTO> searchProjectsByTitle(Long userId, String title) {
                 // 1. 사용자가 속한 workspace 조회

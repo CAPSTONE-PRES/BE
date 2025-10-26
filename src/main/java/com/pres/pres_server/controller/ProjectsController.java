@@ -80,7 +80,7 @@ public class ProjectsController {
         return projectService.getProjectsByUserIdAndDate(realUser.getId(), date);
     }
 
-    @Operation(summary = "프로젝트 좋아요 상태 저장 및 취소", description = "status 값 true : 좋아요, false : 좋아요 취소")
+    /*@Operation(summary = "프로젝트 좋아요 상태 저장 및 취소", description = "status 값 true : 좋아요, false : 좋아요 취소")
     @PatchMapping("/projects/{projectId}/heart")
     public ProjectCalenderListDTO toggleBookmark(
             @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal,
@@ -98,7 +98,7 @@ public class ProjectsController {
 
         User realUser = userService.findByEmail(principal.getUsername());
         return projectService.getBookmarkedProjects(realUser.getId());
-    }
+    }*/
 
     @Operation(summary = "프로젝트 검색", description = "이름에 해당 키워드를 갖고 있는 프로젝트를 반환합니다.")
     @GetMapping("/projects/search")

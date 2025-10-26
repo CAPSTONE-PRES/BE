@@ -3,6 +3,7 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
+import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
@@ -121,6 +122,17 @@ public class WorkspaceController {
                 .map(ProjectListDTO::from)
                 .toList();
 
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "워크스페이스 즐겨찾기 등록 및 취소", description = "status 값 true : 좋아요, false : 좋아요 취소")
+    @PatchMapping("/{workspaceId}/heart")
+    public ResponseEntity<Map<String, Object>> toggleWorkspaceBookmark(
+            @PathVariable Long workspaceId,
+            @RequestParam boolean status,
+            @AuthenticationPrincipal User user
+    ) {
+        Map<String, Object> response = workspaceService.toggleWorkspaceBookmark(workspaceId, user, status);
         return ResponseEntity.ok(response);
     }
 
