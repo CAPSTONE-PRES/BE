@@ -30,18 +30,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProjectsController {
     private final ProjectService projectService;
-    private final UserService userService;
 
     @Operation(summary = "프로젝트 생성", description = "워크스페이스에 새로운 프로젝트 추가")
     @PostMapping("/workspace/{workspaceId}/projects/create")
-    /*public ResponseEntity<String> createProject(
-            @PathVariable Long workspaceId,
-            @RequestBody ProjectCreateRequest request,
-            @AuthenticationPrincipal User user) {
-
-        projectService.createProject(user, workspaceId, request);
-        return ResponseEntity.ok("발표가 성공적으로 추가되었습니다.");
-    }*/
     public ResponseEntity<Map<String, Object>> createProject(
             @PathVariable Long workspaceId,
             @RequestBody ProjectCreateRequest request,
