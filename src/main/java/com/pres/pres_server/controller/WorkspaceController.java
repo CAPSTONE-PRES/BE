@@ -2,8 +2,6 @@ package com.pres.pres_server.controller;
 
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
-import com.pres.pres_server.domain.WorkSpace;
-import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.User.UserValidationRequestDTO;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
@@ -11,6 +9,7 @@ import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceBookmarkDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
+import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,12 +35,16 @@ public class WorkspaceController {
     private final WorkspaceService workspaceService;
     private final ProjectService projectService;
     private final UserService userService;
+    private final UserRepository userRepository;
 
     @Operation(summary = "워크스페이스 생성", description = "워크스페이스 생성에 필요한 정보를 저장합니다")
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createWorkspace(
             @RequestBody WorkspaceRequest request,
-            @AuthenticationPrincipal User ownerUser) {
+            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+
+        User ownerUser = userRepository.findByEmail(principal.getUsername())
+                .orElseThrow(() -> new RuntimeException("존재하지 않는 사용자입니다."));
 
         Long workspaceId = workspaceService.createWorkspace(request, ownerUser);
 
@@ -105,7 +108,20 @@ public class WorkspaceController {
 
     @Operation(summary = "워크스페이스 정보 반환", description = "워크스페이스에 저장된 정보를 불러옵니다.")
     @GetMapping("/{workspaceId}/info")
-    public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
+    /*public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
+        return workspaceService.getWorkspaceInfo(user, workspaceId);
+    }*/
+    public WorkspaceInfoDTO getWorkspaceInfo(
+            @PathVariable Long workspaceId,
+            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
+        }
+
+        User user = userRepository.findByEmail(principal.getUsername())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "해당 이메일의 사용자를 찾을 수 없습니다."));
+
         return workspaceService.getWorkspaceInfo(user, workspaceId);
     }
 
@@ -113,11 +129,14 @@ public class WorkspaceController {
     @GetMapping("/list")
     public List<WorkspaceInfoDTO> getWorkspaceList(
             @RequestParam int type,
-            @AuthenticationPrincipal User user
-    ) {
-        if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
         }
+
+        User user = userRepository.findByEmail(principal.getUsername())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "해당 이메일의 사용자를 찾을 수 없습니다."));
 
         return workspaceService.getWorkspaceList(user, type);
     }
