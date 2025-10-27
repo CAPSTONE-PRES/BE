@@ -2,6 +2,7 @@ package com.pres.pres_server.service.user;
 
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.User.UserUpdateDto;
+import com.pres.pres_server.dto.User.UserValidationResponseDTO;
 import com.pres.pres_server.repository.UserRepository;
 
 import jakarta.transaction.Transactional;
@@ -99,5 +100,19 @@ public class UserService implements UserDetailsService {
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+    }
+
+    // 이메일 유효성 검사
+    public UserValidationResponseDTO validateUserEmail(String memberEmail) {
+        return userRepository.findByEmail(memberEmail)
+                .map(user -> UserValidationResponseDTO.builder()
+                        .message("유효한 이메일 입니다")
+                        .name(user.getUsername())
+                        .email(user.getEmail())
+                        .profileUrl(user.getProfileImageUrl())
+                        .build())
+                .orElseGet(() -> UserValidationResponseDTO.builder()
+                        .message("유효하지 않은 이메일 입니다")
+                        .build());
     }
 }
