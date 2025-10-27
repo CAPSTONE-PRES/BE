@@ -7,6 +7,7 @@ import lombok.*;
 @AllArgsConstructor
 public class WorkspaceMemberDTO {
     private Long memberNumber;
+    private Long memberId;
     private String memberEmail;
     private String memberName;
     private String memberProfileUrl;

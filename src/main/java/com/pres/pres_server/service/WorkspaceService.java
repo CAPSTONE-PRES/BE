@@ -170,6 +170,7 @@ public class WorkspaceService {
         visitLogService.upsertVisitLog(user, workspace, null);
 
         WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
+        dto.setWorkspaceId(workspace.getWorkspaceId());
         dto.setWorkspaceName(workspace.getWorkspaceName());
         dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         // dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
@@ -191,6 +192,7 @@ public class WorkspaceService {
         List<WorkspaceMemberDTO> members = teamMembers.stream()
                 .map(member -> new WorkspaceMemberDTO(
                         member.getMemberId(), // Long
+                        member.getUser().getId(),
                         member.getUser().getEmail(),
                         member.getUser().getUsername(),
                         member.getUser().getProfileImageUrl()))
@@ -200,6 +202,7 @@ public class WorkspaceService {
         return dto;
     }
 
+    // 워크스페이스 리스트로 전부 받기
     public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type) {
 
         List<WorkSpace> workspaces;
@@ -237,6 +240,21 @@ public class WorkspaceService {
                     if (ws.getClasstime2() != null) timeList.add(ws.getClasstime2());
                     if (ws.getClasstime3() != null) timeList.add(ws.getClasstime3());
                     dto.setWorkspaceTimeList(timeList);
+
+                    dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
+
+                    // 팀 멤버 리스트
+                    List<TeamMember> teamMembers = teamMemberRepository.findByWorkspace_WorkspaceId(ws.getWorkspaceId());
+                    List<WorkspaceMemberDTO> members = teamMembers.stream()
+                            .map(member -> new WorkspaceMemberDTO(
+                                    member.getMemberId(),
+                                    member.getUser().getId(),
+                                    member.getUser().getEmail(),
+                                    member.getUser().getUsername(),
+                                    member.getUser().getProfileImageUrl()))
+                            .collect(Collectors.toList());
+                    dto.setWorkspaceMemberList(members);
+
 
                     return dto;
                 })
