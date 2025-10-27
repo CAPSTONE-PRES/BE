@@ -53,7 +53,7 @@ public class WorkspaceController {
     }
 
     @Operation(summary = "팀원 이메일 유효성 검증", description = "입력한 이메일이 존재하는 유저인지 확인합니다.")
-    @GetMapping("/user/validation")
+    @PostMapping("/user/validation")
     public ResponseEntity<UserValidationResponseDTO> validateUserEmail(
             @RequestBody UserValidationRequestDTO request) {
 
