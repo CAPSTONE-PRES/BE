@@ -64,20 +64,18 @@ public class ProjectsController {
     @Operation(summary = "프로젝트 전체 리스트 반환", description = "달력에 표기할 프로젝트 리스트 반환")
     @GetMapping("/projects/list/all")
     public List<ProjectCalenderListDTO> getMyProjects(
-            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+            @AuthenticationPrincipal User user) {
 
-        User realUser = userService.findByEmail(principal.getUsername());
-        return projectService.getProjectsByUserId(realUser.getId());
+        return projectService.getProjectsByUserId(user.getId());
     }
 
     @Operation(summary = "특정 날짜에 해당하는 프로젝트 반환", description = "특정 날짜에 해당하는 프로젝트 정보를 반환, 달력에 사용")
     @GetMapping("/projects/list/date")
     public List<ProjectCalenderListDTO> getMyProjectsByDate(
-            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal,
+            @AuthenticationPrincipal User user,
             @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
 
-        User realUser = userService.findByEmail(principal.getUsername());
-        return projectService.getProjectsByUserIdAndDate(realUser.getId(), date);
+        return projectService.getProjectsByUserIdAndDate(user.getId(), date);
     }
 
     /*@Operation(summary = "프로젝트 좋아요 상태 저장 및 취소", description = "status 값 true : 좋아요, false : 좋아요 취소")
