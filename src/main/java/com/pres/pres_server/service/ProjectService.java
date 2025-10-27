@@ -3,7 +3,6 @@ package com.pres.pres_server.service;
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
-import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +42,7 @@ public class ProjectService {
                 return projects.stream()
                                 .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                p.getProjectId(),
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
@@ -65,6 +65,7 @@ public class ProjectService {
                                 .filter(p -> p.getDueDate() != null && p.getDueDate().toLocalDate().equals(targetDate))
                                 .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate().format(formatter),
+                                                p.getProjectId(),
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
@@ -131,6 +132,7 @@ public class ProjectService {
                                 .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase())) // 제목 포함 검색
                                 .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                p.getProjectId(),
                                                 p.getTitle(),
                                                 p.getWorkspaceId().getWorkspaceName()))
                                 .toList();
@@ -161,6 +163,7 @@ public class ProjectService {
                 return projects.stream()
                         .map(project -> new ProjectCalenderListDTO(
                                 project.getCreatedAt() != null ? project.getCreatedAt().toLocalDate().toString() : "",
+                                project.getProjectId(),
                                 project.getTitle(),
                                 project.getWorkspaceId().getWorkspaceName()
                         ))

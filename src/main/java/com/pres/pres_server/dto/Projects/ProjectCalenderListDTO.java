@@ -11,6 +11,7 @@ import lombok.Setter;
 @AllArgsConstructor
 public class ProjectCalenderListDTO {
     private String date;
+    private Long projectId;
     private String projectTitle;
     private String workspaceName;
 }
