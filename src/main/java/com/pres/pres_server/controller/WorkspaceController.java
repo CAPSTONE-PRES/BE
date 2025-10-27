@@ -5,6 +5,8 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
+import com.pres.pres_server.dto.User.UserValidationRequestDTO;
+import com.pres.pres_server.dto.User.UserValidationResponseDTO;
 import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
 import com.pres.pres_server.dto.Workspace.WorkspaceBookmarkDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
@@ -33,6 +35,7 @@ public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
     private final ProjectService projectService;
+    private final UserService userService;
 
     @Operation(summary = "워크스페이스 생성", description = "워크스페이스 생성에 필요한 정보를 저장합니다")
     @PostMapping("/create")
@@ -46,6 +49,15 @@ public class WorkspaceController {
         response.put("workspaceId", workspaceId);
         response.put("message", "워크스페이스가 성공적으로 생성되었습니다.");
 
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "팀원 이메일 유효성 검증", description = "입력한 이메일이 존재하는 유저인지 확인합니다.")
+    @PostMapping("/user/validation")
+    public ResponseEntity<UserValidationResponseDTO> validateUserEmail(
+            @RequestBody UserValidationRequestDTO request) {
+
+        UserValidationResponseDTO response = userService.validateUserEmail(request.getMemberEmail());
         return ResponseEntity.ok(response);
     }
 
