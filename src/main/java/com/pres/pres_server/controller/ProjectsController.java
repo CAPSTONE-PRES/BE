@@ -1,6 +1,7 @@
 
 package com.pres.pres_server.controller;
 
+import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Projects Controller", description = "프로젝트 관련 API")
 @RestController
@@ -31,13 +34,26 @@ public class ProjectsController {
 
     @Operation(summary = "프로젝트 생성", description = "워크스페이스에 새로운 프로젝트 추가")
     @PostMapping("/workspace/{workspaceId}/projects/create")
-    public ResponseEntity<String> createProject(
+    /*public ResponseEntity<String> createProject(
             @PathVariable Long workspaceId,
             @RequestBody ProjectCreateRequest request,
             @AuthenticationPrincipal User user) {
 
         projectService.createProject(user, workspaceId, request);
         return ResponseEntity.ok("발표가 성공적으로 추가되었습니다.");
+    }*/
+    public ResponseEntity<Map<String, Object>> createProject(
+            @PathVariable Long workspaceId,
+            @RequestBody ProjectCreateRequest request,
+            @AuthenticationPrincipal User user) {
+
+        Project project = projectService.createProject(workspaceId, request, user);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("projectId", project.getProjectId());
+        response.put("message", "프로젝트가 성공적으로 생성되었습니다.");
+
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "프로젝트 수정", description = "프로젝트 정보를 수정합니다")

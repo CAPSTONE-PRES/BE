@@ -1,6 +1,7 @@
 package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
+import com.pres.pres_server.dto.Projects.LimitedTimeDTO;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
 import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -62,7 +64,7 @@ public class ProjectService {
                 // 3. targetDate 기준 필터링
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
-                                .filter(p -> p.getDueDate() != null && p.getDueDate().toLocalDate().equals(targetDate))
+                                .filter(p -> p.getDueDate() != null && p.getDueDate().equals(targetDate))
                                 .map(p -> new ProjectCalenderListDTO(
                                                 p.getDueDate().format(formatter),
                                                 p.getProjectId(),
@@ -173,6 +175,35 @@ public class ProjectService {
 
         // 프로젝트 생성 서비스
         @Transactional
+        public Project createProject(Long workspaceId, ProjectCreateRequest request, User currentUser) {
+                WorkSpace workspace = workspaceRepository.findById(workspaceId)
+                        .orElseThrow(() -> new RuntimeException("워크스페이스가 존재하지 않습니다."));
+
+                Project project = new Project();
+                project.setWorkspaceId(workspace);
+                project.setTitle(request.getTitle());
+                project.setCreatedAt(LocalDateTime.now());
+                project.setDueDate(request.getDueDate());
+
+                // 발표자 처리
+                if (request.getPresenterId() != null) {
+                        User presenter = userRepository.findById(request.getPresenterId())
+                                .orElseThrow(() -> new RuntimeException("Presenter가 존재하지 않습니다."));
+                        project.setPresenter(presenter);
+                } else {
+                        project.setPresenter(currentUser);
+                }
+
+                // 발표 제한 시간 처리
+                if (request.getLimitedTime() != null) {
+                        LimitedTimeDTO lt = request.getLimitedTime();
+                        project.setLimitedTime(Duration.ofMinutes(lt.getMinute()).plusSeconds(lt.getSecond()));
+                }
+
+                return projectRepository.save(project);
+        }
+
+        /*@Transactional
         public Project createProject(User creator, Long workspaceId, ProjectCreateRequest request) {
                 // 1. 워크스페이스 조회
                 WorkSpace workspace = workspaceRepository.findById(workspaceId)
@@ -206,7 +237,7 @@ public class ProjectService {
                 }
 
                 return project;
-        }
+        }*/
 
         // 프로젝트 수정 서비스
         @Transactional
@@ -222,7 +253,7 @@ public class ProjectService {
 
                 // 수정 가능한 항목만 업데이트
                 if (request.getTitle() != null) project.setTitle(request.getTitle());
-                if (request.getDueDate() != null) project.setDueDate(request.getDueDate());
+                if (request.getDueDate() != null) project.setDueDate(request.getDueDate()); // LocalDate
                 if (request.getLimitedTime() != null) project.setLimitedTime(request.getLimitedTime());
                 if (request.getPresenterId() != null) {
                         User newPresenter = userRepository.findById(request.getPresenterId())

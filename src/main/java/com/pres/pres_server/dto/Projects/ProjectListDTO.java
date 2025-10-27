@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 public class ProjectListDTO {
     private Long projectId;
     private String title;
-    private LocalDateTime dueDate;
+    private LocalDate dueDate;
     private String presenterName;
     private String presenterProfileUrl;
     private LocalDate visitedAt;

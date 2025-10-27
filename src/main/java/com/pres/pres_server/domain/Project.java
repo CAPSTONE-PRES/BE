@@ -3,6 +3,9 @@ package com.pres.pres_server.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -32,13 +35,13 @@ public class Project {
     private LocalDateTime createdAt;
 
     @Column(name = "due_date")
-    private LocalDateTime dueDate;
+    private LocalDate dueDate;
 
     @ManyToOne
     @JoinColumn(name = "presenter_id") // 발표자
     private User presenter;
 
     @Column(name = "limited_time")
-    private LocalDateTime limitedTime; // 발표 제한 시간
+    private Duration limitedTime; // 발표 제한 시간
 
 }
