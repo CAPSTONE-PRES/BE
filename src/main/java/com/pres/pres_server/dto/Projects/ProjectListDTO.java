@@ -17,7 +17,7 @@ public class ProjectListDTO {
     private LocalDate dueDate;
     private String presenterName;
     private String presenterProfileUrl;
-    private LocalDate visitedAt;
+    private String lastVisited;
 
     public static ProjectListDTO from(Project project) {
         return ProjectListDTO.builder()

@@ -5,6 +5,7 @@ import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
 import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
+import com.pres.pres_server.dto.Projects.ProjectListDTO;
 import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
@@ -115,7 +116,7 @@ public class ProjectsController {
 
     @Operation(summary = "프로젝트 리스트 필터링", description = "모든 프로젝트 불러오기 (type값 1은 최근 방문 순, 2는 제목순)")
     @GetMapping("/projects/list")
-    public List<ProjectCalenderListDTO> getProjectList(
+    public List<ProjectListDTO> getProjectList(
             @RequestParam int type,
             @AuthenticationPrincipal User user
     ) {

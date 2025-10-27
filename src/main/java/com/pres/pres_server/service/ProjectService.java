@@ -1,10 +1,7 @@
 package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
-import com.pres.pres_server.dto.Projects.LimitedTimeDTO;
-import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
-import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
-import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
+import com.pres.pres_server.dto.Projects.*;
 import com.pres.pres_server.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -96,7 +93,7 @@ public class ProjectService {
                                 .toList();
         }
 
-        public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
+        /*public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
 
                 List<Project> projects;
 
@@ -125,6 +122,40 @@ public class ProjectService {
                                 project.getTitle(),
                                 project.getWorkspaceId().getWorkspaceName()
                         ))
+                        .collect(Collectors.toList());
+        }*/
+        public List<ProjectListDTO> getProjectList(User user, int type) {
+
+                List<Project> projects;
+
+                if (type == 2) {
+                        projects = projectRepository.findAllByOrderByTitleAsc();
+                } else if (type == 1) {
+                        List<VisitLog> logs = visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
+                        projects = logs.stream()
+                                .map(VisitLog::getProject)
+                                .distinct()
+                                .collect(Collectors.toList());
+
+                        List<Project> allProjects = projectRepository.findAll();
+                        allProjects.removeAll(projects);
+                        projects.addAll(allProjects);
+                } else {
+                        throw new IllegalArgumentException("Invalid type: " + type);
+                }
+
+                return projects.stream()
+                        .map(project -> {
+                                // 마지막 방문 로그 조회
+                                VisitLog lastVisit = visitLogRepository
+                                        .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
+                                        .orElse(null);
+
+                                ProjectListDTO dto = ProjectListDTO.from(project);
+                                dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toLocalDate().toString() : null);
+
+                                return dto;
+                        })
                         .collect(Collectors.toList());
         }
 
