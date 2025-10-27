@@ -34,6 +34,15 @@ public class WorkspaceService {
         workspace.setWorkspaceName(request.getWorkspaceName());
         workspace.setOwnerUserId(ownerUser);
         workspace.setCreatedAt(LocalDateTime.now());
+
+        // 워크스페이스 시간 리스트 (최대 3개)
+        List<String> timeList = request.getWorkspaceTimeList();
+        if (timeList != null && !timeList.isEmpty()) {
+            if (timeList.size() > 0) workspace.setClasstime1(timeList.get(0));
+            if (timeList.size() > 1) workspace.setClasstime2(timeList.get(1));
+            if (timeList.size() > 2) workspace.setClasstime3(timeList.get(2));
+        }
+
         workspaceRepository.save(workspace);
 
         // 팀 멤버 이메일 리스트 등록
@@ -51,8 +60,17 @@ public class WorkspaceService {
             }
         }
 
+        // OWNER도 팀멤버로 추가
+        TeamMember ownerMember = new TeamMember();
+        ownerMember.setWorkspace(workspace);
+        ownerMember.setUser(ownerUser);
+        ownerMember.setRole("OWNER");
+        ownerMember.setInvited_at(LocalDateTime.now());
+        teamMemberRepository.save(ownerMember);
+
         return workspace.getWorkspaceId();
     }
+
 
     // 워크스페이스 팀 멤버 수정
     @Transactional
@@ -127,6 +145,7 @@ public class WorkspaceService {
     }
 
 
+    // 워크스페이스 정보 가져오기
     public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {
         WorkSpace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new RuntimeException("워크스페이스 없음"));
@@ -136,6 +155,8 @@ public class WorkspaceService {
 
         WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
         dto.setWorkspaceName(workspace.getWorkspaceName());
+        dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
+        // dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         dto.setWorkspaceOwnerName(workspace.getOwnerUserId().getUsername());
         dto.setWorkspaceOwnerProfileUrl(workspace.getOwnerUserId().getProfileImageUrl());
 

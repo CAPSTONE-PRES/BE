@@ -12,6 +12,7 @@ import java.util.List;
 public class WorkspaceInfoDTO {
     private Long workspaceId;
     private String workspaceName;
+    private boolean IsOwner;
     private List<String> workspaceTimeList;  // classtime1~3
     private String workspaceOwnerName;
     private String workspaceOwnerProfileUrl;
