@@ -73,50 +73,6 @@ public class ProjectService {
                                 .toList();
         }
 
-        /*public ProjectCalenderListDTO toggleBookmark(Long userId, Long projectId, boolean status) {
-                Project project = projectRepository.findById(projectId)
-                                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
-
-                // user가 해당 프로젝트 접근 권한 있는지 확인 (TeamMember 확인)
-                boolean isMember = teamMemberRepository.findByUser_Id(userId).stream()
-                                .anyMatch(tm -> tm.getWorkspace().getWorkspaceId()
-                                                .equals(project.getWorkspaceId().getWorkspaceId()));
-
-                if (!isMember) {
-                        throw new IllegalArgumentException("User does not have access to this project");
-                }
-
-                project.setBookmarked(status);
-                projectRepository.save(project);
-
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-                return new ProjectCalenderListDTO(
-                                project.getDueDate() != null ? project.getDueDate().format(formatter) : "",
-                                project.getTitle(),
-                                project.getWorkspaceId().getWorkspaceName());
-        }*/
-
-        /*public List<ProjectCalenderListDTO> getBookmarkedProjects(Long userId) {
-                // 1. 사용자가 속한 workspace 조회
-                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
-                List<Long> workspaceIds = members.stream()
-                                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                                .toList();
-
-                // 2. workspace에 속한 프로젝트 조회 + isBookmarked = true 필터
-                List<Project> projects = projectRepository
-                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
-
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                return projects.stream()
-                                .filter(Project::isBookmarked)
-                                .map(p -> new ProjectCalenderListDTO(
-                                                p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                                                p.getTitle(),
-                                                p.getWorkspaceId().getWorkspaceName()))
-                                .toList();
-        }*/
 
         public List<ProjectCalenderListDTO> searchProjectsByTitle(Long userId, String title) {
                 // 1. 사용자가 속한 workspace 조회
@@ -202,42 +158,6 @@ public class ProjectService {
 
                 return projectRepository.save(project);
         }
-
-        /*@Transactional
-        public Project createProject(User creator, Long workspaceId, ProjectCreateRequest request) {
-                // 1. 워크스페이스 조회
-                WorkSpace workspace = workspaceRepository.findById(workspaceId)
-                        .orElseThrow(() -> new IllegalArgumentException("워크스페이스 없음"));
-
-                // 2. 발표자 설정
-                User presenter;
-                if (request.getPresenterId() != null) {
-                        presenter = userRepository.findById(request.getPresenterId())
-                                .orElseThrow(() -> new IllegalArgumentException("발표자 없음"));
-                } else {
-                        presenter = creator;
-                }
-
-                // 3. 프로젝트 생성
-                Project project = new Project();
-                project.setWorkspaceId(workspace);
-                project.setTitle(request.getTitle());
-                project.setDueDate(request.getDueDate());
-                project.setLimitedTime(request.getLimitedTime());
-                project.setCreatedAt(LocalDateTime.now());
-                project = projectRepository.save(project);
-
-                // 4. 파일과 연관
-                if (request.getFileIds() != null && !request.getFileIds().isEmpty()) {
-                        List<PresentationFile> files = presentationFileRepository.findAllById(request.getFileIds());
-                        for (PresentationFile file : files) {
-                                file.setProject(project); // 문제 없음
-                                presentationFileRepository.save(file);
-                        }
-                }
-
-                return project;
-        }*/
 
         // 프로젝트 수정 서비스
         @Transactional
