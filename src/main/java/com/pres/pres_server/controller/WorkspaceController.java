@@ -41,12 +41,9 @@ public class WorkspaceController {
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createWorkspace(
             @RequestBody WorkspaceRequest request,
-            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+            @AuthenticationPrincipal User user) {
 
-        User ownerUser = userRepository.findByEmail(principal.getUsername())
-                .orElseThrow(() -> new RuntimeException("존재하지 않는 사용자입니다."));
-
-        Long workspaceId = workspaceService.createWorkspace(request, ownerUser);
+        Long workspaceId = workspaceService.createWorkspace(request, user);
 
         Map<String, Object> response = new HashMap<>();
         response.put("workspaceId", workspaceId);
@@ -108,20 +105,7 @@ public class WorkspaceController {
 
     @Operation(summary = "워크스페이스 정보 반환", description = "워크스페이스에 저장된 정보를 불러옵니다.")
     @GetMapping("/{workspaceId}/info")
-    /*public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
-        return workspaceService.getWorkspaceInfo(user, workspaceId);
-    }*/
-    public WorkspaceInfoDTO getWorkspaceInfo(
-            @PathVariable Long workspaceId,
-            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
-
-        if (principal == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
-        }
-
-        User user = userRepository.findByEmail(principal.getUsername())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "해당 이메일의 사용자를 찾을 수 없습니다."));
-
+    public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
         return workspaceService.getWorkspaceInfo(user, workspaceId);
     }
 
@@ -129,14 +113,11 @@ public class WorkspaceController {
     @GetMapping("/list")
     public List<WorkspaceInfoDTO> getWorkspaceList(
             @RequestParam int type,
-            @AuthenticationPrincipal org.springframework.security.core.userdetails.User principal) {
+            @AuthenticationPrincipal User user) {
 
-        if (principal == null) {
+        if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
         }
-
-        User user = userRepository.findByEmail(principal.getUsername())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "해당 이메일의 사용자를 찾을 수 없습니다."));
 
         return workspaceService.getWorkspaceList(user, type);
     }

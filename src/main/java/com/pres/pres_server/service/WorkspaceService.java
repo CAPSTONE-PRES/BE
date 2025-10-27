@@ -3,6 +3,7 @@ package com.pres.pres_server.service;
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Workspace.*;
 import com.pres.pres_server.repository.*;
+import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -27,6 +28,7 @@ public class WorkspaceService {
     private final UserRepository userRepository;
     private final VisitLogService visitLogService;
     private final VisitLogRepository visitLogRepository;
+    private final ProjectRepository projectRepository;
 
     @Transactional
     public Long createWorkspace(WorkspaceRequest request, User ownerUser) {
@@ -137,10 +139,24 @@ public class WorkspaceService {
         WorkSpace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
 
+        // owner 체크
         if (!workspace.getOwnerUserId().getId().equals(user.getId())) {
-            throw new RuntimeException("권한이 없습니다.");
+            throw new RuntimeException("권한이 없습니다. 워크스페이스 소유자만 삭제 가능합니다.");
         }
 
+        // 1. 팀 멤버 삭제
+        teamMemberRepository.deleteByWorkspace(workspace);
+
+        // 2. 방문 로그 삭제
+        visitLogRepository.deleteByWorkspace(workspace);
+
+        // 3. 프로젝트 삭제 (연관 엔티티가 있다면)
+        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId);
+        if (!projects.isEmpty()) {
+            projectRepository.deleteAll(projects);
+        }
+
+        // 4. 워크스페이스 삭제
         workspaceRepository.delete(workspace);
     }
 

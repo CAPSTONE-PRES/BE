@@ -16,4 +16,5 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     // 워크스페이스 ID로 프로젝트 전체 조회
     List<Project> findByWorkspaceId_WorkspaceId(Long workspaceId);
 
+
 }
