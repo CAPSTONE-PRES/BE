@@ -3,10 +3,7 @@ package com.pres.pres_server.controller;
 
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
-import com.pres.pres_server.dto.Projects.ProjectCreateRequest;
-import com.pres.pres_server.dto.Projects.ProjectCalenderListDTO;
-import com.pres.pres_server.dto.Projects.ProjectListDTO;
-import com.pres.pres_server.dto.Projects.ProjectUpdateRequest;
+import com.pres.pres_server.dto.Projects.*;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 
@@ -67,6 +64,11 @@ public class ProjectsController {
 
         projectService.deleteProject(projectId, user);
         return ResponseEntity.ok("프로젝트가 성공적으로 삭제되었습니다.");
+    }
+
+    @GetMapping("/{projectId}/info")
+    public ProjectInfoDTO getProjectInfo(@PathVariable Long projectId) {
+        return projectService.getProjectInfo(projectId);
     }
 
     @Operation(summary = "프로젝트 전체 리스트 반환", description = "달력에 표기할 프로젝트 리스트 반환")

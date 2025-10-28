@@ -7,6 +7,8 @@ import lombok.Setter;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "projects")
@@ -43,5 +45,8 @@ public class Project {
 
     @Column(name = "limited_time")
     private Duration limitedTime; // 발표 제한 시간
+
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PresentationFile> files = new ArrayList<>();
 
 }

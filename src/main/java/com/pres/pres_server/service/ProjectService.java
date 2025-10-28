@@ -230,6 +230,28 @@ public class ProjectService {
                 projectRepository.delete(project);
         }
 
+        // 특정 프로젝트 정보 반환
+        public ProjectInfoDTO getProjectInfo(Long projectId) {
+                Project project = projectRepository.findById(projectId)
+                        .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다."));
+
+                WorkSpace workspace = project.getWorkspaceId();
+
+                return ProjectInfoDTO.builder()
+                        .projectId(project.getProjectId())
+                        .projectTitle(project.getTitle())
+                        .workspaceId(workspace != null ? workspace.getWorkspaceId() : null)
+                        .workspaceName(workspace != null ? workspace.getWorkspaceName() : null)
+                        .dueDate(project.getDueDate())
+                        .limitedTime(project.getLimitedTime())
+                        .fileIds(project.getFiles() != null
+                                ? project.getFiles().stream()
+                                .map(PresentationFile::getFileId)
+                                .collect(Collectors.toList())
+                                : null)
+                        .build();
+        }
+
         // 프로젝트 정렬 3가지
         @Transactional(readOnly = true)
         public List<Project> getProjectsByWorkspace(Long workspaceId, int type, User user) {
