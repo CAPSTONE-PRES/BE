@@ -11,5 +11,7 @@ public interface PresentationImageRepository extends JpaRepository<PresentationI
 
     void deleteByFile_FileId(Long fileId);
 
+    List<PresentationImage> findAllByFile_FileIdOrderByPageNumberAsc(Long fileId);
+
 
 }
