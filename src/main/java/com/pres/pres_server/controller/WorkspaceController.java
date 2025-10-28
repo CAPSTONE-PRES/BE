@@ -3,12 +3,10 @@ package com.pres.pres_server.controller;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Projects.ProjectListDTO;
+import com.pres.pres_server.dto.Projects.tmpProjectListDTO;
 import com.pres.pres_server.dto.User.UserValidationRequestDTO;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
-import com.pres.pres_server.dto.Workspace.TeamMemberEditRequest;
-import com.pres.pres_server.dto.Workspace.WorkspaceBookmarkDTO;
-import com.pres.pres_server.dto.Workspace.WorkspaceInfoDTO;
-import com.pres.pres_server.dto.Workspace.WorkspaceRequest;
+import com.pres.pres_server.dto.Workspace.*;
 import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
@@ -22,6 +20,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,5 +158,18 @@ public class WorkspaceController {
         return ResponseEntity.ok(response);
     }
 
+    // 임시 시연용 api
+    @Operation(summary = "워크스페이스 리스트 (시연용)", description = "워크스페이스 리스트 반환 - tmp DTO 버전")
+    @GetMapping("projects/list/tmp")
+    public List<tmpWorkspaceListDTO> getWorkspaceListTmp(
+            @RequestParam int type,
+            @AuthenticationPrincipal User user) {
+
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
+        }
+
+        return workspaceService.getWorkspaceListTmp(user, type);
+    }
 
 }

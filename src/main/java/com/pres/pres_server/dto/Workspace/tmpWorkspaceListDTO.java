@@ -2,7 +2,6 @@ package com.pres.pres_server.dto.Workspace;
 
 import lombok.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -10,11 +9,12 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WorkspaceInfoDTO {
+public class tmpWorkspaceListDTO {
     private Long workspaceId;
     private String workspaceName;
     private boolean IsOwner;
     private List<String> workspaceTimeList;  // classtime1~3
+    private Long workspaceOwnerId;
     private String workspaceOwnerName;
     private String workspaceOwnerProfileUrl;
     private List<WorkspaceMemberDTO> workspaceMemberList;

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -127,5 +128,26 @@ public class ProjectsController {
         }
 
         return projectService.getProjectList(user, type);
+    }
+
+    // 임시 시연용 api
+    @Operation(summary = "시연용 - 프로젝트 리스트 반환")
+    @GetMapping("/list/tmp")
+    public ResponseEntity<List<tmpProjectListDTO>> getTmpProjectList() {
+
+        List<tmpProjectListDTO> tmpList = new ArrayList<>();
+
+        tmpList.add(tmpProjectListDTO.builder()
+                .projectId(0L)
+                .projectTitle("string")
+                .workspaceId(0L)
+                .date(LocalDate.now())
+                .workspaceName("string")
+                .presenterName("string")
+                .presenterProfileUrl("string")
+                .lastVisited("string")
+                .build());
+
+        return ResponseEntity.ok(tmpList);
     }
 }
