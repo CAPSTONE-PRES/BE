@@ -5,10 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.CueCard.Mode;
 import com.pres.pres_server.domain.PresentationFile;
-import com.pres.pres_server.dto.file.CueBasicDto;
-import com.pres.pres_server.dto.file.CueCardDto;
-import com.pres.pres_server.dto.file.CueSlideDto;
-import com.pres.pres_server.dto.file.ExtractedTextDto;
+import com.pres.pres_server.dto.file.*;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +37,7 @@ public class GenerateCueService {
     private String OPENAI_API_KEY;
 
     // ObjectMapper 는 빈 주입 권장. 기존 new 유지 시 문제 없지만 설정 일관성 위해 빈으로 주입해도 됨.
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     // ======================= Public APIs =======================
 
@@ -82,7 +79,7 @@ public class GenerateCueService {
 
                 // 저장 (REQUIRES_NEW)
                 cueSlideService.processSlide(file, slideDto);
-            } catch (Exception e){
+            } catch (Exception e) {
 
                 failed.add(slideNum);
                 String msg = Optional.ofNullable(e.getMessage()).orElse("원인 불명 오류");
@@ -97,25 +94,40 @@ public class GenerateCueService {
         generateQrMeta(entities);
 
         log.info("완료: 총 {}슬라이드 중 {}개 실패", slides.size(), failed.size());
-        return toDto(fileId, entities, slideErrors);
+        return toDto(fileId, entities, slideErrors, false);
     }
 
+    //조회용 메서드, qr 미포함 반환
     public CueCardDto getCueCardsByFileId(Long fileId) {
-        if (fileId == null || fileId <= 0) throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+        if (fileId == null || fileId <= 0)
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
 
         List<CueCard> cards = cueCardRepository
                 .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
         if (cards.isEmpty()) throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
 
-        return toDto(fileId, cards, Collections.emptyMap());
+        return toDto(fileId, cards, Collections.emptyMap(), false);
     }
+
+    //조회용 메서드, qr 포함 반환
+    public CueCardDto getCueCardsWithQrByFileId(Long fileId) {
+        if (fileId == null || fileId <= 0)
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+
+        List<CueCard> cards = cueCardRepository
+                .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+        if (cards.isEmpty()) throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
+
+        return toDto(fileId, cards, Collections.emptyMap(), true);
+    }
+
 
     private void generateQrMeta(List<CueCard> cueCards) {
         //슬라이드별로 그룹핑
         Map<Integer, List<CueCard>> bySlide = cueCards.stream()
                 .collect(Collectors.groupingBy(CueCard::getSlideNumber));
 
-        for  (Map.Entry<Integer, List<CueCard>> entry : bySlide.entrySet()) {
+        for (Map.Entry<Integer, List<CueCard>> entry : bySlide.entrySet()) {
             List<CueCard> list = entry.getValue();
             // 슬라이드의 대표(ADVANCED) 1건만 QR 부여
             Optional<CueCard> advOpt = list.stream()
@@ -140,8 +152,11 @@ public class GenerateCueService {
         }
     }
 
-    /** 엔티티 → 구조화 DTO 변환 메서드*/
-    private CueCardDto toDto(Long fileId, List<CueCard> entities, Map<Integer, String> slideErrors) {
+    /**
+     * 엔티티 → 구조화 DTO 변환 메서드
+     */
+    private CueCardDto toDto(Long fileId, List<CueCard> entities,
+                             Map<Integer, String> slideErrors, boolean includeQr) {
         Map<Integer, List<CueCard>> bySlide = entities.stream()
                 .collect(Collectors.groupingBy(CueCard::getSlideNumber, TreeMap::new, Collectors.toList()));
 
@@ -167,15 +182,45 @@ public class GenerateCueService {
                     }).toList();
             s.setBasic(basic);
 
-            // ADVANCED (단일)
+            // ADVANCED 한줄
             Optional<CueCard> advOpt = items.stream()
                     .filter(c -> c.getMode() == Mode.ADVANCED)
                     .findFirst();
+            String advText = advOpt
+                    .map(c -> Optional.ofNullable(c.getContent()).orElse("")).orElse("");
 
-            s.setAdvanced(advOpt.map(c -> Optional.ofNullable(c.getContent()).orElse("")).orElse(""));
-            s.setQrSlug(advOpt.map(CueCard::getQrSlug).orElse(null));
-            s.setQrUrl(advOpt.map(CueCard::getQrUrl).orElse(null));
+            if (includeQr) {
+                s.setQrSlug(advOpt.map(CueCard::getQrSlug).orElse(null));
+                s.setQrUrl(advOpt.map(CueCard::getQrUrl).orElse(null));
+            } else {
+                s.setQrSlug(null);
+                s.setQrUrl(null);
+            }
+            // 3) 프론트 요구 advanced 형식 만들기
+            //    - advanced는 배열
+            //    - 지금은 길이 1만 준다
+            //    - section/keyword는 basic[0] 기준으로 복사
+            //    - text는 advText(슬라이드 전체 요약)
 
+            List<CueAdvancedDto> advancedList = new ArrayList<>();
+            if (!basic.isEmpty()) {
+                CueBasicDto first = basic.get(0);
+                CueAdvancedDto advDto = new CueAdvancedDto();
+                advDto.setSection(first.getSection());
+                advDto.setKeyword(Optional.ofNullable(first.getKeyword()).orElse(""));
+                advDto.setText(advText);
+                advancedList.add(advDto);
+            } else {
+                //basic이 비어있는 경우
+                if (!advText.isEmpty()) {
+                    CueAdvancedDto advDto = new CueAdvancedDto();
+                    advDto.setSection(1);
+                    advDto.setKeyword("요약");
+                    advDto.setText(advText);
+                    advancedList.add(advDto);
+                }
+            }
+            s.setAdvanced(advancedList);
             slides.add(s);
         }
 
@@ -186,9 +231,13 @@ public class GenerateCueService {
         return dto;
     }
 
-    /** OpenAI 호출: JSON Schema를 maxSections에 맞춰 강제 */
+
+    /**
+     * OpenAI 호출: JSON Schema를 maxSections에 맞춰 강제
+     */
     private String callAiModel(String prompt, int maxSections) {
-        if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("프롬프트가 비어있습니다.");
+        if (prompt == null || prompt.trim().isEmpty())
+            throw new IllegalArgumentException("프롬프트가 비어있습니다.");
 
         String url = "https://api.openai.com/v1/chat/completions";
         HttpHeaders headers = new HttpHeaders();
@@ -224,7 +273,8 @@ public class GenerateCueService {
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) body.get("choices");
-            if (choices == null || choices.isEmpty()) throw new RuntimeException("OpenAI API 응답에 choices가 없습니다.");
+            if (choices == null || choices.isEmpty())
+                throw new RuntimeException("OpenAI API 응답에 choices가 없습니다.");
 
             Map<String, Object> firstChoice = choices.get(0);
             @SuppressWarnings("unchecked")
@@ -273,6 +323,7 @@ public class GenerateCueService {
             throw new RuntimeException("큐카드 생성에 실패했습니다: " + e.getMessage());
         }
     }
+
     private String stripCodeFence(String s) {
         if (s == null) return "";
         String x = s.trim();
@@ -283,14 +334,17 @@ public class GenerateCueService {
         }
         return x.trim();
     }
-    /** response_format JSON Schema (maxSections 반영) */
+
+    /**
+     * response_format JSON Schema (maxSections 반영)
+     */
     private Map<String, Object> buildResponseFormat(int maxSections) {
         Map<String, Object> sectionItemSchema = Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "index",   Map.of("type", "integer", "minimum", 1, "maximum", maxSections),
+                        "index", Map.of("type", "integer", "minimum", 1, "maximum", maxSections),
                         "keyword", Map.of("type", "string", "minLength", 1),
-                        "text",    Map.of("type", "string", "minLength", 1)
+                        "text", Map.of("type", "string", "minLength", 1)
                 ),
                 "required", List.of("index", "keyword", "text"),
                 "additionalProperties", false
@@ -340,7 +394,9 @@ public class GenerateCueService {
         );
     }
 
-    /** AI JSON → CueSlideDto로 정제 (트랜잭션 밖에서 수행) */
+    /**
+     * AI JSON → CueSlideDto로 정제 (트랜잭션 밖에서 수행)
+     */
     private CueSlideDto parseToCueSlideDto(String json, int expectedSlide, int maxSections) throws Exception {
         JsonNode root = objectMapper.readTree(json);
 
@@ -348,7 +404,7 @@ public class GenerateCueService {
         int slide = expectedSlide;
 
         JsonNode sections = root.path("basic").path("sections");
-        if (!sections.isArray() || sections.size()==0)
+        if (!sections.isArray() || sections.size() == 0)
             throw new IllegalStateException("basic.sections 비어있음");
 
         Set<Integer> seen = new HashSet<>();
@@ -369,140 +425,181 @@ public class GenerateCueService {
         basics.sort(Comparator.comparingInt(CueBasicDto::getSection));
         if (basics.isEmpty()) throw new IllegalStateException("유효 섹션 없음");
 
+        JsonNode advSectionsNode = root.path("advanced").path("sections");
+        if (!advSectionsNode.isArray() || advSectionsNode.size() == 0) {
+            // 심화가 하나도 없을 수도 있다고 하면 여기서 바로 예외는 안 던지고 빈 리스트 처리 가능
+            // 기획적으로 "심화는 항상 있어야 한다"면 예외를 던져도 됨.
+            // 여기선 '없을 수도 있음' 쪽으로 설계.
+        }
+        Set<Integer> advSeen = new HashSet<>();
+        List<CueAdvancedDto> advList = new ArrayList<>();
         String adv = root.path("advanced").path("text").asText("");
         if (adv == null || adv.isBlank()) adv = "(심화버전 없음)";
+
+
+        if (advSectionsNode.isArray()) {
+            for (JsonNode s : advSectionsNode) {
+                int idx = s.path("index").asInt(-1);
+                String tx = s.path("text").asText("");
+                // advanced에도 keyword를 받을 수 있다고 가정 (없을 수도 있으니 optional)
+                String kw = s.path("keyword").asText((String) null);
+
+                if (idx >= 1 && idx <= maxSections
+                        && tx != null && !tx.isBlank()
+                        && advSeen.add(idx)) {
+
+                    CueAdvancedDto a = new CueAdvancedDto();
+                    a.setSection(idx);
+                    a.setText(tx.trim());
+                    a.setKeyword(kw == null ? null : kw.trim());
+                    advList.add(a);
+                }
+            }
+            advList.sort(Comparator.comparingInt(CueAdvancedDto::getSection));
+        }
+
+        // 대표 advanced 문장(하위호환용): advancedSections 중 가장 낮은 section의 text
+        String representativeAdv;
+        if (advList.isEmpty()) {
+            representativeAdv = "(심화버전 없음)";
+        } else {
+            representativeAdv = Optional.ofNullable(advList.get(0).getText())
+                    .filter(t -> !t.isBlank())
+                    .orElse("(심화버전 없음)");
+        }
+
 
         CueSlideDto dto = new CueSlideDto();
         dto.setSlideNumber(slide);
         dto.setBasic(basics);
-        dto.setAdvanced(adv.trim());
+        dto.setAdvanced(advList);
         return dto;
     }
     // ======================= Prompt Builder =======================
 
     private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections) {
         return """
-너는 대학생 발표자료에서 발표자가 사용할 발표 대본과 요약 큐카드를 생성하는 전문가다.
-출력은 반드시 JSON 형식으로만 하며, JSON 외의 설명문이나 텍스트를 포함하지 말라.
+                너는 대학생 발표자료에서 발표자가 사용할 발표 대본과 요약 큐카드를 생성하는 전문가다.
+                출력은 반드시 JSON 형식으로만 하며, JSON 외의 설명문이나 텍스트를 포함하지 말라.
 
-출력 형식(JSON Schema)
-{
-  "slide": 슬라이드 번호 (정수),
-  "basic": {
-    "sections": [
-      {
-        "index": 섹션 번호 (1~%d),
-        "keyword": 섹션 핵심 키워드,
-        "text": 섹션에 해당하는 발표 대본 텍스트 (2~4문장, 공식체)
-      }
-    ]
-  },
-  "advanced": {
-    "text": "해당 슬라이드의 핵심 주제를 한 문장으로 요약한 문장"
-  }
-}
+                출력 형식(JSON Schema)
+                {
+                  "slide": 슬라이드 번호 (정수),
+                  "basic": {
+                    "sections": [
+                      {
+                        "index": 섹션 번호 (1~%d),
+                        "keyword": 섹션 핵심 키워드,
+                        "text": 섹션에 해당하는 발표 대본 텍스트 (2~4문장, 공식체)
+                      }
+                    ]
+                  },
+                  "advanced": {
+                    "text": "해당 슬라이드의 핵심 주제를 한 문장으로 요약한 문장"
+                  }
+                }
 
----
+                ---
 
-[핵심 제약사항]
-- 이 텍스트는 슬라이드 %d번 하나의 슬라이드이다.
-- 반드시 slide = %d 로 설정하고, 다른 슬라이드 번호(예: %d, %d)는 절대 사용하지 않는다.
-- 한 슬라이드 안에서만 큐카드를 생성한다.
+                [핵심 제약사항]
+                - 이 텍스트는 슬라이드 %d번 하나의 슬라이드이다.
+                - 반드시 slide = %d 로 설정하고, 다른 슬라이드 번호(예: %d, %d)는 절대 사용하지 않는다.
+                - 한 슬라이드 안에서만 큐카드를 생성한다.
 
----
+                ---
 
-[기본버전 작성 규칙]
-- 슬라이드 텍스트와 구조를 참고하여, 이 페이지(슬라이드)에 대한 발표자가 읽을 수 있는 발표 대본을 작성하라.
-- 문장은 자연스럽고 논리적인 흐름을 갖추되, 단정적이고 공식적인 발표체(“~입니다”, “~합니다”)를 사용하라.
-- 구어체(“~거든요”, “~해요”, “~같습니다”)는 사용하지 마라.
-- 슬라이드 제목만을 주제로 삼거나, 파일명으로 내용을 유추하지 마라.
-- 발표자가 실제로 말하지 않을 내용(예: “이 슬라이드는 ~를 보여줍니다” 등)은 포함하지 마라.
-- 표지(1번 슬라이드)에서는 인사와 발표 주제를 간단히 안내하는 수준으로 작성하라.
-- OCR 인식이 불가능하거나 텍스트가 거의 없는 슬라이드는 “(OCR 인식 불가 - 요약 생략)”을 포함하라.
-- 발표 흐름이 자연스럽게 이어질 수 있도록, 각 슬라이드 마지막 문장은 다음 내용을 예고하거나 적절한 연결 어미로 마무리하라.
+                [기본버전 작성 규칙]
+                - 슬라이드 텍스트와 구조를 참고하여, 이 페이지(슬라이드)에 대한 발표자가 읽을 수 있는 발표 대본을 작성하라.
+                - 문장은 자연스럽고 논리적인 흐름을 갖추되, 단정적이고 공식적인 발표체(“~입니다”, “~합니다”)를 사용하라.
+                - 구어체(“~거든요”, “~해요”, “~같습니다”)는 사용하지 마라.
+                - 슬라이드 제목만을 주제로 삼거나, 파일명으로 내용을 유추하지 마라.
+                - 발표자가 실제로 말하지 않을 내용(예: “이 슬라이드는 ~를 보여줍니다” 등)은 포함하지 마라.
+                - 표지(1번 슬라이드)에서는 인사와 발표 주제를 간단히 안내하는 수준으로 작성하라.
+                - OCR 인식이 불가능하거나 텍스트가 거의 없는 슬라이드는 “(OCR 인식 불가 - 요약 생략)”을 포함하라.
+                - 발표 흐름이 자연스럽게 이어질 수 있도록, 각 슬라이드 마지막 문장은 다음 내용을 예고하거나 적절한 연결 어미로 마무리하라.
 
----
+                ---
 
-[비언어적 표현 규칙]
-- 발표자가 활용할 수 있도록 아래 비언어적 표현 아이콘을 적절한 위치(강조, 전환, 호흡 등)에 배치하라.
-  사용 가능한 아이콘:
-    <🔍 청중 바라보기>
-    <📄 발표자료 보기>
-    <✋ 제스처>
-    <👉 화면 가리키기>
-    <🌬 호흡>
-- 아이콘은 실제 발표 흐름에 어울리는 위치에 자연스럽게 삽입해야 하며, 반드시 위 예시처럼 <>로 감싸서 출력하라.
-  예시:
-    - 문단 첫 문장 앞: <🌬 호흡>, <🔍 청중 바라보기>
-    - 중요한 정보 뒤: <👉 화면 가리키기>, <✋ 제스처>
-    - 주제 전환 시: <🌬 호흡>, <📄 발표자료 보기>
+                [비언어적 표현 규칙]
+                - 발표자가 활용할 수 있도록 아래 비언어적 표현 아이콘을 적절한 위치(강조, 전환, 호흡 등)에 배치하라.
+                  사용 가능한 아이콘:
+                    <🔍 청중 바라보기>
+                    <📄 발표자료 보기>
+                    <✋ 제스처>
+                    <👉 화면 가리키기>
+                    <🌬 호흡>
+                - 아이콘은 실제 발표 흐름에 어울리는 위치에 자연스럽게 삽입해야 하며, 반드시 위 예시처럼 <>로 감싸서 출력하라.
+                  예시:
+                    - 문단 첫 문장 앞: <🌬 호흡>, <🔍 청중 바라보기>
+                    - 중요한 정보 뒤: <👉 화면 가리키기>, <✋ 제스처>
+                    - 주제 전환 시: <🌬 호흡>, <📄 발표자료 보기>
 
----
+                ---
 
-[기본버전 세부 분할 규칙]
-- 하나의 슬라이드 안에서도 주요 소제목이나 핵심 키워드 단위로 내용을 분리하라.
-- 각 세부 구간의 시작에는 반드시 "#번호 / 키워드" 형식으로 번호를 붙인다.
-  예시: "#1 타당성 분석 / 실현 가능성 평가"
-- 각 구간은 발표자가 자연스럽게 말할 수 있는 2~4문장 내외로 작성하라.
-- 각 문단마다 비언어적 표현 아이콘을 적절히 삽입하라.
-- 최대 섹션 개수는 %d개를 넘지 않는다.
-- 초과할 경우 상위 %d개만 포함하라.
+                [기본버전 세부 분할 규칙]
+                - 하나의 슬라이드 안에서도 주요 소제목이나 핵심 키워드 단위로 내용을 분리하라.
+                - 각 세부 구간의 시작에는 반드시 "#번호 / 키워드" 형식으로 번호를 붙인다.
+                  예시: "#1 타당성 분석 / 실현 가능성 평가"
+                - 각 구간은 발표자가 자연스럽게 말할 수 있는 2~4문장 내외로 작성하라.
+                - 각 문단마다 비언어적 표현 아이콘을 적절히 삽입하라.
+                - 최대 섹션 개수는 %d개를 넘지 않는다.
+                - 초과할 경우 상위 %d개만 포함하라.
 
----
+                ---
 
-[샘플 형식 참고용 (출력하지 말 것)]
-#1 인사말
-안녕하세요. 오늘 '사업 타당성 분석'에 대해 발표하겠습니다. <🌬 호흡>
-지금부터 발표를 시작하겠습니다. <🔍 청중 바라보기>
+                [샘플 형식 참고용 (출력하지 말 것)]
+                #1 인사말
+                안녕하세요. 오늘 '사업 타당성 분석'에 대해 발표하겠습니다. <🌬 호흡>
+                지금부터 발표를 시작하겠습니다. <🔍 청중 바라보기>
 
-#2 타당성 분석 / 개념 소개
-타당성 분석은 사업 아이디어가 실제로 실행 가능한지 판단하는 절차입니다.
-이를 통해 사업화 가치가 있는지 평가할 수 있습니다. <👉 화면 가리키기>
-이제 타당성 분석의 시기와 중요성에 대해 설명드리겠습니다. <🌬 호흡>
+                #2 타당성 분석 / 개념 소개
+                타당성 분석은 사업 아이디어가 실제로 실행 가능한지 판단하는 절차입니다.
+                이를 통해 사업화 가치가 있는지 평가할 수 있습니다. <👉 화면 가리키기>
+                이제 타당성 분석의 시기와 중요성에 대해 설명드리겠습니다. <🌬 호흡>
 
-#3 실현 가능성 평가 / 중요성
-타당성 분석은 사업 아이디어의 실행 가능성을 예비 평가하는 것으로, 비즈니스의 초기 단계에서 수행해야 가장 효과적입니다.
-많은 리소스가 투입되기 전에 아이디어를 선별하는 데 중요한 역할을 합니다.
-<🔍 청중 바라보기> 일부 기업가는 아이디어 파악 후 바로 비즈니스 모델 개발로 넘어가 실수를 할 수 있습니다.
-<✋ 제스처> 효과적인 타당성 분석은 이러한 오류를 방지할 수 있습니다. <🌬 호흡>
+                #3 실현 가능성 평가 / 중요성
+                타당성 분석은 사업 아이디어의 실행 가능성을 예비 평가하는 것으로, 비즈니스의 초기 단계에서 수행해야 가장 효과적입니다.
+                많은 리소스가 투입되기 전에 아이디어를 선별하는 데 중요한 역할을 합니다.
+                <🔍 청중 바라보기> 일부 기업가는 아이디어 파악 후 바로 비즈니스 모델 개발로 넘어가 실수를 할 수 있습니다.
+                <✋ 제스처> 효과적인 타당성 분석은 이러한 오류를 방지할 수 있습니다. <🌬 호흡>
 
-(이 예시는 참고용이며, 실제 출력에는 포함하지 말 것)
+                (이 예시는 참고용이며, 실제 출력에는 포함하지 말 것)
 
----
+                ---
 
-[심화버전 작성 규칙]
-- advanced.text 필드에는 해당 슬라이드의 핵심 주제를 한 문장으로 논리적으로 요약하라.
-- 요약문은 간결하고, 핵심 키워드만 포함하라.
-- 주요 메시지를 빠르게 파악할 수 있도록 선언문 또는 설명문 형태로 작성하라.
-- 불필요한 부연 설명은 피하고, 문서의 핵심 논지에 집중하라.
-- 표지(1번 슬라이드)는 “이번 발표의 목적”만 간단히 설명하라.
-- OCR 인식이 불가능한 경우 “(OCR 인식 불가 – 요약 생략)”을 포함하라.
-  예시: "‘사업 타당성 분석’의 개념과 필요성 설명"
+                [심화버전 작성 규칙]
+                - advanced.text 필드에는 해당 슬라이드의 핵심 주제를 한 문장으로 논리적으로 요약하라.
+                - 요약문은 간결하고, 핵심 키워드만 포함하라.
+                - 주요 메시지를 빠르게 파악할 수 있도록 선언문 또는 설명문 형태로 작성하라.
+                - 불필요한 부연 설명은 피하고, 문서의 핵심 논지에 집중하라.
+                - 표지(1번 슬라이드)는 “이번 발표의 목적”만 간단히 설명하라.
+                - OCR 인식이 불가능한 경우 “(OCR 인식 불가 – 요약 생략)”을 포함하라.
+                  예시: "‘사업 타당성 분석’의 개념과 필요성 설명"
 
----
+                ---
 
-[출력 규칙]
-- JSON만 출력한다. 텍스트나 예시 문장은 절대 포함하지 않는다.
-- slide = %d 로 설정한다.
-- basic.sections 배열에는 최대 %d개의 섹션을 포함한다.
-- 각 section에는 index, keyword, text 필드가 반드시 존재해야 한다.
-- advanced.text는 반드시 존재해야 하며 비어 있으면 안 된다.
+                [출력 규칙]
+                - JSON만 출력한다. 텍스트나 예시 문장은 절대 포함하지 않는다.
+                - slide = %d 로 설정한다.
+                - basic.sections 배열에는 최대 %d개의 섹션을 포함한다.
+                - 각 section에는 index, keyword, text 필드가 반드시 존재해야 한다.
+                - advanced.text는 반드시 존재해야 하며 비어 있으면 안 된다.
 
----
+                ---
 
-[금지사항]
-- JSON 외 텍스트 출력 금지
-- 예시 문장, 설명문, 마크다운, 따옴표 이외의 형식 사용 금지
-- slide 번호 오기입 금지 (반드시 %d)
-- 여러 슬라이드 내용 병합 금지
-- section 필드 누락 금지
-- advanced.text 누락 금지
+                [금지사항]
+                - JSON 외 텍스트 출력 금지
+                - 예시 문장, 설명문, 마크다운, 따옴표 이외의 형식 사용 금지
+                - slide 번호 오기입 금지 (반드시 %d)
+                - 여러 슬라이드 내용 병합 금지
+                - section 필드 누락 금지
+                - advanced.text 누락 금지
 
----
+                ---
 
-[입력 슬라이드 텍스트]
-%s
-""".formatted(
+                [입력 슬라이드 텍스트]
+                %s
+                """.formatted(
                 maxSections,
                 slideNumber, slideNumber, slideNumber + 1, slideNumber - 1,
                 maxSections, maxSections,

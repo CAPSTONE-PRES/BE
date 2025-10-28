@@ -38,6 +38,9 @@ public interface CueCardRepository extends JpaRepository<CueCard, Long> {
     // QR로 단건 조회 (딥링크/스캔)
     Optional<CueCard> findByQrSlug(String qrSlug);
 
+    // fileId로 슬라이드별 qr 정보
+    List<CueCard> findByPresentationFile_FileIdAndModeOrderBySlideNumberAsc(Long fileId, Mode mode);
+
     // 존재/카운트
     boolean existsByPresentationFile_FileId(Long fileId);
     long countByPresentationFile_FileIdAndSlideNumberAndMode(Long fileId, Integer slideNumber, Mode mode);

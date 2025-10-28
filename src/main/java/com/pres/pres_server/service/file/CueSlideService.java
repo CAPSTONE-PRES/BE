@@ -2,8 +2,10 @@ package com.pres.pres_server.service.file;
 
 import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PresentationFile;
+import com.pres.pres_server.dto.file.CueAdvancedDto;
 import com.pres.pres_server.dto.file.CueBasicDto;
 import com.pres.pres_server.dto.file.CueSlideDto;
+import com.pres.pres_server.dto.file.QrInfoDto;
 import com.pres.pres_server.repository.CueCardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,8 +31,8 @@ public class CueSlideService {
         int slide = dto.getSlideNumber();
         final Long fileId = file.getFileId();
 
-        // 1) ADVANCED 업서트 (항상 1건, sectionNumber = null)
-        upsertAdvanced(file, slide, safeAdv(dto.getAdvanced()));
+        // 1) ADVANCED 업서트
+        upsertAdvanced(file, slide, extractAdvTextOrFallback(dto.getAdvanced()));
 
         // 2) BASIC 업서트 준비: 기존 BASIC 전부 로드 → 섹션 맵
         List<CueCard> existingBasics = cueCardRepository
@@ -104,13 +106,34 @@ public class CueSlideService {
         adv.setPresentationFile(file);
         adv.setSlideNumber(slide);
         adv.setMode(CueCard.Mode.ADVANCED);
-        // ADVANCED는 sectionNumber를 0으로 고정
-        adv.setSectionNumber(0);
+        // ADVANCED는 sectionNumber를 1로 고정
+        adv.setSectionNumber(1);
         adv.setSectionKeyword(null);
         adv.setContent(advText);
         cueCardRepository.save(adv);
     }
 
+    //qr 정보만을 반환함, 대본은 반환하지 않음
+    public Map<Integer, QrInfoDto> getQrInfoByFileId(Long fileId) {
+        if (fileId == null || fileId <= 0) {
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+        }
+
+        // ADVANCED 모드만 조회 (QR은 ADVANCED에만 있음)
+        List<CueCard> qrCards = cueCardRepository
+                .findByPresentationFile_FileIdAndModeOrderBySlideNumberAsc(fileId, CueCard.Mode.ADVANCED);
+
+        return qrCards.stream()
+                .filter(c -> c.getQrSlug() != null && c.getQrUrl() != null)
+                .collect(Collectors.toMap(
+                        CueCard::getSlideNumber,
+                        c -> new QrInfoDto(c.getQrSlug(), c.getQrUrl()),
+                        (existing, replacement) -> existing,  // 중복 시 기존 값 유지
+                        TreeMap::new  // 슬라이드 번호 순 정렬
+                ));
+    }
+
+    //qr과 대본을 같이 반환함. "/qr/{slug}"에서 사용
     @Transactional(readOnly = true)
     public CueSlideDto getSlideByQr(String slug) {
         CueCard qrCard = cueCardRepository.findByQrSlug(slug)
@@ -135,28 +158,55 @@ public class CueSlideService {
                 })
                 .toList();
 
-
         // ADVANCED 텍스트 합치기
         String advancedText = cards.stream()
                 .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
                 .map(c -> Optional.ofNullable(c.getContent()).orElse(""))
-                .collect(Collectors.joining("\n"));
+                .findFirst()
+                .orElse("");
+
+        List<CueAdvancedDto> advancedDtos = new ArrayList<>();
+        if(!basicDtos.isEmpty()) {
+            CueBasicDto first = basicDtos.get(0);
+            CueAdvancedDto advDto = new CueAdvancedDto();
+            advDto.setSection(first.getSection());
+            advDto.setKeyword(first.getKeyword());
+            advDto.setText(advancedText);
+            advancedDtos.add(advDto);
+        } else{
+            CueAdvancedDto advDto = new CueAdvancedDto();
+            advDto.setSection(1);
+            advDto.setKeyword("요약");
+            advDto.setText(advancedText);
+            advancedDtos.add(advDto);
+        }
 
 
         return CueSlideDto.builder()
                 .slideNumber(slide)
                 .basic(basicDtos)
-                .advanced(advancedText.isBlank() ? null : advancedText)
+                .advanced(advancedDtos)
                 .qrSlug(qrCard.getQrSlug()) //null 가능
                 .qrUrl(qrCard.getQrUrl()) //null 가능
                 .build();
     }
 
 
-    private static String safeAdv(String s) {
-        if (s == null || s.isBlank()) return "(심화버전 없음)";
-        return s.trim();
+    private static String extractAdvTextOrFallback(List<CueAdvancedDto> advList) {
+        if (advList == null || advList.isEmpty()) {
+            return "(심화버전 없음)";
+        }
+        CueAdvancedDto first = advList.get(0);
+        if (first == null) {
+            return "(심화버전 없음)";
+        }
+        String t = first.getText();
+        if (t == null || t.isBlank()) {
+            return "(심화버전 없음)";
+        }
+        return t.trim();
     }
+
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
