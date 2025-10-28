@@ -1,10 +1,7 @@
 
 package com.pres.pres_server.controller;
 
-import com.pres.pres_server.dto.file.CueCardDto;
-import com.pres.pres_server.dto.file.CueSlideDto;
-import com.pres.pres_server.dto.file.ExtractedTextDto;
-import com.pres.pres_server.dto.file.FileUploadDto;
+import com.pres.pres_server.dto.file.*;
 import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import com.pres.pres_server.dto.qna.QnaListDto;
 import com.pres.pres_server.service.file.*;
@@ -17,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -57,7 +55,7 @@ public class FileController {
         return ResponseEntity.ok(extractedText);
     }
 
-    // 추출한 텍스트를 기반으로 큐카드 생성
+    //TODO: 성공, 실패 여부만 반환, 멀스에서는 /files/cue-cards/{fileId} 응답으로 렌더링
     @Operation(summary = "큐카드,Qr 생성 및 저장", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
     @PostMapping("/generate-cue/{fileId}")
     public ResponseEntity<CueCardDto> generateCue(@PathVariable("fileId") Long fileId,
@@ -65,15 +63,6 @@ public class FileController {
                                                           false, defaultValue = "5") int maxSections) {
         // 큐카드 생성을 담당하는 서비스 호출 (fileId만 전달)
         CueCardDto cueCard = generateCueService.generateCueCards(fileId, maxSections);
-        return ResponseEntity.ok(cueCard);
-    }
-
-
-    // 생성된 큐카드 조회
-    @Operation(summary = "큐카드 조회", description = "파일 ID로 저장된 큐카드를 조회합니다.")
-    @GetMapping("/cue-cards/{fileId}")
-    public ResponseEntity<CueCardDto> getCueCards(@PathVariable("fileId") Long fileId) {
-        CueCardDto cueCard = generateCueService.getCueCardsByFileId(fileId);
         return ResponseEntity.ok(cueCard);
     }
 
@@ -155,5 +144,33 @@ public class FileController {
     public ResponseEntity<CueSlideDto> getByQrSlug(@PathVariable("slug") String slug) {
         CueSlideDto response = cueSlideService.getSlideByQr(slug);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "파일의 QR 정보 조회",
+            description = "연습모드에서 사용할 슬라이드별 QR 정보(slug, url)를 조회합니다.")
+    @GetMapping("/qr-info/{fileId}")
+    public ResponseEntity<Map<Integer, QrInfoDto>> getQrInfo(@PathVariable("fileId") Long fileId) {
+        Map<Integer, QrInfoDto> qrInfo = cueSlideService.getQrInfoByFileId(fileId);
+        return ResponseEntity.ok(qrInfo);
+    }
+    @Operation(summary = "파일의 전체 이미지 조회", description = "슬라이드에 보여줄 전체 파일 이미지 url 리스트를 조회합니다.")
+    @GetMapping("/images/{fileId}")
+    public ResponseEntity<List<String>> getPresentationImages(@PathVariable("fileId") Long fileId) {
+        List<String> urls =  presentationFileService.getAllSlideImages(fileId);
+        return ResponseEntity.ok(urls);
+    }
+
+    @Operation(summary = "큐카드 조회 (QR 미포함)", description = "파일 ID로 저장된 큐카드를 조회합니다.")
+    @GetMapping("/cue-cards/{fileId}")
+    public ResponseEntity<CueCardDto> getCueCards(@PathVariable("fileId") Long fileId) {
+        CueCardDto cueCard = generateCueService.getCueCardsByFileId(fileId);
+        return ResponseEntity.ok(cueCard);
+    }
+
+    @Operation(summary = "큐카드 조회 (QR 포함)", description = "파일 ID로 QR 정보가 포함된 큐카드를 조회합니다.")
+    @GetMapping("/cue-cards-with-qr/{fileId}")
+    public ResponseEntity<CueCardDto> getCueCardsWithQr(@PathVariable("fileId") Long fileId) {
+        CueCardDto cueCard = generateCueService.getCueCardsWithQrByFileId(fileId);
+        return ResponseEntity.ok(cueCard);
     }
 }

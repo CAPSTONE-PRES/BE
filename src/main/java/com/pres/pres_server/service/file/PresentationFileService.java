@@ -2,6 +2,7 @@ package com.pres.pres_server.service.file;
 
 import com.pres.pres_server.domain.PresentationImage;
 import com.pres.pres_server.repository.PresentationFileRepository;
+import com.pres.pres_server.repository.PresentationImageRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -13,7 +14,7 @@ import com.pres.pres_server.dto.file.FileUploadDto;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.UserRepository;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -31,6 +32,7 @@ public class PresentationFileService {
     private final FileUploadService fileUploadService;
     private final ProjectRepository projectRepository;
     private final PresentationFileRepository presentationFileRepository;
+    private final PresentationImageRepository presentationImageRepository;
 
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
@@ -130,6 +132,16 @@ public class PresentationFileService {
             try { fileUploadService.deleteFile(origin.getFilePath()); } catch (Exception ignore) {}
             throw new RuntimeException("DB 저장 실패, 파일 롤백됨", e);
         }
+    }
+
+    public List<String> getAllSlideImages(Long fileId) {
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다" + fileId));
+
+        return presentationImageRepository.findAllByFile_FileIdOrderByPageNumberAsc(fileId)
+                .stream()
+                .map(PresentationImage::getUrl)
+                .toList();
     }
 
     // 파일 삭제
