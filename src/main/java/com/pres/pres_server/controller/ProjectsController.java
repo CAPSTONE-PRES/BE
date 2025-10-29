@@ -3,7 +3,10 @@ package com.pres.pres_server.controller;
 
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.VisitLog;
 import com.pres.pres_server.dto.Projects.*;
+import com.pres.pres_server.repository.ProjectRepository;
+import com.pres.pres_server.repository.VisitLogRepository;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Tag(name = "Projects Controller", description = "프로젝트 관련 API")
 @RestController
@@ -29,6 +33,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProjectsController {
     private final ProjectService projectService;
+    private final ProjectRepository projectRepository;
+    private final VisitLogRepository visitLogRepository;
 
     @Operation(summary = "프로젝트 생성", description = "워크스페이스에 새로운 프로젝트 추가")
     @PostMapping("/workspace/{workspaceId}/projects/create")
@@ -131,23 +137,51 @@ public class ProjectsController {
     }
 
     // 임시 시연용 api
-    @Operation(summary = "시연용 - 프로젝트 리스트 반환")
+    @Operation(summary = "시연용 - 프로젝트 리스트 반환", description = "모든 프로젝트 불러오기 (type값 1은 최근 방문 순, 2는 제목순)")
     @GetMapping("/list/tmp")
-    public ResponseEntity<List<tmpProjectListDTO>> getTmpProjectList() {
+    public List<tmpProjectListDTO> getTmpProjectList(
+            @RequestParam int type,
+            @AuthenticationPrincipal User user
+    ) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
 
-        List<tmpProjectListDTO> tmpList = new ArrayList<>();
+        List<Project> projects;
 
-        tmpList.add(tmpProjectListDTO.builder()
-                .projectId(0L)
-                .projectTitle("string")
-                .workspaceId(0L)
-                .date(LocalDate.now())
-                .workspaceName("string")
-                .presenterName("string")
-                .presenterProfileUrl("string")
-                .lastVisited("string")
-                .build());
+        if (type == 2) {
+            projects = projectRepository.findAllByOrderByTitleAsc();
+        } else if (type == 1) {
+            List<VisitLog> logs = visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
+            projects = logs.stream()
+                    .map(VisitLog::getProject)
+                    .distinct()
+                    .collect(Collectors.toList());
 
-        return ResponseEntity.ok(tmpList);
+            List<Project> allProjects = projectRepository.findAll();
+            allProjects.removeAll(projects);
+            projects.addAll(allProjects);
+        } else {
+            throw new IllegalArgumentException("Invalid type: " + type);
+        }
+
+        return projects.stream()
+                .map(project -> {
+                    VisitLog lastVisit = visitLogRepository
+                            .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
+                            .orElse(null);
+
+                    return tmpProjectListDTO.builder()
+                            .projectId(project.getProjectId())
+                            .projectTitle(project.getTitle())
+                            .workspaceId(project.getWorkspaceId().getWorkspaceId())
+                            .workspaceName(project.getWorkspaceId().getWorkspaceName())
+                            .date(project.getDueDate())
+                            .presenterName(project.getPresenter() != null ? project.getPresenter().getUsername() : null)
+                            .presenterProfileUrl(project.getPresenter() != null ? project.getPresenter().getProfileImageUrl() : null)
+                            .lastVisited(lastVisit != null ? lastVisit.getVisitedAt().toLocalDate().toString() : null)
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 }

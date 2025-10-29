@@ -1,6 +1,5 @@
 package com.pres.pres_server.dto.Projects;
 
-import com.pres.pres_server.domain.Project;
 import lombok.*;
 
 import java.time.LocalDate;
