@@ -10,6 +10,7 @@ import lombok.*;
 public class UserValidationResponseDTO {
     private String message;
     private String name;
+    private Long userId;
     private String email;
     private String profileUrl;
 }

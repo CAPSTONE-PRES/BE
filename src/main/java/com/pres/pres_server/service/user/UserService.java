@@ -108,6 +108,7 @@ public class UserService implements UserDetailsService {
                 .map(user -> UserValidationResponseDTO.builder()
                         .message("유효한 이메일 입니다")
                         .name(user.getUsername())
+                        .userId(user.getId())
                         .email(user.getEmail())
                         .profileUrl(user.getProfileImageUrl())
                         .build())
