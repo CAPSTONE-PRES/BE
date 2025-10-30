@@ -50,15 +50,15 @@ public class VisitLogService {
                 .orElse(null);
 
         if (visitLog == null) {
-            // 새 로그 생성
             visitLog = new VisitLog();
             visitLog.setUser(user);
             visitLog.setProject(project);
+            visitLog.setWorkspace(project.getWorkspaceId());
         }
 
-        // 최근 방문 시간 갱신
         visitLog.setVisitedAt(LocalDateTime.now());
         visitLogRepository.save(visitLog);
     }
+
 
 }
