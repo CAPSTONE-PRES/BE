@@ -3,6 +3,7 @@ package com.pres.pres_server.service.file;
 import com.pres.pres_server.domain.PresentationImage;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.PresentationImageRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
-import java.util.Objects;
 
 // 파일 업로드 요청의 전체 비즈니스 로직만 관리
 // FileUploadService를 호출하여 파일을 먼저 저장한 후, DB 트랜잭션 내에서 파일의 메타데이터를 저장
@@ -27,6 +27,7 @@ import java.util.Objects;
 // 파일 메타데이터를 DB에 저장하는 서비스
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PresentationFileService {
     private final UserRepository userRepository;
     private final FileUploadService fileUploadService;
@@ -34,8 +35,10 @@ public class PresentationFileService {
     private final PresentationFileRepository presentationFileRepository;
     private final PresentationImageRepository presentationImageRepository;
 
+
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
+        log.info("uploadAndSave start");
         // 1. 파일 시스템에 원본 파일 저장
         FileInfoDto origin = fileUploadService.saveFile(file);
 
@@ -43,12 +46,13 @@ public class PresentationFileService {
         String origName = origin.getOriginalName();
         String lower = (origName == null ? "" : origName.toLowerCase());
         final boolean isPdf = lower.endsWith(".pdf");
-        final int dpi = 200;       // 기본값 (웹 미리보기 용도)
+        final int dpi = 150;       // 기본값 (웹 미리보기 용도)
         final int maxSlides = 0;   // 0 = 전체
-
+        log.info("is pdf:" + isPdf);
 
         // 3) 원본 → 이미지 변환 (리스트)
         List<FileInfoDto> images = new java.util.ArrayList<>();
+        log.info("images size:" + images.size() + "starts convert file to images");
         try {
             if (isPdf) {
                 // PDF → 전 페이지 이미지
@@ -75,7 +79,9 @@ public class PresentationFileService {
             try { fileUploadService.deleteFile(origin.getFilePath()); } catch (Exception ignore) {}
             throw e;
         }
-
+//        PresentationFile을 먼저 DB에 저장해서 PK(fileId)를 확보.
+//        각 페이지(슬라이드)마다 바로 PresentationImage insert.
+//                썸네일은 첫 장만 기억했다가 마지막에 update.
         // 4) DB 저장
         try {
             PresentationFile entity = new PresentationFile();
