@@ -15,7 +15,7 @@ public class PracticeSessionStartDto {
 
     private Long sessionId;
     private Long projectId;
-    private List<SlideInfo> slides;
+    private Long fileId;
 
     @Getter
     @Builder

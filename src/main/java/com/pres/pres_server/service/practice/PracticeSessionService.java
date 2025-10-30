@@ -27,9 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 // 연습 세션 시작/종료, 슬라이드 및 큐카드 조회를 담당
@@ -41,13 +39,11 @@ public class PracticeSessionService {
     private final ProjectRepository projectRepository;
     private final PracticeSessionRepository practiceSessionRepository;
     private final PresentationFileRepository presentationFileRepository;
-    private final CueCardRepository cueCardRepository;
     private final FeedbackRepository feedbackRepository;
 
     private final FileUploadService fileUploadService;
     private final AudioAnalysisService audioAnalysisService;
     private final AnalysisResultService analysisResultService;
-    private final SilenceDetectionService silenceDetectionService;
     private final PracticeQnaService practiceQnaService;
 
     /**
@@ -60,68 +56,34 @@ public class PracticeSessionService {
     public PracticeSessionStartDto startSession(Long projectId) {
         log.info("연습 세션 시작 - projectId: {}", projectId);
 
-        // 1. 프로젝트 존재 여부 확인
+
+        // 1. 프로젝트 확인
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. projectId: " + projectId));
 
-        // 2. PracticeSession 생성 (started_at만 기록, ended_at은 null)
+        // 2. PracticeSession 생성
         PracticeSession session = PracticeSession.builder()
                 .project(project)
-                .practicedAt(LocalDateTime.now()) // started_at 역할
+                .practicedAt(LocalDateTime.now())
                 .build();
-
         session = practiceSessionRepository.save(session);
         log.info("PracticeSession 생성 완료 - sessionId: {}", session.getSessionId());
 
-        // 3. PresentationFile 조회 (ExtractedText와 함께 fetch join으로 조회)
+        // 3. 프로젝트에 연결된 발표 파일 조회
         PresentationFile presentationFile = presentationFileRepository.findByProjectWithExtractedText(project)
                 .orElseThrow(() -> new IllegalArgumentException("프로젝트에 연결된 발표 파일이 없습니다. projectId: " + projectId));
 
-        // 4. ExtractedText 조회 (실제 슬라이드 텍스트가 저장된 곳)
-        if (presentationFile.getExtractedText() == null) {
-            throw new IllegalArgumentException("발표 파일의 텍스트가 추출되지 않았습니다. fileId: " + presentationFile.getFileId());
-        }
+        Long fileId = presentationFile.getFileId();
+        log.info("PresentationFile 조회 완료 - fileId: {}", fileId);
 
-        List<String> slideTexts = presentationFile.getExtractedText().getSlideTexts();
-        log.info(" PresentationFile 조회 완료 - fileId: {}, slides: {} 개",
-                presentationFile.getFileId(),
-                slideTexts != null ? slideTexts.size() : 0);
+        // 4. 여기서는 더 이상 슬라이드/큐카드/qrUrl 리스트를 조립하지 않는다.
+        //    프론트가 /images/{fileId}, /qr-info/{fileId} 를 따로 호출해서 쓴다.
 
-        // 5. CueCard 목록 조회 (파일에 연결된 큐카드들)
-        List<CueCard> cueCards = cueCardRepository.findByPresentationFileOrderBySlideNumberAscModeAscSectionNumberAsc(presentationFile);
-        log.info("CueCard 조회 완료 - {} 개", cueCards.size());
-
-        // 6. slideNumber를 key로 하는 Map 생성 (빠른 조회)
-        Map<Integer, CueCard> cueCardMap = cueCards.stream()
-                .collect(Collectors.toMap(CueCard::getSlideNumber, card -> card));
-
-        // 7. 슬라이드 정보 생성 (slideTexts 기준으로 순회)
-        List<PracticeSessionStartDto.SlideInfo> slides = new ArrayList<>();
-
-        if (slideTexts != null && !slideTexts.isEmpty()) {
-            for (int i = 0; i < slideTexts.size(); i++) {
-                int pageNumber = i + 1; // 1부터 시작
-                CueCard cueCard = cueCardMap.get(pageNumber);
-
-                PracticeSessionStartDto.SlideInfo slideInfo = PracticeSessionStartDto.SlideInfo.builder()
-                        .pageNumber(pageNumber)
-                        .slideText(slideTexts.get(i))
-                        .imageUrl(generatePdfUrl(presentationFile, pageNumber)) // pdf url 전달
-                        .cueCard(cueCard != null ? cueCard.getContent() : null)
-                        .qrUrl(cueCard != null ? cueCard.getQrUrl() : null)
-                        .build();
-
-                slides.add(slideInfo);
-            }
-        }
-
-        log.info("✅ 슬라이드 정보 생성 완료 - {} 개", slides.size());
-
-        // 8. 응답 DTO 생성
         return PracticeSessionStartDto.builder()
                 .sessionId(session.getSessionId())
                 .projectId(projectId)
-                .slides(slides)
+                .fileId(fileId)   // ★ DTO에 이 필드 추가 필요
+                // slides는 이제 굳이 안 내려도 됨. 프론트가 별도 API에서 받음.
                 .build();
     }
 
@@ -133,7 +95,7 @@ public class PracticeSessionService {
      * @return 완료된 세션 ID
      */
     @Transactional
-    public Long endSession(Long sessionId, MultipartFile audioFile, String slideTransitionsJson) throws Exception {
+    public Long endSession(Long sessionId, MultipartFile audioFile) {
         log.info("🎬 연습 세션 종료 시작 - sessionId: {}, audioFile: {}",
                 sessionId, audioFile.getOriginalFilename());
 
@@ -148,46 +110,14 @@ public class PracticeSessionService {
 
         // 3. 오디오 파일 저장
         FileInfoDto fileInfo = fileUploadService.saveFile(audioFile);
-        log.info("💾 오디오 파일 저장 완료 - filePath: {}", fileInfo.getFilePath());
+        log.info(" 오디오 파일 저장 완료 - filePath: {}", fileInfo.getFilePath());
 
         // 4. 세션 정보 업데이트 (audioUrl 저장)
         session.updateAudioUrl(fileInfo.getFileUrl());
         practiceSessionRepository.save(session);
-        log.info("✅ 세션 audioUrl 업데이트 완료 - audioUrl: {}", fileInfo.getFileUrl());
+        log.info(" 세션 audioUrl 업데이트 완료 - audioUrl: {}", fileInfo.getFileUrl());
 
-        // === 트랜잭션 1 종료 (파일 저장 + 세션 업데이트) ===
-
-        // 5. 오디오 분석 및 결과 저장 (별도 트랜잭션)
-        try {
-            // parse optional slide transitions JSON (if provided)
-            List<SlideTransition> transitions = null;
-            if (slideTransitionsJson != null && !slideTransitionsJson.isBlank()) {
-                try {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    com.fasterxml.jackson.core.type.TypeReference<List<SlideTransition>> tr = new com.fasterxml.jackson.core.type.TypeReference<>() {
-                    };
-                    transitions = mapper.readValue(slideTransitionsJson, tr);
-                    log.info("🔖 슬라이드 전환 타임스탬프 파싱 완료 - count={}", transitions.size());
-                } catch (Exception pe) {
-                    log.warn("⚠️ slideTransitions JSON 파싱 실패, 무시하고 진행함 - error={}", pe.getMessage());
-                    transitions = null;
-                }
-            }
-
-            processAudioAnalysisAndSaveResult(sessionId, fileInfo.getFilePath(), transitions);
-        } catch (Exception e) {
-            log.error("❌ 오디오 분석 실패 - sessionId: {}, error: {}", sessionId, e.getMessage(), e);
-            // 분석 실패 시 저장된 파일 정리
-            try {
-                fileUploadService.deleteFile(fileInfo.getFilePath());
-                log.info("🗑️ 분석 실패로 인한 파일 삭제 완료 - filePath: {}", fileInfo.getFilePath());
-            } catch (Exception cleanupEx) {
-                log.warn("⚠️ 파일 삭제 실패 - filePath: {}", fileInfo.getFilePath(), cleanupEx);
-            }
-            throw new RuntimeException("오디오 분석에 실패했습니다: " + e.getMessage(), e);
-        }
-
-        log.info("✅ 연습 세션 종료 완료 - sessionId: {}", sessionId);
+        log.info(" 연습 세션 종료 완료 - sessionId: {}", sessionId);
         return sessionId;
     }
 
@@ -264,12 +194,6 @@ public class PracticeSessionService {
                 .qnaComparison(qnaComparison) // QnA 있으면 포함, 없으면 null
                 // silenceAnalysisSuccess는 사용자에게 노출하지 않음
                 .build();
-    }
-
-    private String generatePdfUrl(PresentationFile presentationFile, int pageNumber) {
-
-        // fileUrl을 그대로 반환 (프론트에서 PDF 렌더링)
-        return presentationFile.getFileUrl() + "#page=" + pageNumber;
     }
 
 }

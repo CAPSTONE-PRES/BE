@@ -41,9 +41,6 @@ public class PracticeSessionController {
 
                 PracticeSessionStartDto response = practiceSessionService.startSession(projectId);
 
-                log.info("✅ 연습 세션 생성 완료 - sessionId: {}, slides: {} 개",
-                                response.getSessionId(), response.getSlides().size());
-
                 return ResponseEntity.ok(response);
         }
 
@@ -58,14 +55,12 @@ public class PracticeSessionController {
         @PostMapping(value = "/{sessionId}/end", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         public ResponseEntity<Long> endSession(
                         @PathVariable("sessionId") Long sessionId,
-                        @RequestParam("audio") MultipartFile audioFile,
-                        @RequestParam(value = "slideTransitions", required = false) String slideTransitionsJson)
-                        throws Exception {
+                        @RequestParam("audio") MultipartFile audioFile){
 
                 log.info("▶ 연습 세션 종료 요청 - sessionId: {}, audioFile: {}",
                                 sessionId, audioFile.getOriginalFilename());
 
-                Long completedSessionId = practiceSessionService.endSession(sessionId, audioFile, slideTransitionsJson);
+                Long completedSessionId = practiceSessionService.endSession(sessionId, audioFile);
 
                 log.info("✅ 연습 세션 종료 완료 - sessionId: {}", completedSessionId);
 
