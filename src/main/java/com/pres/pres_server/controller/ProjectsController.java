@@ -74,8 +74,8 @@ public class ProjectsController {
     }
 
     @GetMapping("/{projectId}/info")
-    public ProjectInfoDTO getProjectInfo(@PathVariable Long projectId) {
-        return projectService.getProjectInfo(projectId);
+    public ProjectInfoDTO getProjectInfo(@AuthenticationPrincipal User user, @PathVariable Long projectId) {
+        return projectService.getProjectInfo(user, projectId);
     }
 
     @Operation(summary = "프로젝트 전체 리스트 반환", description = "달력에 표기할 프로젝트 리스트 반환")

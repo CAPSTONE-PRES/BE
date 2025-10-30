@@ -22,6 +22,8 @@ public class VisitLogService {
     /**
      * user + workspace + project 조합으로 VisitLog를 upsert
      */
+
+    // 워크스페이스 방문 기록용
     public void upsertVisitLog(User user, WorkSpace workspace, Project project) {
         Optional<VisitLog> existingLog =
                 visitLogRepository.findByUserAndWorkspaceAndProject(user, workspace, project);
@@ -38,4 +40,25 @@ public class VisitLogService {
             visitLogRepository.save(newLog);
         }
     }
+
+    // 프로젝트 방문 기록용
+    public void upsertVisitLog(User user, Project project) {
+        if (user == null || project == null) return;
+
+        VisitLog visitLog = visitLogRepository
+                .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
+                .orElse(null);
+
+        if (visitLog == null) {
+            // 새 로그 생성
+            visitLog = new VisitLog();
+            visitLog.setUser(user);
+            visitLog.setProject(project);
+        }
+
+        // 최근 방문 시간 갱신
+        visitLog.setVisitedAt(LocalDateTime.now());
+        visitLogRepository.save(visitLog);
+    }
+
 }

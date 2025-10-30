@@ -3,6 +3,7 @@ package com.pres.pres_server.service;
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Projects.*;
 import com.pres.pres_server.repository.*;
+import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ public class ProjectService {
         private final VisitLogRepository visitLogRepository;
         private final WorkspaceRepository workspaceRepository;
         private final UserRepository userRepository;
+        private final VisitLogService visitLogService;
         private final PresentationFileRepository presentationFileRepository;
 
         public List<ProjectCalenderListDTO> getProjectsByUserId(Long userId) {
@@ -231,9 +233,12 @@ public class ProjectService {
         }
 
         // 특정 프로젝트 정보 반환
-        public ProjectInfoDTO getProjectInfo(Long projectId) {
+        public ProjectInfoDTO getProjectInfo(User user, Long projectId) {
                 Project project = projectRepository.findById(projectId)
                         .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다."));
+
+                // 방문 로그 upsert
+                visitLogService.upsertVisitLog(user, project);
 
                 WorkSpace workspace = project.getWorkspaceId();
 
