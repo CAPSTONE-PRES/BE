@@ -53,6 +53,7 @@ public class UserController {
                     .email(myInfo.getEmail())
                     .username(myInfo.getUsername())
                     .emailVerified(myInfo.isEmailVerified())
+                    .profileImageUrl(myInfo.getProfileImageUrl())
                     .build();
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -72,6 +73,7 @@ public class UserController {
                 .email(updatedUser.getEmail())
                 .username(updatedUser.getUsername())
                 .emailVerified(updatedUser.isEmailVerified())
+                .profileImageUrl(updatedUser.getProfileImageUrl())
                 .build();
         return ResponseEntity.ok(response);
     }

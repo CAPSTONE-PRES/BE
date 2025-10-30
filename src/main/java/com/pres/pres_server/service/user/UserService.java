@@ -12,6 +12,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
+import java.util.Objects;
 
 @RequiredArgsConstructor
 @Service
@@ -30,23 +31,32 @@ public class UserService implements UserDetailsService {
     @Transactional
     public User updateUser(Long id, UserUpdateDto dto) {
         User user = getUser(id);
-        if (dto.getUsername() != null && dto.getUsername().isEmpty()) {
+
+        // 입력값 간단 검증 (null은 패치에서 '미변경' 의미이므로 길이 검증은 hasText일 때만)
+        if (dto.getUsername() != null && dto.getUsername().isEmpty())
             throw new IllegalArgumentException("사용자 이름이 비어 있습니다.");
-        }
-        if (dto.getEmail() != null && dto.getEmail().isEmpty()) {
+        if (dto.getEmail() != null && dto.getEmail().isEmpty())
             throw new IllegalArgumentException("이메일이 비어 있습니다.");
+        if (dto.getPassword() != null && dto.getPassword().length() < 8)
+            throw new IllegalArgumentException("비밀번호가 너무 짧습니다. 8자 이상 작성해주세요.");
+
+        // 실제 값이 달라졌을 때만 변경
+        if (dto.getUsername() != null && !Objects.equals(dto.getUsername(), user.getUsername())) {
+            user.setUsername(dto.getUsername().trim());
         }
-        if (dto.getPassword() != null && dto.getPassword().length() < 8) {
-            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
+        if (dto.getEmail() != null && !Objects.equals(dto.getEmail(), user.getEmail())) {
+            user.setEmail(dto.getEmail().trim());
+            // 이메일 변경 시 검증 플래그 리셋 고려
+            user.setEmailVerified(false);
         }
-        if (dto.getUsername() != null) {
-            user.setUsername(dto.getUsername());
+        if (dto.getPassword() != null && !dto.getPassword().isEmpty()) {
+            // 같은 비번 재설정 방지: 해시 비교
+            if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+                user.setPassword(passwordEncoder.encode(dto.getPassword()));
+            }
         }
-        if (dto.getEmail() != null) {
-            user.setEmail(dto.getEmail());
-        }
-        if (dto.getPassword() != null) {
-            user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        if (!Objects.equals(dto.getProfileUrl(), user.getProfileImageUrl())) {
+            user.setProfileImageUrl(dto.getProfileUrl());
         }
         userRepository.save(user);
         return user;
