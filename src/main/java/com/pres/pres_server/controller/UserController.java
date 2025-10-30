@@ -8,6 +8,7 @@ import com.pres.pres_server.dto.EmailAuth.EmailAuthVerifyResponse;
 import com.pres.pres_server.dto.ResetPassword.ResetPasswordEmailRequest;
 import com.pres.pres_server.dto.ResetPassword.ResetPasswordRequest;
 import com.pres.pres_server.dto.User.UserResponseDto;
+import com.pres.pres_server.dto.User.UserUpdateDto;
 import com.pres.pres_server.service.user.UserService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,6 +19,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 
 import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.email.EmailService;
@@ -61,7 +63,9 @@ public class UserController {
         }
     }
 
-    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "수정할 사용자 정보", required = true, content = @Content(schema = @Schema(implementation = com.pres.pres_server.dto.User.UserUpdateDto.class))), responses = {
+    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody =
+            @RequestBody(description = "수정할 " +
+            "사용자 정보", required = true, content = @Content(schema = @Schema(implementation = UserUpdateDto.class))), responses = {
             @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
     })
     @PatchMapping("/me")
