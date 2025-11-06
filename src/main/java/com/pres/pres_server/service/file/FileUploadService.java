@@ -1,5 +1,8 @@
 package com.pres.pres_server.service.file;
 
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 import java.nio.file.Path;
@@ -21,11 +25,16 @@ import java.nio.file.Files;
 
 import org.springframework.stereotype.Service;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 
 // 순수 파일 시스템 I/O 담당 서비스 (내부 동작용)
 // DB와는 직접적으로 관련 없음
 @Service
+@Slf4j
 public class FileUploadService {
 
     @Value("${file.upload-dir}")
@@ -145,9 +154,9 @@ public class FileUploadService {
             final String baseName = pptxPath.getFileName().toString().replaceAll("(?i)\\.pptx$",
                     "");
             final Dimension pg = show.getPageSize();          // pt 단위 (1/72 inch)
-            final double scale = dpi/72.0; // 최소 72dpi 보정
-            final int w = (int)Math.round(pg.getWidth() * scale);
-            final int h = (int)Math.round(pg.getHeight() * scale);
+            final double scale = dpi / 72.0; // 최소 72dpi 보정
+            final int w = (int) Math.round(pg.getWidth() * scale);
+            final int h = (int) Math.round(pg.getHeight() * scale);
             final int total = show.getSlides().size();
             final int end = (maxSlides > 0) ? Math.min(maxSlides, total) : total;
 
@@ -158,8 +167,7 @@ public class FileUploadService {
                 BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
                 Graphics2D g2 = img.createGraphics();
                 // 품질 힌트
-                try
-                {
+                try {
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
                     g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
@@ -200,6 +208,7 @@ public class FileUploadService {
         }
         return result;
     }
+
     /**
      * PDF 전체 페이지를 이미지(PNG)로 변환하여 저장하고, 각 이미지의 FileInfoDto 리스트 반환
      *
@@ -208,6 +217,7 @@ public class FileUploadService {
      * @return 변환된 이미지 파일들의 FileInfoDto 리스트 (페이지 순서대로)
      */
     public List<FileInfoDto> createPdfImages(String pdfFilePath, int dpi) {
+        log.info("start createPdfImages");
         if (pdfFilePath == null || pdfFilePath.isEmpty()) {
             throw new IllegalArgumentException("파일 경로가 유효하지 않습니다.");
         }
@@ -217,7 +227,7 @@ public class FileUploadService {
         }
 
         // DPI 안전범위 (필요시 조정)
-        final int safeDpi = Math.max(72, Math.min(dpi, 600));
+        final int safeDpi = 150;
 
         final List<FileInfoDto> result = new ArrayList<>();
         final Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
@@ -225,68 +235,113 @@ public class FileUploadService {
         try {
             Files.createDirectories(uploadPath);
         } catch (IOException e) {
+            log.info("failed to create directories");
             throw new RuntimeException("업로드 디렉토리 생성 실패: " + uploadPath, e);
         }
 
         // 대용량 PDF 대비 임시 파일 캐시 사용
         ImageIO.setUseCache(true);
-
-        try (org.apache.pdfbox.pdmodel.PDDocument document =
-                     org.apache.pdfbox.pdmodel.PDDocument.load(pdfPath.toFile())) {
-
-            org.apache.pdfbox.rendering.PDFRenderer renderer =
-                    new org.apache.pdfbox.rendering.PDFRenderer(document);
+        PDDocument document = null;
+        log.info("start convert pdf to images");
+        try {
+            document = PDDocument.load(pdfPath.toFile());
+            PDFRenderer renderer = new PDFRenderer(document);
 
             final int totalPages = document.getNumberOfPages();
             final String baseName = pdfPath.getFileName().toString().replaceAll("(?i)\\.pdf$", "");
 
             for (int pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-                // 렌더링
-                java.awt.image.BufferedImage bim = renderer.renderImageWithDPI(pageIndex, safeDpi);
+                BufferedImage bim = null;
+                try { //메모리 체크
+                    checkMemoryAndWait();
+                    // 렌더링
+                    bim = renderer.renderImageWithDPI(pageIndex, safeDpi);
+                    // 파일명/경로
+                    String imageFileName = String.format("%s_page%02d.png", baseName, pageIndex + 1);
+                    String saveName = java.util.UUID.randomUUID().toString() + "_" + imageFileName;
+                    Path imagePath = uploadPath.resolve(saveName);
 
-                // 파일명/경로
-                String imageFileName = String.format("%s_page%02d.png", baseName, pageIndex + 1);
-                String saveName = java.util.UUID.randomUUID().toString() + "_" + imageFileName;
-                Path imagePath = uploadPath.resolve(saveName);
+                    // 압축 옵션으로 저장
+                    saveImageWithCompression(bim, imagePath);
 
-                // 저장
-                boolean ok = javax.imageio.ImageIO.write(bim, "png", imagePath.toFile());
-                if (!ok || !Files.exists(imagePath)) {
-                    throw new RuntimeException("PDF→이미지 저장 실패: " + imagePath);
+                    if (!Files.exists(imagePath)) {
+                        log.info("!Files.exists(imagePath)");
+                        throw new RuntimeException("PDF→이미지 저장 실패: " + imagePath);
+                    }
+
+                    long fileSize = Files.size(imagePath);
+                    String fileUrl = "/files/" + saveName;
+
+                    result.add(FileInfoDto.builder()
+                            .originalName(imageFileName)
+                            .saveName(saveName)
+                            .fileType("image/png")
+                            .size(fileSize)
+                            .filePath(imagePath.toString())
+                            .fileUrl(fileUrl)
+                            .uploadedAt(LocalDateTime.now())
+                            .build());
+                } finally {
+                    // BufferedImage 명시적 해제
+                    if (bim != null) {
+                        bim.flush();
+                        bim = null;
+                    }
+
+                    //메모리 정리 힌트
+                    if (pageIndex % 3 == 0) {
+                        System.gc();
+                        Thread.sleep(100);
+                    }
                 }
-
-                long fileSize;
-                try {
-                    fileSize = Files.size(imagePath);
-                } catch (IOException e) {
-                    throw new RuntimeException("이미지 파일 크기 조회 실패: " + imagePath, e);
-                }
-
-                String fileUrl = "/files/" + saveName;
-                result.add(FileInfoDto.builder()
-                        .originalName(imageFileName)
-                        .saveName(saveName)
-                        .fileType("image/png")
-                        .size(fileSize)
-                        .filePath(imagePath.toString())
-                        .fileUrl(fileUrl)
-                        .uploadedAt(java.time.LocalDateTime.now())
-                        .build());
             }
 
         } catch (IOException e) {
+            log.info("failed to create images" + e.getMessage());
             throw new RuntimeException("PDF→이미지 변환 실패: " + pdfFilePath, e);
+        } catch (InterruptedException e) {
+            log.info("failed to create images" + e.getMessage());
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("PDF 변환 중단 됨", e);
+        } finally {
+            if (document != null) {
+                try {document.close();} catch (IOException ignore) { }
+            }
         }
-
+        log.info("end createPdfImages");
         return result;
     }
-    /** 기본값: dpi=200, 전체 슬라이드 변환 */
-    public List<FileInfoDto> convertPptxToImage(String pptxFilePath) {
-        return convertPptxToImage(pptxFilePath, 200, 0);
-    }
-    /** 편의 오버로드: 기본 200DPI */
-    public List<FileInfoDto> createPdfImages(String pdfFilePath) {
-        return createPdfImages(pdfFilePath, 200);
+    //메모리 상태 체크 및 대기
+    private void checkMemoryAndWait() throws InterruptedException {
+        Runtime runtime = Runtime.getRuntime();
+        long freeMemory = runtime.freeMemory();
+        long totalMemory = runtime.totalMemory();
+        long maxMemory = runtime.maxMemory();
+        long usedMemory = totalMemory - freeMemory;
+        long availableMemory = maxMemory - usedMemory;
+
+        // 사용 가능한 메모리가 100MB 미만이면 GC 대기
+        if (availableMemory < 100 * 1024 * 1024) {
+            System.gc();
+            Thread.sleep(500);
+        }
     }
 
+    //png 압축 옵션으로 이미지 저장
+    private void saveImageWithCompression(BufferedImage image, Path outputPath) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("png");
+        if (!writers.hasNext()) {
+            throw new IOException("PNG writer를 찾을 수 없습니다");
+        }
+
+        ImageWriter writer = writers.next();
+        ImageWriteParam writeParam = writer.getDefaultWriteParam();
+
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(outputPath.toFile())) {
+            writer.setOutput(ios);
+            writer.write(null, new IIOImage(image, null, null), writeParam);
+        } finally {
+            writer.dispose();
+        }
+    }
 }
