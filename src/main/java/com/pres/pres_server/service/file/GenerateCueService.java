@@ -42,7 +42,7 @@ public class GenerateCueService {
     // ======================= Public APIs =======================
 
     @Transactional
-    public CueCardDto generateCueCards(Long fileId, int maxSections) {
+    public CueGenerationResponseDto generateCueCards(Long fileId, int maxSections) {
         if (fileId == null || fileId <= 0) {
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
         }
@@ -64,12 +64,14 @@ public class GenerateCueService {
 
         List<Integer> failed = new ArrayList<>();
         Map<Integer, String> slideErrors = new LinkedHashMap<>();
+        int successCount = 0;
 
         for (int i = 0; i < slides.size(); i++) {
             int slideNum = i + 1;
             try {
                 if (insufficient.contains(slideNum)) {
                     cueSlideService.persistInsufficient(file, slideNum);
+                    successCount++;
                     continue;
                 }
 
@@ -79,6 +81,7 @@ public class GenerateCueService {
 
                 // 저장 (REQUIRES_NEW)
                 cueSlideService.processSlide(file, slideDto);
+                successCount++;
             } catch (Exception e) {
 
                 failed.add(slideNum);
@@ -94,7 +97,17 @@ public class GenerateCueService {
         generateQrMeta(entities);
 
         log.info("완료: 총 {}슬라이드 중 {}개 실패", slides.size(), failed.size());
-        return toDto(fileId, entities, slideErrors, false);
+        // toDto() 호출 삭제, 간단한 응답만 반환
+        return CueGenerationResponseDto.builder()
+                .success(failed.isEmpty())
+                .message(failed.isEmpty()
+                        ? "큐카드가 성공적으로 생성되었습니다."
+                        : String.format("큐카드 생성 완료 (일부 실패: %d개)", failed.size()))
+                .totalSlides(slides.size())
+                .successCount(successCount)
+                .failureCount(failed.size())
+                .errors(slideErrors.isEmpty() ? null : slideErrors)
+                .build();
     }
 
     //조회용 메서드, qr 미포함 반환

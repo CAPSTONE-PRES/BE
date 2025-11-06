@@ -1,17 +1,25 @@
 
 package com.pres.pres_server.controller;
 
+import com.pres.pres_server.domain.PresentationImage;
 import com.pres.pres_server.dto.file.*;
 import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import com.pres.pres_server.dto.qna.QnaListDto;
+import com.pres.pres_server.repository.PresentationImageRepository;
 import com.pres.pres_server.service.file.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,12 +36,14 @@ public class FileController {
     private final GenerateCueService generateCueService;
     private final GenerateQnaService generateQnaService;
     private final CueSlideService cueSlideService;
+    private final PresentationImageService presentationImageService;
 
     @Operation(summary = "presentation file 업로드", description = "presentation file을 업로드하고, 파일 ID와 URL을 반환합니다.")
     @PostMapping(value = "/upload", consumes = { "multipart/form-data" })
     public ResponseEntity<FileUploadDto> uploadFile(@RequestPart("file") MultipartFile file,
             @RequestParam("uploaderId") Long uploaderId,
             @RequestParam("projectId") Long projectId) {
+        log.info("upload api starts");
         // 파일 업로드 및 db저장
         FileUploadDto result = presentationFileService.uploadAndSave(file, uploaderId, projectId);
         // 성공 메세지와 결과 반환
@@ -55,55 +65,43 @@ public class FileController {
         return ResponseEntity.ok(extractedText);
     }
 
-    //TODO: 성공, 실패 여부만 반환, 멀스에서는 /files/cue-cards/{fileId} 응답으로 렌더링
     @Operation(summary = "큐카드,Qr 생성 및 저장", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
     @PostMapping("/generate-cue/{fileId}")
-    public ResponseEntity<CueCardDto> generateCue(@PathVariable("fileId") Long fileId,
+    public ResponseEntity<CueGenerationResponseDto> generateCue(@PathVariable("fileId") Long fileId,
                                                   @RequestParam(name="maxSections", required =
                                                           false, defaultValue = "5") int maxSections) {
         // 큐카드 생성을 담당하는 서비스 호출 (fileId만 전달)
-        CueCardDto cueCard = generateCueService.generateCueCards(fileId, maxSections);
+        CueGenerationResponseDto cueCard = generateCueService.generateCueCards(fileId, maxSections);
         return ResponseEntity.ok(cueCard);
     }
 
-    // 추출한 텍스트를 기반으로 예상 질문 및 적절한 답변 생성하고 DB에 저장
-    @Operation(summary = "Q&A 생성 및 DB 저장", description = "파일 ID로 추출된 텍스트를 기반으로 예상 질문과 답변을 생성하고 DB에 저장합니다.")
+    @Operation(summary = "큐카드 조회 (QR 미포함)", description = "파일 ID로 저장된 큐카드를 조회합니다.")
+    @GetMapping("/cue-cards/{fileId}")
+    public ResponseEntity<CueCardDto> getCueCards(@PathVariable("fileId") Long fileId) {
+        CueCardDto cueCard = generateCueService.getCueCardsByFileId(fileId);
+        return ResponseEntity.ok(cueCard);
+    }
+
+    @Operation(summary = "큐카드 조회 (QR 포함)", description = "파일 ID로 QR 정보가 포함된 큐카드를 조회합니다.")
+    @GetMapping("/cue-cards-with-qr/{fileId}")
+    public ResponseEntity<CueCardDto> getCueCardsWithQr(@PathVariable("fileId") Long fileId) {
+        CueCardDto cueCard = generateCueService.getCueCardsWithQrByFileId(fileId);
+        return ResponseEntity.ok(cueCard);
+    }
+
+    @Operation(summary = "Q&A 생성 및 DB 저장",
+            description = "파일 ID로 추출된 텍스트를 기반으로 예상 질문과 답변을 생성하고 DB에 저장합니다.")
     @PostMapping("/generate-and-save-qna/{fileId}")
-    public ResponseEntity<QnaGenerateResponseDto> generateAndSaveQnA(@PathVariable("fileId") Long fileId) {
-        // 1. 파일 ID로 추출된 전체 텍스트 조회
-        String fullText = extractTextService.getFullTextByFileId(fileId);
-
-        // 2. Q&A 생성 및 저장 (fileId 기반) - 예외는 GlobalExceptionHandler가 처리
-        var savedQuestions = generateQnaService.generateAndSaveQna(fullText, fileId);
-
-        // 3. 생성된 Q&A 내용을 DTO로 조회
-        QnaListDto qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
-
-        // 4. Builder 패턴으로 응답 DTO 생성
-        QnaGenerateResponseDto response = QnaGenerateResponseDto.builder()
-                .success(true)
-                .message(String.format("Q&A가 성공적으로 생성되고 저장되었습니다. (질문 %d개 생성)", savedQuestions.size()))
-                .qnaList(qnaListDto)
-                .build();
-
+    public ResponseEntity<QnaGenerateResponseDto> generateAndSaveQnA(@PathVariable Long fileId) {
+        QnaGenerateResponseDto response = generateQnaService.generateAndSaveQnaWithResponse(fileId);
         return ResponseEntity.ok(response);
     }
 
-    // Q&A 미리보기 (DB 저장 없음)
-    @Operation(summary = "Q&A 미리보기", description = "파일 ID로 추출된 텍스트를 기반으로 Q&A를 생성하지만 DB에 저장하지 않고 미리보기만 제공합니다.")
+    @Operation(summary = "Q&A 미리보기",
+            description = "파일 ID로 추출된 텍스트를 기반으로 Q&A를 생성하지만 DB에 저장하지 않고 미리보기만 제공합니다.")
     @PostMapping("/preview-qna/{fileId}")
-    public ResponseEntity<Map<String, Object>> previewQnA(@PathVariable("fileId") Long fileId) {
-        // 1. 파일 ID로 추출된 전체 텍스트 조회
-        String fullText = extractTextService.getFullTextByFileId(fileId);
-
-        // 2. Q&A 미리보기 생성 (DB 저장 없음)
-        Map<String, String> qnaContent = generateQnaService.generateQna(fullText);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Q&A 미리보기가 생성되었습니다.");
-        response.put("preview", qnaContent);
-
+    public ResponseEntity<Map<String, Object>> previewQnA(@PathVariable Long fileId) {
+        Map<String, Object> response = generateQnaService.previewQnaWithResponse(fileId);
         return ResponseEntity.ok(response);
     }
 
@@ -114,26 +112,11 @@ public class FileController {
         return ResponseEntity.ok(qnaListDto);
     }
 
-    // Q&A 재생성 (사용자가 기존 Q&A가 마음에 안 들 때)
-    @Operation(summary = "Q&A 재생성", description = "기존 Q&A를 삭제하고 새로운 Q&A를 생성하여 저장합니다.")
+    @Operation(summary = "Q&A 재생성",
+            description = "기존 Q&A를 삭제하고 새로운 Q&A를 생성하여 저장합니다.")
     @PostMapping("/regenerate-qna/{fileId}")
-    public ResponseEntity<QnaGenerateResponseDto> regenerateQnA(@PathVariable("fileId") Long fileId) {
-        // 1. 파일 ID로 추출된 전체 텍스트 조회
-        String fullText = extractTextService.getFullTextByFileId(fileId);
-
-        // 2. Q&A 재생성 (기존 삭제 후 새로 생성) - 예외는 GlobalExceptionHandler가 처리
-        var regeneratedQuestions = generateQnaService.regenerateQna(fullText, fileId);
-
-        // 3. 재생성된 Q&A 내용을 DTO로 조회
-        QnaListDto qnaListDto = generateQnaService.getSavedQnaAsDto(fileId);
-
-        // 4. Builder 패턴으로 응답 DTO 생성
-        QnaGenerateResponseDto response = QnaGenerateResponseDto.builder()
-                .success(true)
-                .message(String.format("Q&A가 성공적으로 재생성되었습니다. (질문 %d개 생성)", regeneratedQuestions.size()))
-                .qnaList(qnaListDto)
-                .build();
-
+    public ResponseEntity<QnaGenerateResponseDto> regenerateQnA(@PathVariable Long fileId) {
+        QnaGenerateResponseDto response = generateQnaService.regenerateQnaWithResponse(fileId);
         return ResponseEntity.ok(response);
     }
 
@@ -153,24 +136,26 @@ public class FileController {
         Map<Integer, QrInfoDto> qrInfo = cueSlideService.getQrInfoByFileId(fileId);
         return ResponseEntity.ok(qrInfo);
     }
+
     @Operation(summary = "파일의 전체 이미지 조회", description = "슬라이드에 보여줄 전체 파일 이미지 url 리스트를 조회합니다.")
     @GetMapping("/images/{fileId}")
-    public ResponseEntity<List<String>> getPresentationImages(@PathVariable("fileId") Long fileId) {
-        List<String> urls =  presentationFileService.getAllSlideImages(fileId);
+    public ResponseEntity<List<String>> getPresentationImages(@PathVariable Long fileId) {
+        List<String> urls = presentationImageService.getImageUrls(fileId);
         return ResponseEntity.ok(urls);
     }
 
-    @Operation(summary = "큐카드 조회 (QR 미포함)", description = "파일 ID로 저장된 큐카드를 조회합니다.")
-    @GetMapping("/cue-cards/{fileId}")
-    public ResponseEntity<CueCardDto> getCueCards(@PathVariable("fileId") Long fileId) {
-        CueCardDto cueCard = generateCueService.getCueCardsByFileId(fileId);
-        return ResponseEntity.ok(cueCard);
+    @Operation(summary = "특정 페이지 이미지 조회",
+            description = "파일 ID와 페이지 번호로 해당 슬라이드 이미지를 조회합니다.")
+    @GetMapping("/{fileId}/page/{pageNumber}/image")
+    public ResponseEntity<Resource> getSlideImage(
+            @PathVariable Long fileId,
+            @PathVariable Integer pageNumber) {
+        Resource resource = presentationImageService.getSlideImageResource(fileId, pageNumber);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "max-age=3600")
+                .contentType(MediaType.IMAGE_PNG)
+                .body(resource);
     }
 
-    @Operation(summary = "큐카드 조회 (QR 포함)", description = "파일 ID로 QR 정보가 포함된 큐카드를 조회합니다.")
-    @GetMapping("/cue-cards-with-qr/{fileId}")
-    public ResponseEntity<CueCardDto> getCueCardsWithQr(@PathVariable("fileId") Long fileId) {
-        CueCardDto cueCard = generateCueService.getCueCardsWithQrByFileId(fileId);
-        return ResponseEntity.ok(cueCard);
-    }
 }

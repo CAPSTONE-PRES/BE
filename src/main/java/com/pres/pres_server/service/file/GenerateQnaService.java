@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.pres.pres_server.dto.qna.QnaGenerateResponseDto;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -43,6 +44,7 @@ public class GenerateQnaService {
     private final QnaQuestionRepository qnaQuestionRepository;
     private final QnaAnswerRepository qnaAnswerRepository;
     private final PresentationFileRepository presentationFileRepository;
+    private final ExtractTextService extractTextService;
 
     // === 핵심 API 메서드들 ===
 
@@ -107,6 +109,58 @@ public class GenerateQnaService {
 
         log.info("Q&A 생성 및 저장 완료 - fileId: {}, 질문 수: {}", fileId, result.size());
         return result;
+    }
+
+    /**
+     * Q&A 생성 및 저장 - 응답 DTO까지 포함
+     * Controller에서는 이 메서드만 호출하면 됨
+     */
+    public QnaGenerateResponseDto generateAndSaveQnaWithResponse(Long fileId) {
+        log.info("Q&A 생성 및 저장 시작 - fileId: {}", fileId);
+
+        String fullText = extractTextService.getFullTextByFileId(fileId);
+        var savedQuestions = generateAndSaveQna(fullText, fileId);
+        QnaListDto qnaListDto = getSavedQnaAsDto(fileId);
+
+        return QnaGenerateResponseDto.builder()
+                .success(true)
+                .message(String.format("Q&A가 성공적으로 생성되고 저장되었습니다. (질문 %d개 생성)",
+                        savedQuestions.size()))
+                .qnaList(qnaListDto)
+                .build();
+    }
+
+    /**
+     * Q&A 재생성 - 응답 DTO까지 포함
+     */
+    public QnaGenerateResponseDto regenerateQnaWithResponse(Long fileId) {
+        log.info("Q&A 재생성 시작 - fileId: {}", fileId);
+
+        String fullText = extractTextService.getFullTextByFileId(fileId);
+        var regeneratedQuestions = regenerateQna(fullText, fileId);
+        QnaListDto qnaListDto = getSavedQnaAsDto(fileId);
+
+        return QnaGenerateResponseDto.builder()
+                .success(true)
+                .message(String.format("Q&A가 성공적으로 재생성되었습니다. (질문 %d개 생성)",
+                        regeneratedQuestions.size()))
+                .qnaList(qnaListDto)
+                .build();
+    }
+
+    /**
+     * Q&A 미리보기 - 응답 Map까지 포함
+     */
+    public Map<String, Object> previewQnaWithResponse(Long fileId) {
+        String fullText = extractTextService.getFullTextByFileId(fileId);
+        Map<String, String> qnaContent = generateQna(fullText);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Q&A 미리보기가 생성되었습니다.");
+        response.put("preview", qnaContent);
+
+        return response;
     }
 
     // JSON 기반 QnA 파싱 및 저장 로직 (개선된 버전)
