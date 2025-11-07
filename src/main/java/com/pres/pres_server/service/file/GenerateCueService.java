@@ -142,10 +142,13 @@ public class GenerateCueService {
 
         for (Map.Entry<Integer, List<CueCard>> entry : bySlide.entrySet()) {
             List<CueCard> list = entry.getValue();
-            // 슬라이드의 대표(ADVANCED) 1건만 QR 부여
+
+            // 슬라이드의 대표(ADVANCED) 1건만 QR 부여: 섹션 번호가 가장 낮은 ADVANCED
             Optional<CueCard> advOpt = list.stream()
                     .filter(c -> c.getMode() == Mode.ADVANCED)
+                    .sorted(Comparator.comparing(c -> Optional.ofNullable(c.getSectionNumber()).orElse(0)))
                     .findFirst();
+
             if (advOpt.isEmpty()) continue; // 없다면 패스(정책에 따라 생성해도 됨)
 
             CueCard adv = advOpt.get();
@@ -195,45 +198,55 @@ public class GenerateCueService {
                     }).toList();
             s.setBasic(basic);
 
-            // ADVANCED 한줄
-            Optional<CueCard> advOpt = items.stream()
-                    .filter(c -> c.getMode() == Mode.ADVANCED)
-                    .findFirst();
-            String advText = advOpt
-                    .map(c -> Optional.ofNullable(c.getContent()).orElse("")).orElse("");
+            // BASIC 맵/인덱스
+            Map<Integer, CueBasicDto> basicBySec = basic.stream()
+                    .collect(Collectors.toMap(CueBasicDto::getSection, x -> x, (a, b) -> a));
+            List<Integer> basicIndexOrdered = basic.stream()
+                    .map(CueBasicDto::getSection).sorted().toList();
 
+            // ADVANCED 섹션(섹션/키워드는 BASIC에 동기화)
+            Map<Integer, CueAdvancedDto> advBySec = items.stream()
+                    .filter(c -> c.getMode() == Mode.ADVANCED)
+                    .collect(Collectors.toMap(
+                            c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
+                            c -> {
+                                CueAdvancedDto a = new CueAdvancedDto();
+                                a.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
+                                a.setText(Optional.ofNullable(c.getContent()).orElse(""));
+                                return a;
+                            },
+                            (a, b) -> a
+                    ));
+
+
+            List<CueAdvancedDto> advancedList = new ArrayList<>();
+            for (Integer idx : basicIndexOrdered) {
+                CueAdvancedDto a = advBySec.get(idx);
+                if (a == null) {
+                    a = new CueAdvancedDto();
+                    a.setSection(idx);
+                    a.setText(""); // 누락 보강
+                }
+                String kw = Optional.ofNullable(basicBySec.get(idx))
+                        .map(CueBasicDto::getKeyword).orElse("");
+                a.setKeyword(kw);
+                advancedList.add(a);
+            }
+            s.setAdvanced(advancedList);
+
+            // QR: 섹션 번호가 가장 낮은 ADVANCED의 QR 사용
             if (includeQr) {
-                s.setQrSlug(advOpt.map(CueCard::getQrSlug).orElse(null));
-                s.setQrUrl(advOpt.map(CueCard::getQrUrl).orElse(null));
+                Optional<CueCard> advFirst = items.stream()
+                        .filter(c -> c.getMode() == Mode.ADVANCED)
+                        .sorted(Comparator.comparing(c -> Optional.ofNullable(c.getSectionNumber()).orElse(0)))
+                        .findFirst();
+                s.setQrSlug(advFirst.map(CueCard::getQrSlug).orElse(null));
+                s.setQrUrl(advFirst.map(CueCard::getQrUrl).orElse(null));
             } else {
                 s.setQrSlug(null);
                 s.setQrUrl(null);
             }
-            // 3) 프론트 요구 advanced 형식 만들기
-            //    - advanced는 배열
-            //    - 지금은 길이 1만 준다
-            //    - section/keyword는 basic[0] 기준으로 복사
-            //    - text는 advText(슬라이드 전체 요약)
-
-            List<CueAdvancedDto> advancedList = new ArrayList<>();
-            if (!basic.isEmpty()) {
-                CueBasicDto first = basic.get(0);
-                CueAdvancedDto advDto = new CueAdvancedDto();
-                advDto.setSection(first.getSection());
-                advDto.setKeyword(Optional.ofNullable(first.getKeyword()).orElse(""));
-                advDto.setText(advText);
-                advancedList.add(advDto);
-            } else {
-                //basic이 비어있는 경우
-                if (!advText.isEmpty()) {
-                    CueAdvancedDto advDto = new CueAdvancedDto();
-                    advDto.setSection(1);
-                    advDto.setKeyword("요약");
-                    advDto.setText(advText);
-                    advancedList.add(advDto);
-                }
-            }
-            s.setAdvanced(advancedList);
+            //s.setAdvanced(advancedList);
             slides.add(s);
         }
 
@@ -376,13 +389,28 @@ public class GenerateCueService {
                 "required", List.of("sections"),
                 "additionalProperties", false
         );
-
+        //keyword는 basic과 동일
+        Map<String, Object> sectionItemSchemaAdvanced = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "index", Map.of("type", "integer", "minimum", 1, "maximum", maxSections),
+                        "text", Map.of("type", "string", "minLength", 1)
+                ),
+                "required", List.of("index", "text"),
+                "additionalProperties", false
+        );
+        
         Map<String, Object> advancedSchema = Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "text", Map.of("type", "string", "minLength", 1)
+                        "sections", Map.of(
+                                "type", "array",
+                                "minItems", 1,
+                                "maxItems", maxSections,
+                                "items", sectionItemSchemaAdvanced
+                        )
                 ),
-                "required", List.of("text"),
+                "required", List.of("sections"),
                 "additionalProperties", false
         );
 
@@ -408,7 +436,12 @@ public class GenerateCueService {
     }
 
     /**
-     * AI JSON → CueSlideDto로 정제 (트랜잭션 밖에서 수행)
+     * AI JSON → CueSlideDto로 정제
+     * - slide 번호는 expectedSlide로 강제
+     * - BASIC: 섹션 필수(1..max), keyword/text 필수, 중복 인덱스는 최초 1개만 채택
+     * - ADVANCED: 섹션/text만 입력 받음(keyword는 입력 안 받음); BASIC과 동일 섹션 집합으로 강제 정렬
+     *   · 누락된 섹션은 빈 텍스트("")로 보강
+     *   · keyword는 BASIC의 동일 섹션 keyword로 주입
      */
     private CueSlideDto parseToCueSlideDto(String json, int expectedSlide, int maxSections) throws Exception {
         JsonNode root = objectMapper.readTree(json);
@@ -420,72 +453,74 @@ public class GenerateCueService {
         if (!sections.isArray() || sections.size() == 0)
             throw new IllegalStateException("basic.sections 비어있음");
 
-        Set<Integer> seen = new HashSet<>();
-        List<CueBasicDto> basics = new ArrayList<>();
+        Set<Integer> basicSeen = new HashSet<>();
+        List<CueBasicDto> basicList = new ArrayList<>();
 
         for (JsonNode s : sections) {
             int idx = s.path("index").asInt(-1);
             String kw = s.path("keyword").asText("");
             String tx = s.path("text").asText("");
-            if (idx >= 1 && idx <= maxSections && tx != null && !tx.isBlank() && seen.add(idx)) {
-                CueBasicDto b = new CueBasicDto();
-                b.setSection(idx);
-                b.setKeyword(kw == null ? "" : kw.trim());
-                b.setText(tx.trim());
-                basics.add(b);
-            }
+
+            if (idx < 1 || idx > maxSections) continue;
+            if (kw == null || kw.isBlank()) continue;     // ✅ BASIC 키워드 필수
+            if (tx == null || tx.isBlank()) continue;     // ✅ BASIC 텍스트 필수
+            if (!basicSeen.add(idx)) continue;
+
+            CueBasicDto b = new CueBasicDto();
+            b.setSection(idx);
+            b.setKeyword(kw == null ? "" : kw.trim());
+            b.setText(tx.trim());
+            basicList.add(b);
         }
-        basics.sort(Comparator.comparingInt(CueBasicDto::getSection));
-        if (basics.isEmpty()) throw new IllegalStateException("유효 섹션 없음");
+        basicList.sort(Comparator.comparingInt(CueBasicDto::getSection));
+        if (basicList.isEmpty()) throw new IllegalStateException("유효 섹션 없음");
+
+        // BASIC 맵/인덱스 집합
+        Map<Integer, CueBasicDto> basicBySec = basicList.stream()
+                .collect(Collectors.toMap(CueBasicDto::getSection, x -> x, (a, b) -> a));
+        List<Integer> basicIndexOrdered = basicList.stream()
+                .map(CueBasicDto::getSection)
+                .sorted()
+                .toList();
 
         JsonNode advSectionsNode = root.path("advanced").path("sections");
-        if (!advSectionsNode.isArray() || advSectionsNode.size() == 0) {
-            // 심화가 하나도 없을 수도 있다고 하면 여기서 바로 예외는 안 던지고 빈 리스트 처리 가능
-            // 기획적으로 "심화는 항상 있어야 한다"면 예외를 던져도 됨.
-            // 여기선 '없을 수도 있음' 쪽으로 설계.
-        }
-        Set<Integer> advSeen = new HashSet<>();
-        List<CueAdvancedDto> advList = new ArrayList<>();
-        String adv = root.path("advanced").path("text").asText("");
-        if (adv == null || adv.isBlank()) adv = "(심화버전 없음)";
+        Map<Integer, CueAdvancedDto> advBySec = new HashMap<>();
 
-
-        if (advSectionsNode.isArray()) {
+        if(advSectionsNode.isArray() && advSectionsNode.size() > 0) {
+            Set<Integer> advSeen = new HashSet<>();
             for (JsonNode s : advSectionsNode) {
                 int idx = s.path("index").asInt(-1);
                 String tx = s.path("text").asText("");
-                // advanced에도 keyword를 받을 수 있다고 가정 (없을 수도 있으니 optional)
-                String kw = s.path("keyword").asText((String) null);
 
-                if (idx >= 1 && idx <= maxSections
-                        && tx != null && !tx.isBlank()
-                        && advSeen.add(idx)) {
+                if (idx < 1 || idx > maxSections) continue;
+                if (tx == null || tx.isBlank()) continue;
+                if (!advSeen.add(idx)) continue;
 
-                    CueAdvancedDto a = new CueAdvancedDto();
-                    a.setSection(idx);
-                    a.setText(tx.trim());
-                    a.setKeyword(kw == null ? null : kw.trim());
-                    advList.add(a);
-                }
+                CueAdvancedDto a = new CueAdvancedDto();
+                a.setSection(idx);
+                a.setText(tx.trim());
+                advBySec.put(idx, a); //인덱스별로 바로 접근 가능
             }
-            advList.sort(Comparator.comparingInt(CueAdvancedDto::getSection));
         }
 
-        // 대표 advanced 문장(하위호환용): advancedSections 중 가장 낮은 section의 text
-        String representativeAdv;
-        if (advList.isEmpty()) {
-            representativeAdv = "(심화버전 없음)";
-        } else {
-            representativeAdv = Optional.ofNullable(advList.get(0).getText())
-                    .filter(t -> !t.isBlank())
-                    .orElse("(심화버전 없음)");
+        List<CueAdvancedDto> advancedList = new ArrayList<>();
+        for(Integer idx : basicIndexOrdered) {
+            CueAdvancedDto a = advBySec.get(idx);
+            if (a == null) {
+                a = new CueAdvancedDto();
+                a.setSection(idx);
+                a.setText("");
+            }
+            String kw = Optional.ofNullable(basicBySec.get(idx))
+                    .map(CueBasicDto::getKeyword).orElse("");
+            a.setKeyword(kw == null ? "" : kw.trim());
+            advancedList.add(a);
         }
-
 
         CueSlideDto dto = new CueSlideDto();
         dto.setSlideNumber(slide);
-        dto.setBasic(basics);
-        dto.setAdvanced(advList);
+        dto.setBasic(basicList);
+        dto.setAdvanced(advancedList);
         return dto;
     }
     // ======================= Prompt Builder =======================
@@ -508,8 +543,12 @@ public class GenerateCueService {
                     ]
                   },
                   "advanced": {
+                    "sections": [
+                    {
+                    "index": 섹션 번호 (1~%d),
                     "text": "해당 슬라이드의 핵심 주제를 한 문장으로 요약한 문장"
-                  }
+                    }
+                  ]
                 }
 
                 ---
@@ -581,9 +620,12 @@ public class GenerateCueService {
                 ---
 
                 [심화버전 작성 규칙]
+                - advanced.sections 는 basic.sections 의 index를 그대로 사용한다. (개수와 인덱스 집합 동일)
+                - keyword는 출력하지 않는다. (서버가 basic의 동일 섹션 keyword로 보강한다)
                 - advanced.text 필드에는 해당 슬라이드의 핵심 주제를 한 문장으로 논리적으로 요약하라.
                 - 요약문은 간결하고, 핵심 키워드만 포함하라.
                 - 주요 메시지를 빠르게 파악할 수 있도록 선언문 또는 설명문 형태로 작성하라.
+                - 비언어적 표현 아이콘은 advanced에 절대 포함하지 않는다.
                 - 불필요한 부연 설명은 피하고, 문서의 핵심 논지에 집중하라.
                 - 표지(1번 슬라이드)는 “이번 발표의 목적”만 간단히 설명하라.
                 - OCR 인식이 불가능한 경우 “(OCR 인식 불가 – 요약 생략)”을 포함하라.
@@ -614,9 +656,10 @@ public class GenerateCueService {
                 %s
                 """.formatted(
                 maxSections,
+                maxSections,
                 slideNumber, slideNumber, slideNumber + 1, slideNumber - 1,
                 maxSections, maxSections,
-                slideNumber, maxSections, slideNumber,
+                slideNumber, maxSections, slideNumber, slideNumber,
                 slideText
         );
     }

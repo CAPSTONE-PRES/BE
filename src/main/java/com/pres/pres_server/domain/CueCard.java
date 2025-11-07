@@ -33,7 +33,7 @@ public class CueCard {
     private int slideNumber;
 
     @Column(name = "section_number")
-    private Integer sectionNumber;     // BASIC (1~5), ADVANCED null
+    private Integer sectionNumber;     // BASIC == ADVANCED
 
     @Column(
             name = "section_no_key",
@@ -43,7 +43,7 @@ public class CueCard {
     private Integer sectionNoKey;
 
     @Column(name = "section_keyword")
-    private String  sectionKeyword;    // BASIC only
+    private String  sectionKeyword;    // BASIC==ADVANCED
 
     @Column(name = "content", columnDefinition = "MEDIUMTEXT")
     private String content;
