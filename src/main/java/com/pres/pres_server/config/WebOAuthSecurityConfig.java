@@ -57,6 +57,8 @@ public class WebOAuthSecurityConfig {
                         .requestMatchers("/api/token", "/test-token").permitAll()
                         // 인증 관련 API (회원가입, 로그인, 이메일 인증)
                         .requestMatchers("/auth/**").permitAll()
+                        // 이미지 헤더에 auth 불가능
+                        .requestMatchers("/api/files/**").permitAll()
                         // 나머지 모든 API는 인증 필요
                         .requestMatchers("/api/**", "/user/**", "/projects/**", "/workspace/**")
                         .authenticated()
