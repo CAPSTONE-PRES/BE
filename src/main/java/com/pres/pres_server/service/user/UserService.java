@@ -5,11 +5,14 @@ import com.pres.pres_server.dto.User.UserUpdateDto;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
 import com.pres.pres_server.repository.UserRepository;
 
+import com.pres.pres_server.service.DefaultProfileImageService;
+import com.pres.pres_server.service.S3Service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +23,8 @@ public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DefaultProfileImageService defaultProfileImageService;
+    private final S3Service s3Service;
 
     @Override
     public User loadUserByUsername(String email) {
@@ -62,6 +67,60 @@ public class UserService implements UserDetailsService {
         return user;
     }
 
+    /**
+     * 프로필 이미지 업데이트 (파일 업로드)
+     */
+    @Transactional
+    public User updateProfileImage(Long userId, MultipartFile file) {
+        User user = getUser(userId);
+
+        String oldImageUrl = user.getProfileImageUrl();
+
+        // S3에 새 이미지 업로드
+        String newImageUrl = s3Service.upload(file);
+
+        // 기존 이미지가 기본 이미지가 아닌 경우에만 S3에서 삭제
+        if (oldImageUrl != null && !defaultProfileImageService.isDefaultImage(oldImageUrl)) {
+            s3Service.delete(oldImageUrl);
+        }
+
+        user.setProfileImageUrl(newImageUrl);
+        return userRepository.save(user);
+    }
+
+    /**
+     * 프로필 이미지 삭제 (기본 이미지로 복원)
+     */
+    @Transactional
+    public User deleteProfileImage(Long userId) {
+        User user = getUser(userId);
+
+        String oldImageUrl = user.getProfileImageUrl();
+
+        // 기존 이미지가 기본 이미지가 아닌 경우에만 S3에서 삭제
+        if (oldImageUrl != null && !defaultProfileImageService.isDefaultImage(oldImageUrl)) {
+            s3Service.delete(oldImageUrl);
+        }
+
+        // 기본 이미지로 복원
+        user.setProfileImageUrl(defaultProfileImageService.getDefaultProfileImage(user.getEmail()));
+        return userRepository.save(user);
+    }
+
+    // 비밀번호 변경
+    @Transactional
+    public void updatePassword(String email, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
+        }
+        User user = findByEmail(email);
+        if (user == null) {
+            throw new IllegalArgumentException("비밀번호 변경 대상 사용자를 찾을 수 없습니다: " + email);
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
     // 사용자 삭제
     @Transactional
     public void deleteUser(Long id) {
@@ -98,19 +157,6 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new IllegalArgumentException("이메일로 사용자를 찾을 수 없습니다: " + email));
     }
 
-    // 비밀번호 변경
-    @Transactional
-    public void updatePassword(String email, String newPassword) {
-        if (newPassword == null || newPassword.length() < 8) {
-            throw new IllegalArgumentException("비밀번호가 너무 짧습니다.");
-        }
-        User user = findByEmail(email);
-        if (user == null) {
-            throw new IllegalArgumentException("비밀번호 변경 대상 사용자를 찾을 수 없습니다: " + email);
-        }
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
-    }
 
     // 이메일 유효성 검사
     public UserValidationResponseDTO validateUserEmail(String memberEmail) {

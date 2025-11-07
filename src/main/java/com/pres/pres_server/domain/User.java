@@ -53,7 +53,6 @@ public class User implements UserDetails {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @Builder
     public User(String email, String password, String username, boolean emailVerified) {
         this.email = email;
         this.password = password;

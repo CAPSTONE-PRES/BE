@@ -26,10 +26,12 @@ import com.pres.pres_server.service.email.EmailService;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -50,14 +52,7 @@ public class UserController {
     public ResponseEntity<UserResponseDto> getMyInfo(@AuthenticationPrincipal User user) {
         try {
             User myInfo = userService.getUser(user.getId());
-            UserResponseDto response = UserResponseDto.builder()
-                    .id(myInfo.getId())
-                    .email(myInfo.getEmail())
-                    .username(myInfo.getUsername())
-                    .emailVerified(myInfo.isEmailVerified())
-                    .profileImageUrl(myInfo.getProfileImageUrl())
-                    .build();
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(UserResponseDto.from(myInfo));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
@@ -70,25 +65,52 @@ public class UserController {
     })
     @PatchMapping("/me")
     public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
-            @RequestBody com.pres.pres_server.dto.User.UserUpdateDto updateUserDto) {
+            @RequestBody UserUpdateDto updateUserDto) {
         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
-        UserResponseDto response = UserResponseDto.builder()
-                .id(updatedUser.getId())
-                .email(updatedUser.getEmail())
-                .username(updatedUser.getUsername())
-                .emailVerified(updatedUser.isEmailVerified())
-                .profileImageUrl(updatedUser.getProfileImageUrl())
-                .build();
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
     }
 
-    @Operation(summary = "내 계정 삭제", description = "로그인된 사용자의 계정을 삭제(탈퇴)합니다.", responses = {
-            @ApiResponse(responseCode = "204", description = "삭제 성공")
-    })
-    @DeleteMapping("/me")
-    public ResponseEntity<Void> deleteMyAccount(@AuthenticationPrincipal User user) {
-        userService.deleteUser(user.getId());
-        return ResponseEntity.noContent().build();
+
+    /**
+     * 내 프로필 이미지 업로드
+     */
+    @Operation(summary = "프로필 이미지 업로드", description = "로그인된 사용자의 프로필 이미지를 업로드합니다.")
+    @PostMapping(value = "/me/profile-image",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<UserResponseDto> updateMyProfileImage(
+            @AuthenticationPrincipal User user,
+            @RequestParam("file") MultipartFile file) {
+
+        // 파일 검증
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("파일이 비어 있습니다.");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("이미지 파일만 업로드 가능합니다.");
+        }
+
+        // 파일 크기 검증 (선택)
+        long maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.getSize() > maxSize) {
+            throw new IllegalArgumentException("파일 크기는 5MB 이하여야 합니다.");
+        }
+
+        User updatedUser = userService.updateProfileImage(user.getId(), file);
+        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
+    }
+
+    /**
+     * 내 프로필 이미지 삭제 (기본 이미지로 복원)
+     */
+    @Operation(summary = "프로필 이미지 삭제", description = "프로필 이미지를 기본 이미지로 복원합니다.")
+    @DeleteMapping("/me/profile-image")
+    public ResponseEntity<UserResponseDto> deleteMyProfileImage(
+            @AuthenticationPrincipal User user) {
+
+        User updatedUser = userService.deleteProfileImage(user.getId());
+        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
     }
 
     // User 엔티티에 kakaoAccessToken/RefreshToken 필드 추가?
@@ -118,13 +140,8 @@ public class UserController {
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
-        UserResponseDto response = UserResponseDto.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .username(user.getUsername())
-                .emailVerified(user.isEmailVerified())
-                .build();
-        return ResponseEntity.ok(response);
+
+        return ResponseEntity.ok(UserResponseDto.from(user));
     }
 
     @Operation(summary = "전체 회원 목록 조회 (관리자)", description = "관리자가 전체 회원 목록을 조회합니다.", responses = {
@@ -136,12 +153,7 @@ public class UserController {
     public ResponseEntity<List<UserResponseDto>> getAllUsers() {
         List<User> users = userService.listUsers();
         List<UserResponseDto> response = users.stream()
-                .map(u -> UserResponseDto.builder()
-                        .id(u.getId())
-                        .email(u.getEmail())
-                        .username(u.getUsername())
-                        .emailVerified(u.isEmailVerified())
-                        .build())
+                .map(UserResponseDto::from)  // 메서드 레퍼런스 사용
                 .toList();
         return ResponseEntity.ok(response);
     }

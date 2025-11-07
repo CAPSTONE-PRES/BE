@@ -1,5 +1,6 @@
 package com.pres.pres_server.dto.User;
 
+import com.pres.pres_server.domain.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -39,4 +40,17 @@ public class UserResponseDto {
      * 프로필 이미지 URL (선택)
      */
     private String profileImageUrl;
+
+    /**
+     * User 엔티티를 DTO로 변환하는 정적 팩토리 메서드
+     */
+    public static UserResponseDto from(User user) {
+        return UserResponseDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .username(user.getUsername())
+                .emailVerified(user.isEmailVerified())
+                .profileImageUrl(user.getProfileImageUrl())
+                .build();
+    }
 }

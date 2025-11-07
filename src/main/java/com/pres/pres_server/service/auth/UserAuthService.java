@@ -4,6 +4,7 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Signup.SignupRequest;
 import com.pres.pres_server.dto.User.KakaoUserInfo;
 import com.pres.pres_server.repository.UserRepository;
+import com.pres.pres_server.service.DefaultProfileImageService;
 import com.pres.pres_server.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +27,7 @@ public class UserAuthService {
     private final EmailService emailService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DefaultProfileImageService defaultProfileImageService;
 
     // 회원가입
     @Transactional
@@ -45,6 +47,7 @@ public class UserAuthService {
                 .username(dto.getUsername())
                 .emailVerified(true)
                 .emailVerifiedAt(LocalDateTime.now())
+                .profileImageUrl(defaultProfileImageService.getDefaultProfileImage(dto.getEmail()))
                 .build();
         return userRepository.save(user);
     }
