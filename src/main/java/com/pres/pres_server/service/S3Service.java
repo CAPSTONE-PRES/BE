@@ -30,33 +30,6 @@ public class S3Service {
     private String region;
 
     /**
-     * 파일 업로드
-     * @param file 업로드할 파일
-     * @return S3에 업로드된 파일의 URL
-     */
-    public String upload(MultipartFile file) {
-        if (file.isEmpty()) throw new IllegalArgumentException("파일이 비었습니다.");
-
-        String key = buildKey("profiles/", file.getOriginalFilename());
-
-        try (InputStream is = file.getInputStream()) {
-            PutObjectRequest req =
-                    PutObjectRequest.builder()
-                            .bucket(bucket)
-                            .key(key)
-                            .contentType(file.getContentType())
-                            // 버킷 acl 차단이면 제외
-                            //.acl(ObjectCannedACL.PUBLIC_READ)
-                            .build();
-
-            s3Client.putObject(req, RequestBody.fromInputStream(is, file.getSize()));
-            return buildUrl(key);
-        } catch (IOException e) {
-            throw new RuntimeException("S3 업로드 실패", e);
-        }
-    }
-
-    /**
      * 파일 삭제 (전체 URL 또는 key 모두 지원)
      */
     public void delete(String fileUrlOrKey) {
@@ -73,6 +46,23 @@ public class S3Service {
         } catch (Exception e) {
             log.error("S3 삭제 실패 key={}: {}", key, e.getMessage());
             throw new IllegalStateException("파일 삭제 실패");
+        }
+    }
+
+    public String uploadAndReturnKey(MultipartFile file) {
+        String key = buildKey("profiles/", file.getOriginalFilename());
+
+        try (InputStream is = file.getInputStream()) {
+            PutObjectRequest req = PutObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .contentType(file.getContentType())
+                    .build();
+
+            s3Client.putObject(req, RequestBody.fromInputStream(is, file.getSize()));
+            return key; // URL 아님, key 리턴
+        } catch (IOException e) {
+            throw new RuntimeException("S3 업로드 실패", e);
         }
     }
 
@@ -95,7 +85,7 @@ public class S3Service {
         int idx = url.indexOf(".amazonaws.com/");
         if (idx < 0) return url;
         return url.substring(idx + ".amazonaws.com/".length() + url.substring(0, idx).lastIndexOf('/') + 1)
-                .replaceFirst("^.+?\\.amazonaws\\.com/", ""); // 안전빵
+                .replaceFirst("^.+?\\.amazonaws\\.com/", ""); // 안전용
     }
 
 }

@@ -1,6 +1,7 @@
 package com.pres.pres_server.service.user;
 
 import com.pres.pres_server.domain.User;
+import com.pres.pres_server.dto.User.UserResponseDto;
 import com.pres.pres_server.dto.User.UserUpdateDto;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
 import com.pres.pres_server.repository.UserRepository;
@@ -9,6 +10,7 @@ import com.pres.pres_server.service.DefaultProfileImageService;
 import com.pres.pres_server.service.S3Service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,10 +22,13 @@ import java.util.Objects;
 @RequiredArgsConstructor
 @Service
 public class UserService implements UserDetailsService {
+    @Value("${app.cdn.base-url}")
+    private String cdnBaseUrl;
+
+    private final DefaultProfileImageService defaultProfileImageService;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final DefaultProfileImageService defaultProfileImageService;
     private final S3Service s3Service;
 
     @Override
@@ -60,9 +65,6 @@ public class UserService implements UserDetailsService {
                 user.setPassword(passwordEncoder.encode(dto.getPassword()));
             }
         }
-        if (!Objects.equals(dto.getProfileUrl(), user.getProfileImageUrl())) {
-            user.setProfileImageUrl(dto.getProfileUrl());
-        }
         userRepository.save(user);
         return user;
     }
@@ -73,18 +75,14 @@ public class UserService implements UserDetailsService {
     @Transactional
     public User updateProfileImage(Long userId, MultipartFile file) {
         User user = getUser(userId);
+        String oldKey = user.getProfileImageKey();
 
-        String oldImageUrl = user.getProfileImageUrl();
+        String newKey = s3Service.uploadAndReturnKey(file);
 
-        // S3에 새 이미지 업로드
-        String newImageUrl = s3Service.upload(file);
-
-        // 기존 이미지가 기본 이미지가 아닌 경우에만 S3에서 삭제
-        if (oldImageUrl != null && !defaultProfileImageService.isDefaultImage(oldImageUrl)) {
-            s3Service.delete(oldImageUrl);
+        if (oldKey != null && !defaultProfileImageService.isDefaultKey(oldKey)) {
+            s3Service.delete(oldKey);
         }
-
-        user.setProfileImageUrl(newImageUrl);
+        user.setProfileImageKey(newKey);
         return userRepository.save(user);
     }
 
@@ -94,17 +92,29 @@ public class UserService implements UserDetailsService {
     @Transactional
     public User deleteProfileImage(Long userId) {
         User user = getUser(userId);
+        String oldKey = user.getProfileImageKey();
 
-        String oldImageUrl = user.getProfileImageUrl();
-
-        // 기존 이미지가 기본 이미지가 아닌 경우에만 S3에서 삭제
-        if (oldImageUrl != null && !defaultProfileImageService.isDefaultImage(oldImageUrl)) {
-            s3Service.delete(oldImageUrl);
+        if (oldKey != null && !defaultProfileImageService.isDefaultKey(oldKey)) {
+            s3Service.delete(oldKey);
         }
-
-        // 기본 이미지로 복원
-        user.setProfileImageUrl(defaultProfileImageService.getDefaultProfileImage(user.getEmail()));
+        user.setProfileImageKey(defaultProfileImageService.pickDefaultKey(user.getEmail()));
         return userRepository.save(user);
+    }
+
+    public String resolveProfileKey(User user) {
+        String key = user.getProfileImageKey();
+        return (key == null || key.isBlank())
+                ? defaultProfileImageService.pickDefaultKey(user.getEmail())
+                : key;
+    }
+
+    public String resolveProfileUrl(User user) {
+        return cdnBaseUrl + "/" + resolveProfileKey(user);
+    }
+
+    // 컨트롤러가 이걸 쓰게 함
+    public UserResponseDto toDto(User user) {
+        return UserResponseDto.of(user, resolveProfileUrl(user));
     }
 
     // 비밀번호 변경
