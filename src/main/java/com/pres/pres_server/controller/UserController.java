@@ -52,7 +52,7 @@ public class UserController {
     public ResponseEntity<UserResponseDto> getMyInfo(@AuthenticationPrincipal User user) {
         try {
             User myInfo = userService.getUser(user.getId());
-            return ResponseEntity.ok(UserResponseDto.from(myInfo));
+            return ResponseEntity.ok(userService.toDto(myInfo));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
@@ -67,7 +67,7 @@ public class UserController {
     public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
             @RequestBody UserUpdateDto updateUserDto) {
         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
-        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
+        return ResponseEntity.ok(userService.toDto(updatedUser));
     }
 
 
@@ -98,7 +98,7 @@ public class UserController {
         }
 
         User updatedUser = userService.updateProfileImage(user.getId(), file);
-        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
+        return ResponseEntity.ok(userService.toDto(updatedUser));
     }
 
     /**
@@ -110,7 +110,7 @@ public class UserController {
             @AuthenticationPrincipal User user) {
 
         User updatedUser = userService.deleteProfileImage(user.getId());
-        return ResponseEntity.ok(UserResponseDto.from(updatedUser));
+        return ResponseEntity.ok(userService.toDto(updatedUser));
     }
 
     // User 엔티티에 kakaoAccessToken/RefreshToken 필드 추가?
@@ -141,7 +141,7 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
 
-        return ResponseEntity.ok(UserResponseDto.from(user));
+        return ResponseEntity.ok(userService.toDto(user));
     }
 
     @Operation(summary = "전체 회원 목록 조회 (관리자)", description = "관리자가 전체 회원 목록을 조회합니다.", responses = {
@@ -153,7 +153,7 @@ public class UserController {
     public ResponseEntity<List<UserResponseDto>> getAllUsers() {
         List<User> users = userService.listUsers();
         List<UserResponseDto> response = users.stream()
-                .map(UserResponseDto::from)  // 메서드 레퍼런스 사용
+                .map(userService::toDto)  // 메서드 레퍼런스 사용
                 .toList();
         return ResponseEntity.ok(response);
     }
