@@ -42,8 +42,13 @@ public class User implements UserDetails {
     @Column(name = "is_admin")
     private boolean admin;
 
+    @Deprecated
     @Column(name = "profile_image_url")
     private String profileImageUrl;
+
+    // 신규: S3 key 저장 (예: "profiles/uuid.jpg" 또는 "default-profiles/user1.svg")
+    @Column(name = "profile_image_key", length = 255)
+    private String profileImageKey;
 
     @Column(name = "push_enabled", nullable = false)
     @Builder.Default

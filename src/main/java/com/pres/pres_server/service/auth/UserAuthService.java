@@ -47,7 +47,7 @@ public class UserAuthService {
                 .username(dto.getUsername())
                 .emailVerified(true)
                 .emailVerifiedAt(LocalDateTime.now())
-                .profileImageUrl(defaultProfileImageService.getDefaultProfileImage(dto.getEmail()))
+                .profileImageKey(defaultProfileImageService.pickDefaultKey(dto.getEmail()))
                 .build();
         return userRepository.save(user);
     }

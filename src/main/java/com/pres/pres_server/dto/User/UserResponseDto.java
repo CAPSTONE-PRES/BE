@@ -39,18 +39,18 @@ public class UserResponseDto {
     /**
      * 프로필 이미지 URL (선택)
      */
-    private String profileImageUrl;
+    private String profileUrl;
 
     /**
      * User 엔티티를 DTO로 변환하는 정적 팩토리 메서드
      */
-    public static UserResponseDto from(User user) {
+    public static UserResponseDto of(User user, String resolvedProfileUrl) {
         return UserResponseDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
                 .username(user.getUsername())
                 .emailVerified(user.isEmailVerified())
-                .profileImageUrl(user.getProfileImageUrl())
+                .profileUrl(resolvedProfileUrl)
                 .build();
     }
 }
