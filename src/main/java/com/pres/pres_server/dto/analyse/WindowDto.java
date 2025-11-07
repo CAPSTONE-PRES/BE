@@ -3,7 +3,9 @@ package com.pres.pres_server.dto.analyse;
 import java.util.Map;
 
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 @Data
 public class WindowDto {
     private double startSec;

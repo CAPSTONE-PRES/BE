@@ -9,7 +9,9 @@ import java.util.stream.Collectors;
  */
 import com.pres.pres_server.service.analyse.dto.SlideTransition;
 import com.pres.pres_server.service.analyse.dto.WhisperSegment;
+import lombok.Data;
 
+@Deprecated
 public class SlideSentenceMapper {
 
     /**

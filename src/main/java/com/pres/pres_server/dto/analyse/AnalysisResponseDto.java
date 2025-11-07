@@ -1,12 +1,15 @@
 package com.pres.pres_server.dto.analyse;
 
+import com.pres.pres_server.service.analyse.AudioAnalysisService;
+import com.pres.pres_server.service.analyse.RepetitiveTextAnalysisService.RepetitionAnalysisResult;
+import com.pres.pres_server.service.analyse.ScriptAccuracyService;
+import com.pres.pres_server.service.analyse.SilenceDetectionService;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
-import com.pres.pres_server.service.analyse.RepetitiveTextAnalysisService.RepetitionAnalysisResult;
 
 /**
  * 오디오 분석 결과 응답 DTO
@@ -18,7 +21,7 @@ import com.pres.pres_server.service.analyse.RepetitiveTextAnalysisService.Repeti
 public class AnalysisResponseDto {
 
         /**
-         * DB에 저장된 세션 ID (재분석 API 호출 시 필요)
+         * DB에 저장된 세션 ID
          */
         private Long sessionId;
 
@@ -33,12 +36,12 @@ public class AnalysisResponseDto {
         private double totalDurationSeconds;
 
         /**
-         * 윈도우별 분석 결과 목록
+         * 윈도우별 분석 결과
          */
         private List<WindowDto> windows;
 
         /**
-         * 반복 분석 결과 (Level1/L2/L3). 도메인 객체 형태로 포함하여 Swagger에서 확인 가능하도록 함.
+         * 반복 분석 결과
          */
         private RepetitionAnalysisResult repetitionResult;
 
@@ -52,30 +55,54 @@ public class AnalysisResponseDto {
          */
         private long failCount;
 
-        /**
-         * AnalysisResult로부터 응답 DTO 생성 (정적 팩토리 메서드)
-         * Controller의 복잡도를 낮추고 통계 계산 로직을 캡슐화
-         */
-        public static AnalysisResponseDto from(Long sessionId, Long projectId,
-                        double totalDurationSeconds,
-                        List<WindowDto> windows,
-                        RepetitionAnalysisResult repetitionResult) {
+        private SilenceDetectionService.SilenceStatistics silenceStats;
+        private ScriptAccuracyService.AccuracyAnalysisResult accuracyResult;
+        private AudioAnalysisService.SlideAnalysisResult slideAnalysis;
+
+
+        public static AnalysisResponseDto from(
+                Long sessionId,
+                Long projectId,
+                AudioAnalysisService.AnalysisResult result
+        ) {
+                List<WindowDto> windows = result.getWindows();
+
                 long successCount = windows.stream()
-                                .filter(w -> "SUCCESS".equals(w.getStatus()))
-                                .count();
+                        .filter(w -> "SUCCESS".equals(w.getStatus()))
+                        .count();
 
                 long failCount = windows.stream()
-                                .filter(w -> "FAILED".equals(w.getStatus()))
-                                .count();
+                        .filter(w -> "FAILED".equals(w.getStatus()))
+                        .count();
 
                 return AnalysisResponseDto.builder()
-                                .sessionId(sessionId)
-                                .projectId(projectId)
-                                .totalDurationSeconds(totalDurationSeconds)
-                                .windows(windows)
-                                .successCount(successCount)
-                                .failCount(failCount)
-                                .repetitionResult(repetitionResult)
-                                .build();
+                        .sessionId(sessionId)
+                        .projectId(projectId)
+                        .totalDurationSeconds(result.getTotalDurationSeconds())
+                        .windows(result.getWindows()) // 이미 WindowDto 형태라면 그대로, 아니면 매핑 필요
+                        .repetitionResult(result.getRepetitionResult())
+                        .silenceStats(result.getSilenceStats())
+                        .accuracyResult(result.getAccuracyResult())
+                        .slideAnalysis(result.getSlideAnalysis())
+                        .successCount(successCount)
+                        .failCount(failCount)
+                        .build();
+        }
+
+        /**
+         * 에러 응답 생성
+         */
+        public static AnalysisResponseDto error(Long projectId, String errorMessage) {
+                return AnalysisResponseDto.builder()
+                        .projectId(projectId)
+                        .totalDurationSeconds(0)
+                        .windows(List.of())
+                        .repetitionResult(null)
+                        .silenceStats(null)
+                        .accuracyResult(null)
+                        .slideAnalysis(null)
+                        .successCount(0)
+                        .failCount(0)
+                        .build();
         }
 }
