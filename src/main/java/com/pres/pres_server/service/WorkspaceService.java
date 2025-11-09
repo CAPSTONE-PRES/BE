@@ -243,6 +243,9 @@ public class WorkspaceService {
 
                     dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
 
+                    VisitLog lastVisit = visitLogRepository.findTopByUserAndWorkspaceOrderByVisitedAtDesc(user, ws).orElse(null);
+                    dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
+
                     // 팀 멤버 리스트
                     List<TeamMember> teamMembers = teamMemberRepository.findByWorkspace_WorkspaceId(ws.getWorkspaceId());
                     List<WorkspaceMemberDTO> members = teamMembers.stream()
