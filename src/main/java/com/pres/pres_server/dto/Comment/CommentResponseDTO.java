@@ -6,11 +6,11 @@ import lombok.Builder;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Data
-@Getter @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
@@ -35,9 +35,11 @@ public class CommentResponseDTO {
                 .location(comment.getLocation())
                 .editable(comment.getAuthorUser().getId().equals(currentUser.getId()))
                 .createdAt(comment.getCreatedAt())
-                .replies(comment.getReplies().stream()
-                        .map(ReplyDTO::from)
-                        .collect(Collectors.toList()))
+                .replies(comment.getReplies() != null ?
+                        comment.getReplies().stream()
+                                .map(ReplyDTO::from)
+                                .collect(Collectors.toList())
+                        : new ArrayList<>())
                 .build();
     }
 }

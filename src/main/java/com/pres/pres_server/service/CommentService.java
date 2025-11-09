@@ -29,7 +29,7 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final CueCardRepository cueCardRepository;
 
-    // 1. 최상위 댓글 생성
+    // 최상위 댓글 생성
     public CommentResponseDTO createComment(Long cueId, CommentRequestDTO request, User user) {
         CueCard cueCard = cueCardRepository.findById(cueId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 큐카드가 존재하지 않습니다."));
@@ -46,7 +46,7 @@ public class CommentService {
         return CommentResponseDTO.from(comment, user);
     }
 
-    // 2. 대댓글 생성
+    // 대댓글 생성
     public ReplyDTO createReply(Long parentCommentId, CommentRequestDTO request, User user) {
         Comment parentComment = commentRepository.findById(parentCommentId)
                 .orElseThrow(() -> new EntityNotFoundException("최상위 댓글이 존재하지 않습니다."));
@@ -65,7 +65,7 @@ public class CommentService {
         return ReplyDTO.from(reply);
     }
 
-    // 3. 댓글 수정
+    // 댓글 수정
     public CommentResponseDTO updateComment(Long commentId, CommentRequestDTO request, User user) {
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 댓글을 찾을 수 없습니다"));
@@ -80,7 +80,7 @@ public class CommentService {
         return CommentResponseDTO.from(comment, user);
     }
 
-    // 4. 댓글 삭제
+    // 댓글 삭제
     public void deleteComment(Long commentId, User user) {
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 댓글을 찾을 수 없습니다"));
@@ -92,12 +92,12 @@ public class CommentService {
         commentRepository.delete(comment);
     }
 
-    // 5. 댓글 조회
-    public List<CommentResponseDTO> getComments(Long cueId, User user) {
-        List<Comment> comments = commentRepository.findByCueCardCueIdAndParentCommentIsNull(cueId);
+    // 댓글 조회
+    public List<CommentResponseDTO> getComments(Long cueId, User currentUser) {
+        List<Comment> comments = commentRepository.findTopLevelCommentsWithReplies(cueId);
 
         return comments.stream()
-                .map(c -> CommentResponseDTO.from(c, user))
+                .map(c -> CommentResponseDTO.from(c, currentUser))
                 .collect(Collectors.toList());
     }
 
