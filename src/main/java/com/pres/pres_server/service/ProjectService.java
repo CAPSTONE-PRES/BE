@@ -276,14 +276,14 @@ public class ProjectService {
                                         .toList();
                                 break;
 
-                        case 2: // 발표일자순 (dueDate 오름차순)
+                        case 3: // 발표일자순 (dueDate 오름차순)
                                 projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
                                         .stream()
                                         .sorted(Comparator.comparing(Project::getDueDate))
                                         .toList();
                                 break;
 
-                        case 3: // 제목순 (String 오름차순)
+                        case 2: // 제목순 (String 오름차순)
                                 projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
                                         .stream()
                                         .sorted(Comparator.comparing(Project::getTitle, String.CASE_INSENSITIVE_ORDER))

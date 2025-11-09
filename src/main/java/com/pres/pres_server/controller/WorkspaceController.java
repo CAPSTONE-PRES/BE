@@ -123,7 +123,7 @@ public class WorkspaceController {
     }
 
     @GetMapping("/{workspaceId}/projects/list")
-    @Operation(summary = "워크스페이스 내 프로젝트 정렬 조회", description = "type=1(최근 방문순), 2(발표일자순), 3(제목순)")
+    @Operation(summary = "워크스페이스 내 프로젝트 정렬 조회", description = "type=1(최근 방문순), 2(제목순), 3(발표일자순)")
     public ResponseEntity<List<ProjectListDTO>> getProjects(
             @PathVariable Long workspaceId,
             @RequestParam int type,

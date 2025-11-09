@@ -17,10 +17,10 @@ public class S3Config {
     @Value("${aws.secret-key}")
     private String secretKey;
 
-    @Value("${cloud.aws.s3.bucket}")
+    @Value("${spring.cloud.aws.s3.bucket}")
     private String bucket;
 
-    @Value("${cloud.aws.region.static}")
+    @Value("${spring.cloud.aws.region.static}")
     private String region;
 
     @Bean
