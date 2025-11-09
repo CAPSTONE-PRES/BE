@@ -12,7 +12,6 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xslf.usermodel.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -34,11 +33,10 @@ public class ExtractTextService {
 
     // fileId로 텍스트 추출 및 DB 저장 (권장)
     public ExtractedTextDto extractTextAndSave(Long fileId) {
-        // 1. fileId로 PresentationFile 조회
+
         PresentationFile presentationFile = presentationFileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
 
-        // 2. 파일 경로에서 실제 파일 읽기
         String filePath = presentationFile.getFilePath();
         File file = new File(filePath);
 
@@ -51,7 +49,7 @@ public class ExtractTextService {
         List<String> slideTexts = new ArrayList<>();
 
         try {
-            // 파일 확장자에 따른 처리 (기존 로직 재사용)
+            // 파일 확장자에 따른 처리
             if (fileName.toLowerCase().endsWith(".pdf")) {
                 ExtractedTextDto result = extractPdfTextByPage(file);
                 fullText = result.getFullText();
@@ -65,8 +63,14 @@ public class ExtractTextService {
                 throw new IllegalArgumentException("지원하지 않는 파일 형식입니다: " + fileName);
             }
 
-            // DB 저장 (기존 방식 사용)
-            ExtractedText extractedText = new ExtractedText(presentationFile, fullText, slideTexts);
+            // **Upsert 로직: 기존 데이터가 있으면 업데이트, 없으면 새로 생성**
+            ExtractedText extractedText = extractedTextRepository
+                    .findByPresentationFileFileId(fileId)
+                    .orElse(new ExtractedText(presentationFile, fullText, slideTexts));
+
+            // 기존 엔티티인 경우 내용 업데이트
+            extractedText.setFullText(fullText);
+            extractedText.setSlideTexts(slideTexts);
             extractedTextRepository.save(extractedText);
 
             // 텍스트 부족한 슬라이드 검증
@@ -88,70 +92,9 @@ public class ExtractTextService {
         }
     }
 
-    // 기존 메서드 유지 (하위 호환성을 위해)
-    public ExtractedTextDto extractTextAndSave(MultipartFile file, Long fileId) {
-        if (file == null) {
-            throw new IllegalArgumentException("파일이 null입니다.");
-        }
-
-        String fileName = file.getOriginalFilename();
-        if (fileName == null) {
-            throw new IllegalArgumentException("파일 이름이 없습니다.");
-        }
-
-        String fullText = "";
-        List<String> slideTexts = new ArrayList<>();
-
-        try {
-            File tempFile = File.createTempFile("upload_", "_" + fileName);
-            file.transferTo(tempFile);
-
-            if (fileName.endsWith(".pdf")) {
-                ExtractedTextDto result = extractPdfTextByPage(tempFile);
-                fullText = result.getFullText();
-                slideTexts = result.getSlideTexts();
-            } else if (fileName.endsWith(".pptx")) {
-                ExtractedTextDto result = extractPptTextBySlide(tempFile);
-                fullText = result.getFullText();
-                slideTexts = result.getSlideTexts();
-                currentPdfPageInfos = null; // PPTX는 PDF 정보 없음
-            } else {
-                fullText = "지원하지 않는 파일 형식입니다.";
-                slideTexts.add(fullText);
-                // 지원하지 않는 파일 형식의 경우 검증 정보 초기화
-                currentSlideInfos = null;
-                currentPdfPageInfos = null;
-            }
-            tempFile.delete();
-        } catch (IOException e) {
-            throw new RuntimeException("텍스트 추출 실패: " + e.getMessage(), e);
-        }
-
-        // DB에 저장
-        PresentationFile presentationFile = presentationFileRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
-
-        // ExtractedText 엔티티 생성 및 저장
-        ExtractedText extractedText = new ExtractedText(presentationFile, fullText, slideTexts);
-        extractedTextRepository.save(extractedText);
-
-        // 텍스트 부족한 슬라이드 검증
-        ExtractedTextDto result = validateSlideContent(new ExtractedTextDto(fullText, slideTexts));
-
-        // 검증 결과를 ExtractedText에 업데이트
-        extractedText
-                .setIsSufficient(result.getInsufficientSlides() == null || result.getInsufficientSlides().isEmpty());
-        extractedText.setInsufficientSlides(
-                result.getInsufficientSlides() != null ? result.getInsufficientSlides().toString() : null);
-        extractedText.setInsufficientMessage(result.getInsufficientMessage());
-        extractedTextRepository.save(extractedText);
-
-        return result;
-    }
-
     // 기존 파일 ID로 슬라이드 텍스트 조회
     public List<String> getSlideTextsByFileId(Long fileId) {
-        ExtractedText extractedText = extractedTextRepository.findByPresentationFile_FileId(fileId)
+        ExtractedText extractedText = extractedTextRepository.findByPresentationFileFileId(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트를 찾을 수 없습니다: " + fileId));
         return extractedText.getSlideTexts();
     }
@@ -289,7 +232,7 @@ public class ExtractTextService {
 
     // 파일 ID로 ExtractedText 전체 조회
     public ExtractedTextDto getExtractedTextByFileId(Long fileId) {
-        ExtractedText extractedText = extractedTextRepository.findByPresentationFile_FileId(fileId)
+        ExtractedText extractedText = extractedTextRepository.findByPresentationFileFileId(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트를 찾을 수 없습니다: " + fileId));
 
         ExtractedTextDto dto = new ExtractedTextDto(extractedText.getFullText(), extractedText.getSlideTexts());
@@ -319,7 +262,7 @@ public class ExtractTextService {
 
     // 파일 ID로 전체 텍스트만 조회
     public String getFullTextByFileId(Long fileId) {
-        ExtractedText extractedText = extractedTextRepository.findByPresentationFile_FileId(fileId)
+        ExtractedText extractedText = extractedTextRepository.findByPresentationFileFileId(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트를 찾을 수 없습니다: " + fileId));
         return extractedText.getFullText();
     }

@@ -10,7 +10,7 @@ import java.util.Optional;
 @Repository
 public interface ExtractedTextRepository extends JpaRepository<ExtractedText, Long> {
 
-    Optional<ExtractedText> findByPresentationFile_FileId(Long fileId);
+    Optional<ExtractedText> findByPresentationFileFileId(Long fileId);
 
     void deleteByPresentationFile_FileId(Long fileId);
 
