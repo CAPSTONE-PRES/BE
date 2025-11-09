@@ -110,6 +110,17 @@ public class WorkspaceController {
         return workspaceService.getWorkspaceInfo(user, workspaceId);
     }
 
+    @Operation(summary = "워크스페이스 이름으로 검색", description = "워크스페이스 이름을 기준으로 검색합니다.")
+    @GetMapping("/search")
+    public ResponseEntity<List<WorkspaceInfoDTO>> searchWorkspaces(
+            @RequestParam String keyword,
+            @AuthenticationPrincipal User user
+    ) {
+        List<WorkspaceInfoDTO> results = workspaceService.searchWorkspaces(keyword, user);
+        return ResponseEntity.ok(results);
+    }
+
+
     @Operation(summary = "워크스페이스 리스트", description = "모든 워크플레이스 불러오기 (type값 1은 최근방문 순, 2는 제목순)")
     @GetMapping("/list")
     public List<WorkspaceInfoDTO> getWorkspaceList(

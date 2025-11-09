@@ -243,6 +243,9 @@ public class WorkspaceService {
 
                     dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
 
+                    VisitLog lastVisit = visitLogRepository.findTopByUserAndWorkspaceOrderByVisitedAtDesc(user, ws).orElse(null);
+                    dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
+
                     // 팀 멤버 리스트
                     List<TeamMember> teamMembers = teamMemberRepository.findByWorkspace_WorkspaceId(ws.getWorkspaceId());
                     List<WorkspaceMemberDTO> members = teamMembers.stream()
@@ -313,6 +316,51 @@ public class WorkspaceService {
                     ws.getWorkspaceName(),
                     times
             );
+        }).collect(Collectors.toList());
+    }
+
+    // 워크스페이스 검색
+    @Transactional(readOnly = true)
+    public List<WorkspaceInfoDTO> searchWorkspaces(String keyword, User user) {
+
+        List<WorkSpace> workspaces = workspaceRepository.findByWorkspaceNameContainingIgnoreCase(keyword);
+
+        return workspaces.stream().map(ws -> {
+            WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
+            dto.setWorkspaceId(ws.getWorkspaceId());
+            dto.setWorkspaceName(ws.getWorkspaceName());
+            dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
+            dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
+            dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
+
+            // 방문 로그 (최근 방문 시간)
+            VisitLog lastVisit = visitLogRepository
+                    .findTopByUserAndWorkspaceOrderByVisitedAtDesc(user, ws)
+                    .orElse(null);
+            dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
+
+            // 수업 시간 리스트
+            List<String> timeList = new ArrayList<>();
+            if (ws.getClasstime1() != null) timeList.add(ws.getClasstime1());
+            if (ws.getClasstime2() != null) timeList.add(ws.getClasstime2());
+            if (ws.getClasstime3() != null) timeList.add(ws.getClasstime3());
+            dto.setWorkspaceTimeList(timeList);
+
+            // 팀 멤버 리스트
+            List<TeamMember> members = teamMemberRepository.findByWorkspace_WorkspaceId(ws.getWorkspaceId());
+            dto.setWorkspaceMemberList(
+                    members.stream()
+                            .map(member -> new WorkspaceMemberDTO(
+                                    member.getMemberId(),
+                                    member.getUser().getId(),
+                                    member.getUser().getEmail(),
+                                    member.getUser().getUsername(),
+                                    member.getUser().getProfileImageUrl()
+                            ))
+                            .collect(Collectors.toList())
+            );
+
+            return dto;
         }).collect(Collectors.toList());
     }
 

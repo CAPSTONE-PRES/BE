@@ -154,7 +154,7 @@ public class ProjectService {
                                         .orElse(null);
 
                                 ProjectListDTO dto = ProjectListDTO.from(project);
-                                dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toLocalDate().toString() : null);
+                                dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
 
                                 return dto;
                         })
