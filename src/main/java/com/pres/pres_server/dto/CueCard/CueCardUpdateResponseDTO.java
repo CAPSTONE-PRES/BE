@@ -2,13 +2,17 @@ package com.pres.pres_server.dto.CueCard;
 
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
 @Setter
+@NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class CueCardUpdateResponseDTO {
-    private Long fileId;
-    private int slideNumber;
-    private String message;
+    private Long cueId;
+    private String content;
+    private String messager;
+    private LocalDateTime updatedAt;
 }

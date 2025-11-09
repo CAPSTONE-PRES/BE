@@ -13,9 +13,17 @@ import com.pres.pres_server.domain.PresentationFile;
 @Repository
 public interface CueCardRepository extends JpaRepository<CueCard, Long> {
 
+    // 파일 + 슬라이드+섹션 기준 큐카드 내용 업데이트
+    Optional<CueCard> findByPresentationFile_FileIdAndSlideNumberAndSectionNumber(
+            Long fileId, int slideNumber, Integer sectionNumber);
+
+    // 큐카드 아이디로 조회
+    Optional<CueCard> findByCueId(Long cueId);
+
     // 특정 파일의 특정 슬라이드 큐카드 조회
     @Deprecated
     List<CueCard> findByPresentationFile_FileIdAndSlideNumber(Long fileId, int slideNumber);
+
     //List<CueCard> findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc로 대체
 
     // 파일 전체 큐카드 조회 (슬라이드→모드→섹션 순)

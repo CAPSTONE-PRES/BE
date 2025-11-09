@@ -14,6 +14,7 @@ import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -87,7 +88,7 @@ public class CueCardService {
 
 
     // 큐카드 내용 업데이트
-    @Transactional
+    /*@Transactional
     public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
                                                    CueCardUpdateRequest request, User user) {
 
@@ -113,18 +114,37 @@ public class CueCardService {
 
         return new CueCardUpdateResponseDTO(fileId, slideNumber,
                 "cuecard 내용 업데이트가 성공적으로 완료되었습니다");
+    }*/
+    @Transactional
+    public CueCardUpdateResponseDTO updateCueCard(Long fileId, int slideNumber, Integer sectionNumber, CueCardUpdateRequest request, User user) {
+        try {
+            // 1. 큐카드 조회 (슬라이드 + 섹션 + 파일 기준)
+            CueCard cueCard = cueCardRepository.findByPresentationFile_FileIdAndSlideNumberAndSectionNumber(fileId, slideNumber, sectionNumber)
+                    .orElseThrow(() -> new IllegalArgumentException("큐카드를 찾을 수 없습니다."));
+
+            // 2. 내용 업데이트
+            cueCard.setContent(request.getContent());
+            cueCardRepository.save(cueCard);
+
+            // 3. DTO 반환
+            return CueCardUpdateResponseDTO.builder()
+                    .cueId(cueCard.getCueId())
+                    .content(cueCard.getContent())
+                    .messager("성공적으로 업데이트 되었습니다")
+                    .updatedAt(cueCard.getUpdatedAt())
+                    .build();
+
+        } catch (Exception e) {
+            throw new RuntimeException("큐카드 업데이트 중 오류 발생", e);
+        }
     }
 
-
+    // 큐카드 체크 상태 변환 서비스
     @Transactional
-    public void setCheckStatus(Long fileId, int slideNumber, Long cueId, User user, boolean status) {
+    public void setCheckStatus(Long cueId, User user, boolean status) {
 
         CueCard cue = cueCardRepository.findById(cueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CueCard not found"));
-
-        if (!cue.getPresentationFile().getFileId().equals(fileId) || cue.getSlideNumber() != slideNumber) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fileId/slideNumber mismatch");
-        }
 
         // 권한 체크 — 해당 파일이 속한 프로젝트/워크스페이스의 멤버인지 확인
         Long workspaceId = cue.getPresentationFile().getProject().getWorkspaceId().getWorkspaceId();
@@ -153,28 +173,32 @@ public class CueCardService {
         }
     }
 
-    public CueCardUncheckedDTO getUncheckedMembers(Long fileId, int slideNumber) {
-        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
+    // 큐카드 체크 안한 멤버 조회 서비스 코드
+    public CueCardUncheckedDTO getUncheckedMembers(Long cueId) {
+        CueCard cueCard = cueCardRepository.findByCueId(cueId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 큐카드가 존재하지 않습니다."));
 
-        List<CueCardUncheckedMemberDTO> cueCardDTOs = new ArrayList<>();
+        List<Long> checkedUserIds = cueCardCheckMemberRepository.findByCueCard(cueCard)
+                .stream()
+                .map(ccm -> ccm.getUser().getId())
+                .toList();
 
-        for (CueCard cueCard : cueCards) {
-            List<Long> checkedUserIds = cueCardCheckMemberRepository.findByCueCard(cueCard)
-                    .stream()
-                    .map(ccm -> ccm.getUser().getId())
-                    .toList();
+        List<WorkspaceMemberDTO> uncheckedMembers = teamMemberRepository
+                .findByWorkspace_WorkspaceId(cueCard.getPresentationFile().getProject().getWorkspaceId().getWorkspaceId())
+                .stream()
+                .filter(tm -> !checkedUserIds.contains(tm.getUser().getId()))
+                .map(tm -> new WorkspaceMemberDTO(
+                        tm.getMemberId(),
+                        tm.getUser().getId(),
+                        tm.getUser().getEmail(),
+                        tm.getUser().getUsername(),
+                        tm.getUser().getProfileImageUrl()
+                ))
+                .toList();
 
-            List<WorkspaceMemberDTO> uncheckedMembers = teamMemberRepository
-                    .findByWorkspace_WorkspaceId(cueCard.getPresentationFile().getProject().getWorkspaceId().getWorkspaceId())
-                    .stream()
-                    .filter(tm -> !checkedUserIds.contains(tm.getUser().getId()))
-                    .map(tm -> new WorkspaceMemberDTO(tm.getMemberId(), tm.getUser().getId(), tm.getUser().getEmail() ,tm.getUser().getUsername(), tm.getUser().getProfileImageUrl()))
-                    .toList();
-
-            cueCardDTOs.add(new CueCardUncheckedMemberDTO(cueCard.getCueId(), uncheckedMembers));
-        }
-
-        return new CueCardUncheckedDTO(fileId, slideNumber, cueCardDTOs);
+        CueCardUncheckedMemberDTO cueCardDTO = new CueCardUncheckedMemberDTO(cueCard.getCueId(), uncheckedMembers);
+        return new CueCardUncheckedDTO(cueId, List.of(cueCardDTO));
     }
+
 
 }

@@ -9,7 +9,6 @@ import java.util.List;
 @Setter
 @AllArgsConstructor
 public class CueCardUncheckedDTO { // 최종 응답
-    private Long fileId;
-    private int slideNumber;
+    private Long cueId;
     private List<CueCardUncheckedMemberDTO> cueCards;
 }
