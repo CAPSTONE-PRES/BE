@@ -82,7 +82,7 @@ public class CueCardController {
             // 오류 시 메시지만 반환
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(CueCardUpdateResponseDTO.builder()
-                            .messager("예상치 못한 오류가 발생했습니다")
+                            .message("예상치 못한 오류가 발생했습니다")
                             .build());
         }
     }
@@ -97,12 +97,10 @@ public class CueCardController {
         try {
             CueCardUpdateResponseDTO response = cueCardService.updateCueCardMode(cueId, request, user);
             return ResponseEntity.ok(response);
-
         } catch (RuntimeException e) {
-            // 오류 시 메시지만 반환
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(CueCardUpdateResponseDTO.builder()
-                            .messager("예상치 못한 오류가 발생했습니다")
+                            .message("예상치 못한 오류가 발생했습니다")
                             .build());
         }
     }

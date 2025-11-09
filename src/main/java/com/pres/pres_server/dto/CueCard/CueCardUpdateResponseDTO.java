@@ -12,7 +12,6 @@ import java.util.List;
 @Builder
 public class CueCardUpdateResponseDTO {
     private Long cueId;
-    private String content;
-    private String messager;
-    private LocalDateTime updatedAt;
+    private String updatedContent;
+    private String message;
 }

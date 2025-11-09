@@ -7,6 +7,9 @@ import java.util.List;
 
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class CueCardUpdateRequest {
     private CueCard.Mode mode; // BASIC or ADVANCED
     private String content;

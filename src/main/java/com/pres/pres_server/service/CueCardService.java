@@ -102,9 +102,7 @@ public class CueCardService {
             // 3. DTO 반환
             return CueCardUpdateResponseDTO.builder()
                     .cueId(cueCard.getCueId())
-                    .content(cueCard.getContent())
-                    .messager("성공적으로 업데이트 되었습니다")
-                    .updatedAt(cueCard.getUpdatedAt())
+                    .message("성공적으로 업데이트 되었습니다")
                     .build();
 
         } catch (Exception e) {
@@ -114,24 +112,22 @@ public class CueCardService {
 
     // 큐카드 내용 업데이트
     public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, User user) {
-        CueCard cueCard = cueCardRepository.findById(cueId)
-                .orElseThrow(() -> new RuntimeException("해당 CueCard를 찾을 수 없습니다."));
+        CueCard cueCard = cueCardRepository.findByCueIdAndMode(cueId, request.getMode())
+                .orElseThrow(() -> new RuntimeException("해당 cueId와 mode에 해당하는 큐카드를 찾을 수 없습니다."));
 
-        // mode 일치 확인
-        if (request.getMode() != null && cueCard.getMode() != request.getMode()) {
-            throw new RuntimeException("요청한 mode와 CueCard의 mode가 일치하지 않습니다.");
+        // 권한 검증 (필요하다면)
+        if (!cueCard.getPresentationFile().getProject().getPresenter().equals(user)) {
+            throw new RuntimeException("큐카드를 수정할 권한이 없습니다.");
         }
 
         // 내용 업데이트
         cueCard.setContent(request.getContent());
         cueCardRepository.save(cueCard);
 
-        // 응답 DTO 생성
         return CueCardUpdateResponseDTO.builder()
                 .cueId(cueCard.getCueId())
-                .content(cueCard.getContent())
-                .messager("성공적으로 업데이트 되었습니다")
-                .updatedAt(LocalDateTime.now())
+                .updatedContent(cueCard.getContent())
+                .message("큐카드가 성공적으로 수정되었습니다.")
                 .build();
     }
 
