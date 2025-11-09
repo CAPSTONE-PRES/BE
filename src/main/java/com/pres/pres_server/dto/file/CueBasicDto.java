@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public class CueBasicDto {
+    private Long cueId;
     private int section;
     private String keyword;
     private String text;

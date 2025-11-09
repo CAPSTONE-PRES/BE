@@ -191,6 +191,7 @@ public class GenerateCueService {
                     .sorted(Comparator.comparing(c -> Optional.ofNullable(c.getSectionNumber()).orElse(0)))
                     .map(c -> {
                         CueBasicDto b = new CueBasicDto();
+                        b.setCueId(c.getCueId());
                         b.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
                         b.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
                         b.setText(Optional.ofNullable(c.getContent()).orElse(""));
@@ -211,6 +212,7 @@ public class GenerateCueService {
                             c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
                             c -> {
                                 CueAdvancedDto a = new CueAdvancedDto();
+                                a.setCueId(c.getCueId());
                                 a.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
                                 a.setText(Optional.ofNullable(c.getContent()).orElse(""));
                                 return a;

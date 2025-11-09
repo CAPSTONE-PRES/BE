@@ -13,5 +13,5 @@ import lombok.NoArgsConstructor;
 public class CueCardDto {
     private Long fileId;
     private List<CueSlideDto> slides; //슬라이드별 큐카드
-    private Map<Integer, String> errors; //실패한 슬라이드 -> 에러메세지
+    private Map<Integer, String> errors; //실패한 슬라이드 ->
 }

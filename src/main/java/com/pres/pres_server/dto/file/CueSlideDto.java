@@ -11,7 +11,6 @@ import java.util.List;
 @Data @NoArgsConstructor
 @AllArgsConstructor
 public class CueSlideDto {
-
     private int slideNumber;
     private List<CueBasicDto> basic; // BASIC 섹션들
     private List<CueAdvancedDto> advanced;             // ADVANCED 섹션들

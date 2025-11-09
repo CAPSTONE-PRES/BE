@@ -156,6 +156,7 @@ public class CueSlideService {
                 .filter(c -> c.getMode() == CueCard.Mode.BASIC)
                 .map(c -> {
                     CueBasicDto dto = new CueBasicDto();
+                    dto.setCueId(c.getCueId());
                     dto.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
                     dto.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
                     dto.setText(Optional.ofNullable(c.getContent()).orElse(""));
@@ -174,6 +175,7 @@ public class CueSlideService {
         if(!basicDtos.isEmpty()) {
             CueBasicDto first = basicDtos.get(0);
             CueAdvancedDto advDto = new CueAdvancedDto();
+            advDto.setCueId(first.getCueId());
             advDto.setSection(first.getSection());
             advDto.setKeyword(first.getKeyword());
             advDto.setText(advancedText);
