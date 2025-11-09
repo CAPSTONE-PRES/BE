@@ -14,6 +14,7 @@ import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -87,7 +88,7 @@ public class CueCardService {
 
 
     // 큐카드 내용 업데이트
-    @Transactional
+    /*@Transactional
     public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
                                                    CueCardUpdateRequest request, User user) {
 
@@ -113,8 +114,30 @@ public class CueCardService {
 
         return new CueCardUpdateResponseDTO(fileId, slideNumber,
                 "cuecard 내용 업데이트가 성공적으로 완료되었습니다");
-    }
+    }*/
+    @Transactional
+    public CueCardUpdateResponseDTO updateCueCard(Long fileId, int slideNumber, Integer sectionNumber, CueCardUpdateRequest request, User user) {
+        try {
+            // 1. 큐카드 조회 (슬라이드 + 섹션 + 파일 기준)
+            CueCard cueCard = cueCardRepository.findByPresentationFile_FileIdAndSlideNumberAndSectionNumber(fileId, slideNumber, sectionNumber)
+                    .orElseThrow(() -> new IllegalArgumentException("큐카드를 찾을 수 없습니다."));
 
+            // 2. 내용 업데이트
+            cueCard.setContent(request.getContent());
+            cueCardRepository.save(cueCard);
+
+            // 3. DTO 반환
+            return CueCardUpdateResponseDTO.builder()
+                    .cueId(cueCard.getCueId())
+                    .content(cueCard.getContent())
+                    .messager("성공적으로 업데이트 되었습니다")
+                    .updatedAt(cueCard.getUpdatedAt())
+                    .build();
+
+        } catch (Exception e) {
+            throw new RuntimeException("큐카드 업데이트 중 오류 발생", e);
+        }
+    }
 
     @Transactional
     public void setCheckStatus(Long fileId, int slideNumber, Long cueId, User user, boolean status) {
