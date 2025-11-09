@@ -62,7 +62,7 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "큐카드 내용 업데이트 (슬라이드+섹션 기준)")
+    @Operation(summary = "큐카드 내용 업데이트 (파일 + 슬라이드 + 섹션 id 기준)")
     @PatchMapping("/{fileId}/{slideNumber}/{sectionNumber}/cuecard/update")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
             @PathVariable Long fileId,
