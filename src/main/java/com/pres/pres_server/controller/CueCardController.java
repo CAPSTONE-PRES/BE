@@ -1,5 +1,6 @@
 package com.pres.pres_server.controller;
 
+import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
@@ -10,6 +11,7 @@ import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
+import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
 import com.pres.pres_server.service.CommentService;
@@ -38,6 +40,7 @@ public class CueCardController {
     private final PresentationFileRepository presentationFileRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final CommentService commentService;
+    private final CueCardRepository cueCardRepository;
 
     @Operation(summary = "큐카드 내용 조회", description = "슬라이드별 큐카드 내용 조회")
     @GetMapping("/{fileId}/{slideNumber}/cuecard")
@@ -85,10 +88,8 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 체크/취소 api", description = "슬라이드별 큐카드(1,2)에 대한 체크 표시 생성 및 삭제")
-    @PatchMapping("/{fileId}/{slideNumber}/cuecard/{cueId}/check")
+    @PatchMapping("/cuecard/{cueId}/check")
     public ResponseEntity<Map<String,Object>> toggleCueCheck(
-            @PathVariable Long fileId,
-            @PathVariable int slideNumber,
             @PathVariable Long cueId,
             @RequestParam String status, // on 또는 off
             @AuthenticationPrincipal User user) {
@@ -97,7 +98,7 @@ public class CueCardController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status는 on 또는 off여야 합니다.");
         }
         boolean checked = "on".equalsIgnoreCase(status);
-        cueCardService.setCheckStatus(fileId, slideNumber, cueId, user, checked);
+        cueCardService.setCheckStatus(cueId, user, checked);
 
         Map<String,Object> resp = new HashMap<>();
         resp.put("cueId", cueId);
@@ -107,16 +108,15 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 체크 안 한 멤버 조회", description = "슬라이드별 큐카드 체크 여부 확인")
-    @GetMapping("/{fileId}/{slideNumber}/cuecard/check/list")
+    @GetMapping("/cuecard/{cueId}/check/list")
     public ResponseEntity<CueCardUncheckedDTO> getUncheckedMembers(
-            @PathVariable Long fileId,
-            @PathVariable int slideNumber,
+            @PathVariable Long cueId,
             @AuthenticationPrincipal User user) {
 
-        PresentationFile file = presentationFileRepository.findById(fileId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 파일이 존재하지 않습니다."));
+        CueCard cueCard = cueCardRepository.findByCueId(cueId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 큐카드가 존재하지 않습니다."));
 
-        WorkSpace workspace = file.getProject().getWorkspaceId();
+        WorkSpace workspace = cueCard.getPresentationFile().getProject().getWorkspaceId();
 
         // 로그인한 user가 워크스페이스 멤버인지 확인
         boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
@@ -127,7 +127,7 @@ public class CueCardController {
             throw new AccessDeniedException("워크스페이스 멤버만 접근할 수 있습니다.");
         }
 
-        CueCardUncheckedDTO response = cueCardService.getUncheckedMembers(fileId, slideNumber);
+        CueCardUncheckedDTO response = cueCardService.getUncheckedMembers(cueId);
         return ResponseEntity.ok(response);
     }
 
