@@ -86,30 +86,6 @@ public class CueCardService {
         return new CueCardCreateResponseDTO(fileId, slideNumber, cueCardContents);
     }
 
-
-    // 큐카드 내용 업데이트
-    @Transactional
-    public CueCardUpdateResponseDTO updateCueCard(Long fileId, int slideNumber, Integer sectionNumber, CueCardUpdateRequest request, User user) {
-        try {
-            // 1. 큐카드 조회 (슬라이드 + 섹션 + 파일 기준)
-            CueCard cueCard = cueCardRepository.findByPresentationFile_FileIdAndSlideNumberAndSectionNumber(fileId, slideNumber, sectionNumber)
-                    .orElseThrow(() -> new IllegalArgumentException("큐카드를 찾을 수 없습니다."));
-
-            // 2. 내용 업데이트
-            cueCard.setContent(request.getContent());
-            cueCardRepository.save(cueCard);
-
-            // 3. DTO 반환
-            return CueCardUpdateResponseDTO.builder()
-                    .cueId(cueCard.getCueId())
-                    .message("성공적으로 업데이트 되었습니다")
-                    .build();
-
-        } catch (Exception e) {
-            throw new RuntimeException("큐카드 업데이트 중 오류 발생", e);
-        }
-    }
-
     // 큐카드 내용 업데이트
     public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, User user) {
         CueCard cueCard = cueCardRepository.findByCueIdAndMode(cueId, request.getMode())

@@ -66,28 +66,6 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "큐카드 내용 업데이트 (파일 + 슬라이드 + 섹션 id 기준)")
-    @PatchMapping("/{fileId}/{slideNumber}/{sectionNumber}/cuecard/update")
-    public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
-            @PathVariable Long fileId,
-            @PathVariable int slideNumber,
-            @PathVariable Integer sectionNumber,
-            @RequestBody CueCardUpdateRequest request,
-            @AuthenticationPrincipal User user
-    ) {
-        try {
-            CueCardUpdateResponseDTO response = cueCardService.updateCueCard(fileId, slideNumber, sectionNumber, request, user);
-            return ResponseEntity.ok(response);
-
-        } catch (RuntimeException e) {
-            // 오류 시 메시지만 반환
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(CueCardUpdateResponseDTO.builder()
-                            .message("예상치 못한 오류가 발생했습니다")
-                            .build());
-        }
-    }
-
     @Operation(summary = "큐카드 내용 업데이트 (cueId + mode 기준)")
     @PatchMapping("/{cueId}/update")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
@@ -151,7 +129,7 @@ public class CueCardController {
     }
 
     // ----------------------------------- 코멘트 api -----------------------------------
-
+    @Operation(summary = "큐카드에 최상위 댓글 생성")
     @PostMapping("/{cueId}/comments")
     public CommentResponseDTO createComment(@PathVariable Long cueId,
                                             @RequestBody CommentRequestDTO request,
@@ -159,6 +137,7 @@ public class CueCardController {
         return commentService.createComment(cueId, request, user);
     }
 
+    @Operation(summary = "최상위 댓글에 대댓글 생성")
     @PostMapping("/comments/{parentCommentId}/replies")
     public ReplyDTO createReply(@PathVariable Long parentCommentId,
                                 @RequestBody CommentRequestDTO request,
@@ -166,6 +145,7 @@ public class CueCardController {
         return commentService.createReply(parentCommentId, request, user);
     }
 
+    @Operation(summary = "특정 코멘트 수정")
     @PatchMapping("/comments/{commentId}")
     public CommentResponseDTO updateComment(@PathVariable Long commentId,
                                             @RequestBody CommentRequestDTO request,
@@ -173,6 +153,7 @@ public class CueCardController {
         return commentService.updateComment(commentId, request, user);
     }
 
+    @Operation(summary = "특정 코멘트 삭제")
     @DeleteMapping("/comments/{commentId}")
     public void deleteComment(@PathVariable Long commentId,
                               @AuthenticationPrincipal User user) {
