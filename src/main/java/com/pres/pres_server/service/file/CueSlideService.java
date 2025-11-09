@@ -70,7 +70,6 @@ public class CueSlideService {
                 cueCardRepository.save(basic);
             }
         }
-
         // 2-2) 요청에 없는 기존 BASIC 섹션 삭제(동기화)
         for (CueCard old : existingBasics) {
             Integer sec = Optional.ofNullable(old.getSectionNumber()).orElse(0);
@@ -78,24 +77,31 @@ public class CueSlideService {
                 cueCardRepository.delete(old);
             }
         }
-
-
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void persistInsufficient (PresentationFile file,int slideNum){
-        final Long fileId = file.getFileId();
 
-        // 기존 BASIC만 삭제
-        List<CueCard> all = cueCardRepository
-                .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slideNum);
-        for (CueCard c : all) {
-            if (c.getMode() == CueCard.Mode.BASIC) {
-                cueCardRepository.delete(c);
-            }
-        }
+        upsertBasic(file, slideNum, " ");
 
         // ADVANCED 업서트
-        upsertAdvanced(file, slideNum, "(내용 부족 – 요약 생략)");
+        upsertAdvanced(file, slideNum, " ");
+    }
+
+    private void upsertBasic(PresentationFile file, int slide, String bText) {
+        CueCard basic = cueCardRepository
+                .findFirstByPresentationFile_FileIdAndSlideNumberAndMode(file.getFileId(), slide,
+                        CueCard.Mode.BASIC)
+                .orElseGet(CueCard::new);
+
+        basic.setPresentationFile(file);
+        basic.setSlideNumber(slide);
+        basic.setSectionNumber(1);
+        basic.setSectionKeyword(" ");
+        basic.setMode(CueCard.Mode.BASIC);
+        basic.setContent(bText);
+        cueCardRepository.save(basic);
+
     }
 
     private void upsertAdvanced(PresentationFile file, int slide, String advText) {
@@ -106,9 +112,8 @@ public class CueSlideService {
         adv.setPresentationFile(file);
         adv.setSlideNumber(slide);
         adv.setMode(CueCard.Mode.ADVANCED);
-        // ADVANCED는 sectionNumber를 1로 고정
         adv.setSectionNumber(1);
-        adv.setSectionKeyword(null);
+        adv.setSectionKeyword(" ");
         adv.setContent(advText);
         cueCardRepository.save(adv);
     }
