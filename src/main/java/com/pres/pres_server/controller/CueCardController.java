@@ -62,17 +62,26 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "큐카드 내용 업데이트",
-            description = "슬라이드별 큐카드 내용 수정 / 특별한 엔드포인트 발견하지 못해서, 페이지 넘길 때마다 #1, #2 넣어서 호출해주시면 됩니다")
-    @PatchMapping("/{fileId}/{slideNumber}/cuecard/edit")
-    public ResponseEntity<CueCardUpdateResponseDTO> updateCueCards(
+    @Operation(summary = "큐카드 내용 업데이트 (슬라이드+섹션 기준)")
+    @PatchMapping("/{fileId}/{slideNumber}/{sectionNumber}/cuecard/update")
+    public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
             @PathVariable Long fileId,
             @PathVariable int slideNumber,
+            @PathVariable Integer sectionNumber,
             @RequestBody CueCardUpdateRequest request,
-            @AuthenticationPrincipal User user) {
+            @AuthenticationPrincipal User user
+    ) {
+        try {
+            CueCardUpdateResponseDTO response = cueCardService.updateCueCard(fileId, slideNumber, sectionNumber, request, user);
+            return ResponseEntity.ok(response);
 
-        CueCardUpdateResponseDTO response = cueCardService.updateCueCards(fileId, slideNumber, request, user);
-        return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            // 오류 시 메시지만 반환
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(CueCardUpdateResponseDTO.builder()
+                            .messager("예상치 못한 오류가 발생했습니다")
+                            .build());
+        }
     }
 
     @Operation(summary = "큐카드 체크/취소 api", description = "슬라이드별 큐카드(1,2)에 대한 체크 표시 생성 및 삭제")
