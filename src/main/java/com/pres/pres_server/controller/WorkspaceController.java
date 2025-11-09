@@ -8,6 +8,7 @@ import com.pres.pres_server.dto.User.UserValidationRequestDTO;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
 import com.pres.pres_server.dto.Workspace.*;
 import com.pres.pres_server.repository.UserRepository;
+import com.pres.pres_server.repository.VisitLogRepository;
 import com.pres.pres_server.service.ProjectService;
 import com.pres.pres_server.service.user.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,7 +36,7 @@ public class WorkspaceController {
     private final WorkspaceService workspaceService;
     private final ProjectService projectService;
     private final UserService userService;
-    private final UserRepository userRepository;
+    private final VisitLogRepository visitLogRepository;
 
     @Operation(summary = "워크스페이스 생성", description = "워크스페이스 생성에 필요한 정보를 저장합니다")
     @PostMapping("/create")
@@ -132,7 +133,16 @@ public class WorkspaceController {
         List<Project> projects = projectService.getProjectsByWorkspace(workspaceId, type, user);
 
         List<ProjectListDTO> response = projects.stream()
-                .map(ProjectListDTO::from)
+                .map(project -> {
+                    ProjectListDTO dto = ProjectListDTO.from(project);
+
+                    // lastVisited 세팅
+                    visitLogRepository.findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
+                            .ifPresent(log -> dto.setLastVisited(log.getVisitedAt().toLocalDate().toString()));
+
+                    return dto;
+                })
+
                 .toList();
 
         return ResponseEntity.ok(response);
