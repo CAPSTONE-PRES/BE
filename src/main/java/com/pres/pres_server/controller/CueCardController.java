@@ -6,6 +6,7 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Comment.CommentRequestDTO;
 import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.Comment.ReplyDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
@@ -151,6 +152,41 @@ public class CueCardController {
 
     // ----------------------------------- 코멘트 api -----------------------------------
 
+    @PostMapping("/{cueId}/comments")
+    public CommentResponseDTO createComment(@PathVariable Long cueId,
+                                            @RequestBody CommentRequestDTO request,
+                                            @AuthenticationPrincipal User user) {
+        return commentService.createComment(cueId, request, user);
+    }
+
+    @PostMapping("/comments/{parentCommentId}/replies")
+    public ReplyDTO createReply(@PathVariable Long parentCommentId,
+                                @RequestBody CommentRequestDTO request,
+                                @AuthenticationPrincipal User user) {
+        return commentService.createReply(parentCommentId, request, user);
+    }
+
+    @PatchMapping("/comments/{commentId}")
+    public CommentResponseDTO updateComment(@PathVariable Long commentId,
+                                            @RequestBody CommentRequestDTO request,
+                                            @AuthenticationPrincipal User user) {
+        return commentService.updateComment(commentId, request, user);
+    }
+
+    @DeleteMapping("/comments/{commentId}")
+    public void deleteComment(@PathVariable Long commentId,
+                              @AuthenticationPrincipal User user) {
+        commentService.deleteComment(commentId, user);
+    }
+
+    @GetMapping("/{cueId}/comments")
+    public List<CommentResponseDTO> getComments(@PathVariable Long cueId,
+                                                @AuthenticationPrincipal User user) {
+        return commentService.getComments(cueId, user);
+    }
+
+    /*
+
     // 코멘트 생성 api
     @Operation(summary = "코멘트 생성", description = "특정 키워드에 코멘트를 생성합니다.")
     @PostMapping("/comment/create")
@@ -194,5 +230,7 @@ public class CueCardController {
         List<CueCardCommentDTO> comments = commentService.getCommentsBySlide(fileId, slideNumber, user);
         return ResponseEntity.ok(comments);
     }
+
+     */
 
 }

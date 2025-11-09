@@ -1,13 +1,12 @@
 package com.pres.pres_server.dto.Comment;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
-@Getter
-@Setter
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
 public class CommentRequestDTO {
-    private Long userId;
-    private Long cueId;
-    private String location;
     private String content;
+    private String location;
 }

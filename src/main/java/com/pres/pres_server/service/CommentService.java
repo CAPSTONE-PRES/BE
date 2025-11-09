@@ -5,11 +5,14 @@ import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.Comment.CommentRequestDTO;
 import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.Comment.ReplyDTO;
 import com.pres.pres_server.dto.CueCard.CommentDetailDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.repository.CommentRepository;
 import com.pres.pres_server.repository.CueCardRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +28,80 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final CueCardRepository cueCardRepository;
+
+    // 1. 최상위 댓글 생성
+    public CommentResponseDTO createComment(Long cueId, CommentRequestDTO request, User user) {
+        CueCard cueCard = cueCardRepository.findById(cueId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 큐카드가 존재하지 않습니다."));
+
+        Comment comment = Comment.builder()
+                .cueCard(cueCard)
+                .authorUser(user)
+                .content(request.getContent())
+                .location(request.getLocation())
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        commentRepository.save(comment);
+        return CommentResponseDTO.from(comment, user);
+    }
+
+    // 2. 대댓글 생성
+    public ReplyDTO createReply(Long parentCommentId, CommentRequestDTO request, User user) {
+        Comment parentComment = commentRepository.findById(parentCommentId)
+                .orElseThrow(() -> new EntityNotFoundException("최상위 댓글이 존재하지 않습니다."));
+
+        Comment reply = Comment.builder()
+                .cueCard(parentComment.getCueCard())
+                .authorUser(user)
+                .content(request.getContent())
+                .parentComment(parentComment)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        parentComment.getReplies().add(reply);
+        commentRepository.save(reply);
+
+        return ReplyDTO.from(reply);
+    }
+
+    // 3. 댓글 수정
+    public CommentResponseDTO updateComment(Long commentId, CommentRequestDTO request, User user) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 댓글을 찾을 수 없습니다"));
+
+        if (!comment.getAuthorUser().getId().equals(user.getId())) {
+            throw new AccessDeniedException("해당 코멘트를 수정할 권한이 없습니다.");
+        }
+
+        comment.setContent(request.getContent());
+        commentRepository.save(comment);
+
+        return CommentResponseDTO.from(comment, user);
+    }
+
+    // 4. 댓글 삭제
+    public void deleteComment(Long commentId, User user) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 댓글을 찾을 수 없습니다"));
+
+        if (!comment.getAuthorUser().getId().equals(user.getId())) {
+            throw new AccessDeniedException("해당 코멘트를 삭제할 권한이 없습니다.");
+        }
+
+        commentRepository.delete(comment);
+    }
+
+    // 5. 댓글 조회
+    public List<CommentResponseDTO> getComments(Long cueId, User user) {
+        List<Comment> comments = commentRepository.findByCueCardCueIdAndParentCommentIsNull(cueId);
+
+        return comments.stream()
+                .map(c -> CommentResponseDTO.from(c, user))
+                .collect(Collectors.toList());
+    }
+
+    /*
 
     @Transactional
     public CommentResponseDTO addComment(CommentRequestDTO request, User user) {
@@ -116,4 +194,5 @@ public class CommentService {
         return result;
     }
 
+     */
 }

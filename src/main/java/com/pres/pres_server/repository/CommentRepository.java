@@ -9,4 +9,8 @@ import java.util.List;
 public interface CommentRepository extends JpaRepository<Comment, Long> {
     // 특정 큐카드에 달린 모든 코멘트 조회
     List<Comment> findByCueCard(CueCard cueCard);
+
+    //
+    List<Comment> findByCueCardCueIdAndParentCommentIsNull(Long cueCardId);
+
 }
