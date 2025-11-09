@@ -88,33 +88,6 @@ public class CueCardService {
 
 
     // 큐카드 내용 업데이트
-    /*@Transactional
-    public CueCardUpdateResponseDTO updateCueCards(Long fileId, int slideNumber,
-                                                   CueCardUpdateRequest request, User user) {
-
-        PresentationFile file = presentationFileRepository.findById(fileId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 파일이 존재하지 않습니다."));
-
-        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
-                file.getProject().getWorkspaceId().getWorkspaceId(), user.getId()
-        );
-        if (!isMember) throw new RuntimeException("권한이 없습니다.");
-
-        List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdAndSlideNumber(fileId, slideNumber);
-
-        for (CueCardContentDTO dto : request.getCueCards()) {
-            CueCard cueCard = cueCards.stream()
-                    .filter(c -> c.getCueId().equals(dto.getCueId()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("큐카드가 존재하지 않습니다: " + dto.getCueId()));
-
-            cueCard.setContent(dto.getContent());
-            cueCardRepository.save(cueCard);
-        }
-
-        return new CueCardUpdateResponseDTO(fileId, slideNumber,
-                "cuecard 내용 업데이트가 성공적으로 완료되었습니다");
-    }*/
     @Transactional
     public CueCardUpdateResponseDTO updateCueCard(Long fileId, int slideNumber, Integer sectionNumber, CueCardUpdateRequest request, User user) {
         try {
@@ -137,6 +110,29 @@ public class CueCardService {
         } catch (Exception e) {
             throw new RuntimeException("큐카드 업데이트 중 오류 발생", e);
         }
+    }
+
+    // 큐카드 내용 업데이트
+    public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, User user) {
+        CueCard cueCard = cueCardRepository.findById(cueId)
+                .orElseThrow(() -> new RuntimeException("해당 CueCard를 찾을 수 없습니다."));
+
+        // mode 일치 확인
+        if (request.getMode() != null && cueCard.getMode() != request.getMode()) {
+            throw new RuntimeException("요청한 mode와 CueCard의 mode가 일치하지 않습니다.");
+        }
+
+        // 내용 업데이트
+        cueCard.setContent(request.getContent());
+        cueCardRepository.save(cueCard);
+
+        // 응답 DTO 생성
+        return CueCardUpdateResponseDTO.builder()
+                .cueId(cueCard.getCueId())
+                .content(cueCard.getContent())
+                .messager("성공적으로 업데이트 되었습니다")
+                .updatedAt(LocalDateTime.now())
+                .build();
     }
 
     // 큐카드 체크 상태 변환 서비스
