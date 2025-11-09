@@ -160,6 +160,7 @@ public class CueCardController {
         commentService.deleteComment(commentId, user);
     }
 
+    @Operation(summary = "특정 cuecard에 코멘트 전체 불러오기")
     @GetMapping("/{cueId}/comments")
     public List<CommentResponseDTO> getComments(@PathVariable Long cueId,
                                                 @AuthenticationPrincipal User user) {
