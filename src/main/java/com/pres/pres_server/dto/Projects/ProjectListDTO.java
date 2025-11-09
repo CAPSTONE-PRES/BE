@@ -28,7 +28,6 @@ public class ProjectListDTO {
                 .workspaceName(project.getWorkspaceId().getWorkspaceName())
                 .presenterName(project.getPresenter() != null ? project.getPresenter().getUsername() : null)
                 .presenterProfileUrl(project.getPresenter() != null ? project.getPresenter().getProfileImageUrl() : null)
-                // visitedAt은 최근 방문순에서만 의미가 있으므로 별도 매핑 필요 시 VisitLog에서 추가 가능
                 .build();
     }
 }
