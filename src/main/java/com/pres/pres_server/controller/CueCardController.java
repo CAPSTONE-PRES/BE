@@ -69,7 +69,7 @@ public class CueCardController {
     }
 
     @Operation(summary = "큐카드 내용 업데이트 (cueId + mode 기준)")
-    @PatchMapping("/{cueId}/update")
+    @PatchMapping("/cuecard/{cueId}/update")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
             @PathVariable Long cueId,
             @RequestBody CueCardUpdateRequest request,
