@@ -150,6 +150,7 @@ public class CueCardService {
 
         List<Long> checkedUserIds = cueCardCheckMemberRepository.findByCueCard(cueCard)
                 .stream()
+                .filter(CueCardCheckMember::isChecked)
                 .map(ccm -> ccm.getUser().getId())
                 .toList();
 
