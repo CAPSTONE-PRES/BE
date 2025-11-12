@@ -11,6 +11,8 @@ import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
+import com.pres.pres_server.dto.practice.CueCardCheckStatusDTO;
+import com.pres.pres_server.dto.practice.CueCardCheckStatusFileDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
@@ -127,6 +129,19 @@ public class CueCardController {
         CueCardUncheckedDTO response = cueCardService.getUncheckedMembers(cueId);
         return ResponseEntity.ok(response);
     }
+
+    @Operation(summary = "파일 단위 큐카드 체크 상태 조회",
+            description = "특정 파일의 체크된 큐카드 ID 목록 조회")
+    @GetMapping("/{fileId}/cuecard/check/status")
+    public ResponseEntity<CueCardCheckStatusFileDTO> getCheckStatusByFile(
+            @PathVariable Long fileId,
+            @AuthenticationPrincipal User user) {
+
+        CueCardCheckStatusFileDTO response = cueCardService.getCheckStatusByFile(fileId, user);
+        return ResponseEntity.ok(response);
+    }
+
+
 
     // ----------------------------------- 코멘트 api -----------------------------------
     @Operation(summary = "큐카드에 최상위 댓글 생성")

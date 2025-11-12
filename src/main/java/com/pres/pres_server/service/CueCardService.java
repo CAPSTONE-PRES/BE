@@ -6,6 +6,8 @@ import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateRequest;
 import com.pres.pres_server.dto.CueCard.CueCardUpdateResponseDTO;
 import com.pres.pres_server.dto.Workspace.WorkspaceMemberDTO;
+import com.pres.pres_server.dto.practice.CueCardCheckStatusDTO;
+import com.pres.pres_server.dto.practice.CueCardCheckStatusFileDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedDTO;
 import com.pres.pres_server.dto.practice.CueCardUncheckedMemberDTO;
 import com.pres.pres_server.repository.CueCardCheckMemberRepository;
@@ -166,6 +168,61 @@ public class CueCardService {
 
         CueCardUncheckedMemberDTO cueCardDTO = new CueCardUncheckedMemberDTO(cueCard.getCueId(), uncheckedMembers);
         return new CueCardUncheckedDTO(cueId, List.of(cueCardDTO));
+    }
+
+
+    // TODO: - 큐카드 체크 상태 조회 API 임시 추가 (2025-11-11)
+    @Transactional(readOnly = true)
+    public CueCardCheckStatusDTO getCheckStatus(Long cueId, User user) {
+        CueCard cue = cueCardRepository.findById(cueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CueCard not found"));
+
+        // 권한 체크 - 기존 setCheckStatus와 동일한 로직
+        Long workspaceId = cue.getPresentationFile().getProject().getWorkspaceId().getWorkspaceId();
+        boolean isMember = teamMemberRepository.findByWorkspace_WorkspaceId(workspaceId)
+                .stream()
+                .anyMatch(tm -> tm.getUser().getId().equals(user.getId()));
+
+        if (!isMember) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "워크스페이스 멤버가 아닙니다");
+        }
+
+        boolean checked = cueCardCheckRepository.findByCueCardAndUser(cue, user)
+                .map(CueCardCheckMember::isChecked)  // 도메인 확인 결과: isChecked() 사용 가능
+                .orElse(false);
+
+        return new CueCardCheckStatusDTO(cueId, checked);
+    }
+
+    // TODO: - 큐카드 파일 단위 체크 상태 조회 API 임시 추가 (2025-11-11)
+    @Transactional(readOnly = true)
+    public CueCardCheckStatusFileDTO getCheckStatusByFile(Long fileId, User user) {
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."));
+
+        // 권한 체크 - 워크스페이스 멤버인지 확인
+        Long workspaceId = file.getProject().getWorkspaceId().getWorkspaceId();
+        boolean isMember = teamMemberRepository.existsByWorkspace_WorkspaceIdAndUser_Id(
+                workspaceId, user.getId()
+        );
+
+        if (!isMember) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "워크스페이스 멤버가 아닙니다");
+        }
+
+        // 해당 파일의 모든 큐카드 조회 (기존 메서드 활용)
+        List<CueCard> cueCards = cueCardRepository
+                .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+
+        // 체크된 큐카드 ID만 필터링
+        List<Long> checkedCueIds = cueCards.stream()
+                .filter(cue -> cueCardCheckRepository.findByCueCardAndUser(cue, user)
+                        .map(CueCardCheckMember::isChecked)
+                        .orElse(false))
+                .map(CueCard::getCueId)
+                .toList();
+
+        return new CueCardCheckStatusFileDTO(fileId, checkedCueIds);
     }
 
 
