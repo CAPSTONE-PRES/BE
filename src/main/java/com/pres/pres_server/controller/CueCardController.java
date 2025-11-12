@@ -6,6 +6,7 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.domain.WorkSpace;
 import com.pres.pres_server.dto.Comment.CommentRequestDTO;
 import com.pres.pres_server.dto.Comment.CommentResponseDTO;
+import com.pres.pres_server.dto.Comment.CueCardCommentResponseDTO;
 import com.pres.pres_server.dto.Comment.ReplyDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCreateResponseDTO;
@@ -177,9 +178,12 @@ public class CueCardController {
 
     @Operation(summary = "특정 cuecard에 코멘트 전체 불러오기")
     @GetMapping("/{cueId}/comments")
-    public List<CommentResponseDTO> getComments(@PathVariable Long cueId,
-                                                @AuthenticationPrincipal User user) {
-        return commentService.getComments(cueId, user);
+    public List<CueCardCommentResponseDTO> getComments(@PathVariable Long cueId,
+                                                       @AuthenticationPrincipal User user) {
+        List<CommentResponseDTO> comments = commentService.getComments(cueId, user);
+
+        CueCardCommentResponseDTO response = new CueCardCommentResponseDTO(cueId, comments);
+        return List.of(response);
     }
 
     /*
