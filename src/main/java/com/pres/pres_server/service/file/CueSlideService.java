@@ -26,15 +26,24 @@ public class CueSlideService {
      * - ADVANCED 1건: 있으면 업데이트, 없으면 생성 (sectionNumber = null)
      * - BASIC 여러 건: 섹션 번호별 업서트, 요청에 없는 기존 섹션은 삭제
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void processSlide(PresentationFile file, CueSlideDto dto) {
         int slide = dto.getSlideNumber();
         final Long fileId = file.getFileId();
 
-        // 1) ADVANCED 업서트
-        upsertAdvanced(file, slide, extractAdvTextOrFallback(dto.getAdvanced()));
+        // 1) BASIC 업서트 + 섹션 목록 추출
+        Set<Integer> activeSections = upsertBasicCards(file, slide, dto.getBasic());
 
-        // 2) BASIC 업서트 준비: 기존 BASIC 전부 로드 → 섹션 맵
+        // 2) ADVANCED 업서트 (BASIC 섹션과 동기화)
+        upsertAdvancedCards(file, slide, dto.getAdvanced(), dto.getBasic(), activeSections);
+
+    }
+
+    // BASIC 모드 큐카드를 섹션별로 업서트하고, 활성 섹션 목록을 반환
+    private Set<Integer> upsertBasicCards(PresentationFile file, int slide, List<CueBasicDto> basics) {
+        Long fileId = file.getFileId();
+
+        // 기존 BASIC 카드 로드
         List<CueCard> existingBasics = cueCardRepository
                 .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide)
                 .stream()
@@ -47,10 +56,10 @@ public class CueSlideService {
                         c -> c
                 ));
 
-        // 2-1) 들어온 섹션들 업서트
+        // 들어온 BASIC 섹션 업서트
         Set<Integer> incomingSections = new HashSet<>();
-        if (dto.getBasic() != null) {
-            for (CueBasicDto b : dto.getBasic()) {
+        if (basics != null) {
+            for (CueBasicDto b : basics) {
                 if (b == null) continue;
                 if (b.getText() == null || b.getText().isBlank()) continue;
 
@@ -70,20 +79,97 @@ public class CueSlideService {
                 cueCardRepository.save(basic);
             }
         }
-        // 2-2) 요청에 없는 기존 BASIC 섹션 삭제(동기화)
+
+        // 요청에 없는 기존 BASIC 섹션 삭제
         for (CueCard old : existingBasics) {
             Integer sec = Optional.ofNullable(old.getSectionNumber()).orElse(0);
             if (!incomingSections.contains(sec)) {
                 cueCardRepository.delete(old);
             }
         }
+
+        return incomingSections;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    private void upsertAdvancedCards(PresentationFile file, int slide,
+                                     List<CueAdvancedDto> advanceds,
+                                     List<CueBasicDto> basics,
+                                     Set<Integer> targetSections) {
+        Long fileId = file.getFileId();
+
+        // 기존 ADVANCED 카드 로드
+        List<CueCard> existingAdv = cueCardRepository
+                .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide)
+                .stream()
+                .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
+                .toList();
+
+        Map<Integer, CueCard> advBySection = existingAdv.stream()
+                .collect(Collectors.toMap(
+                        c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
+                        c -> c
+                ));
+
+        // 인입 ADVANCED를 섹션별로 맵 구성
+        Map<Integer, String> incomingAdvTextBySec = new HashMap<>();
+        if (advanceds != null) {
+            for (CueAdvancedDto a : advanceds) {
+                if (a == null) continue;
+                int sec = a.getSection();
+                if (sec <= 0) continue;
+                incomingAdvTextBySec.put(sec, Optional.ofNullable(a.getText()).orElse("").trim());
+            }
+        }
+
+        // BASIC 섹션별로 맵 구성 (폴백용)
+        Map<Integer, String> basicTextBySec = new HashMap<>();
+        if (basics != null) {
+            for (CueBasicDto b : basics) {
+                if (b == null) continue;
+                int sec = b.getSection();
+                if (sec > 0 && b.getText() != null) {
+                    basicTextBySec.put(sec, b.getText());
+                }
+            }
+        }
+
+        // BASIC 섹션 기준으로 ADVANCED 업서트
+        for (Integer sec : targetSections) {
+            String advText = incomingAdvTextBySec.getOrDefault(sec, "");
+
+            // 빈 ADVANCED는 BASIC 첫 문장으로 폴백
+            if (advText.isBlank()) {
+                String baseText = basicTextBySec.getOrDefault(sec, "");
+                advText = firstSentence(baseText);
+                if (advText.isBlank()) {
+                    advText = "(요약 없음)";
+                }
+            }
+
+            CueCard adv = advBySection.getOrDefault(sec, new CueCard());
+            adv.setPresentationFile(file);
+            adv.setSlideNumber(slide);
+            adv.setMode(CueCard.Mode.ADVANCED);
+            adv.setSectionNumber(sec);
+            adv.setSectionKeyword(" "); // BASIC 키워드 참조
+            adv.setContent(advText);
+            cueCardRepository.save(adv);
+        }
+
+        // 요청에 없는 기존 ADVANCED 섹션 삭제
+        for (CueCard old : existingAdv) {
+            Integer sec = Optional.ofNullable(old.getSectionNumber()).orElse(0);
+            if (!targetSections.contains(sec)) {
+                cueCardRepository.delete(old);
+            }
+        }
+    }
+
+    //ocr 인식 실패시 사용
+    @Transactional
     public void persistInsufficient (PresentationFile file,int slideNum){
-
+        // BASIC 업서트
         upsertBasic(file, slideNum, " ");
-
         // ADVANCED 업서트
         upsertAdvanced(file, slideNum, " ");
     }
@@ -118,7 +204,9 @@ public class CueSlideService {
         cueCardRepository.save(adv);
     }
 
-    //qr 정보만을 반환함, 대본은 반환하지 않음
+    /**
+     * QR 정보만 반환 (대본 제외)
+     */
     public Map<Integer, QrInfoDto> getQrInfoByFileId(Long fileId) {
         if (fileId == null || fileId <= 0) {
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
@@ -147,57 +235,67 @@ public class CueSlideService {
         Long fileId = qrCard.getPresentationFile().getFileId();
         int slide = qrCard.getSlideNumber();
 
-        // 같은 슬라이드의 모든 큐카드 조회 (BASIC + ADVANCED)
         List<CueCard> cards = cueCardRepository
                 .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId, slide);
 
-        // BASIC 전용 리스트 변환
+        // BASIC map (정렬)
         List<CueBasicDto> basicDtos = cards.stream()
                 .filter(c -> c.getMode() == CueCard.Mode.BASIC)
                 .map(c -> {
-                    CueBasicDto dto = new CueBasicDto();
-                    dto.setCueId(c.getCueId());
-                    dto.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
-                    dto.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
-                    dto.setText(Optional.ofNullable(c.getContent()).orElse(""));
-                    return dto;
+                    CueBasicDto d = new CueBasicDto();
+                    d.setCueId(c.getCueId());
+                    d.setSection(Optional.ofNullable(c.getSectionNumber()).orElse(0));
+                    d.setKeyword(Optional.ofNullable(c.getSectionKeyword()).orElse(""));
+                    d.setText(Optional.ofNullable(c.getContent()).orElse(""));
+                    return d;
                 })
+                .sorted(Comparator.comparingInt(CueBasicDto::getSection))
                 .toList();
 
-        // ADVANCED 텍스트 합치기
-        String advancedText = cards.stream()
+        Map<Integer, CueCard> advBySec = cards.stream()
                 .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
-                .map(c -> Optional.ofNullable(c.getContent()).orElse(""))
-                .findFirst()
-                .orElse("");
+                .collect(Collectors.toMap(
+                        c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
+                        c -> c,
+                        (a,b) -> a
+                ));
 
         List<CueAdvancedDto> advancedDtos = new ArrayList<>();
-        if(!basicDtos.isEmpty()) {
-            CueBasicDto first = basicDtos.get(0);
-            CueAdvancedDto advDto = new CueAdvancedDto();
-            advDto.setCueId(first.getCueId());
-            advDto.setSection(first.getSection());
-            advDto.setKeyword(first.getKeyword());
-            advDto.setText(advancedText);
-            advancedDtos.add(advDto);
-        } else{
-            CueAdvancedDto advDto = new CueAdvancedDto();
-            advDto.setSection(1);
-            advDto.setKeyword("요약");
-            advDto.setText(advancedText);
-            advancedDtos.add(advDto);
-        }
+        for (CueBasicDto b : basicDtos) {
+            int sec = b.getSection();
+            CueCard adv = advBySec.get(sec);
 
+            CueAdvancedDto a = new CueAdvancedDto();
+            a.setCueId(adv != null ? adv.getCueId() : null);
+            a.setSection(sec);
+            a.setKeyword(b.getKeyword()); // ✅ BASIC keyword 주입
+            a.setText(adv != null ? Optional.ofNullable(adv.getContent()).orElse("") : "");
+            advancedDtos.add(a);
+        }
 
         return CueSlideDto.builder()
                 .slideNumber(slide)
                 .basic(basicDtos)
                 .advanced(advancedDtos)
-                .qrSlug(qrCard.getQrSlug()) //null 가능
-                .qrUrl(qrCard.getQrUrl()) //null 가능
+                .qrSlug(qrCard.getQrSlug())
+                .qrUrl(qrCard.getQrUrl())
                 .build();
     }
 
+    // ===== 헬퍼 메서드 =====
+
+    /**
+     * 텍스트의 첫 문장 추출 (마침표 기준, 최대 80자)
+     */
+    private static String firstSentence(String s) {
+        if (s == null) return "";
+        String x = s.trim();
+        int p1 = x.indexOf('.');
+        int p2 = x.indexOf('。');
+        int end = (p1 >= 0 && p2 >= 0) ? Math.min(p1, p2) : (p1 >= 0 ? p1 : p2);
+        if (end >= 0) return x.substring(0, end + 1).trim();
+        return x.length() > 80 ? x.substring(0, 80) + "…" : x;
+    }
 
     private static String extractAdvTextOrFallback(List<CueAdvancedDto> advList) {
         if (advList == null || advList.isEmpty()) {
