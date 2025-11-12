@@ -65,8 +65,9 @@ public class GenerateCueService {
         List<Integer> failed = new ArrayList<>();
         Map<Integer, String> slideErrors = new LinkedHashMap<>();
         int successCount = 0;
+        int totalSlides = slides.size();
 
-        for (int i = 0; i < slides.size(); i++) {
+        for (int i = 0; i < totalSlides; i++) {
             int slideNum = i + 1;
             try {
                 if (insufficient.contains(slideNum)) {
@@ -75,7 +76,8 @@ public class GenerateCueService {
                     continue;
                 }
 
-                String prompt = buildCueCardPrompt(slides.get(i), slideNum, maxSections);
+                String prompt = buildCueCardPrompt(slides.get(i), slideNum, maxSections,
+                        totalSlides);
                 String json = callAiModel(prompt, maxSections);
                 CueSlideDto slideDto = parseToCueSlideDto(json, slideNum, maxSections);
 
@@ -96,14 +98,14 @@ public class GenerateCueService {
         //qr slug/url 세팅, 저장 없음
         generateQrMeta(entities);
 
-        log.info("완료: 총 {}슬라이드 중 {}개 실패", slides.size(), failed.size());
+        log.info("완료: 총 {}슬라이드 중 {}개 실패", totalSlides, failed.size());
         // toDto() 호출 삭제, 간단한 응답만 반환
         return CueGenerationResponseDto.builder()
                 .success(failed.isEmpty())
                 .message(failed.isEmpty()
                         ? "큐카드가 성공적으로 생성되었습니다."
                         : String.format("큐카드 생성 완료 (일부 실패: %d개)", failed.size()))
-                .totalSlides(slides.size())
+                .totalSlides(totalSlides)
                 .successCount(successCount)
                 .failureCount(failed.size())
                 .errors(slideErrors.isEmpty() ? null : slideErrors)
@@ -527,7 +529,8 @@ public class GenerateCueService {
     }
     // ======================= Prompt Builder =======================
 
-    private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections) {
+    private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections,
+                                      int totalSlides) {
         return """
                 너는 대학생 발표자료에서 발표자가 사용할 발표 대본과 요약 큐카드를 생성하는 전문가다.
                 출력은 반드시 JSON 형식으로만 하며, JSON 외의 설명문이나 텍스트를 포함하지 말라.
@@ -593,11 +596,12 @@ public class GenerateCueService {
 
                 [기본버전 세부 분할 규칙]
                 - 하나의 슬라이드 안에서도 주요 소제목이나 핵심 키워드 단위로 내용을 분리하라.
-                - 각 세부 구간의 시작에는 반드시 "#번호 / 키워드" 형식으로 번호를 붙인다.
                 - 각 구간은 발표자가 자연스럽게 말할 수 있는 2~4문장 내외로 작성하라.
                 - 각 문단마다 비언어적 표현 아이콘을 적절히 삽입하라.
                 - 최대 섹션 개수는 %d개를 넘지 않는다.
                 - 초과할 경우 상위 %d개만 포함하라.
+                - 본문(text)에는 섹션 제목/키워드/번호를 포함하지 않는다. (예: "#3", "[키워드]" 금지)
+                - 본문(text)에는 해시(#), 대괄호([]), 섹션 번호/제목을 출력하지 말라.
 
                 ---
                 [대본 작성 형식 참고]
@@ -628,7 +632,9 @@ public class GenerateCueService {
                 [심화버전 작성 규칙]
                 - advanced.sections 는 basic.sections 의 index를 그대로 사용한다. (개수와 인덱스 집합 동일)
                 - keyword는 출력하지 않는다. (서버가 basic의 동일 섹션 keyword로 보강한다)
-                - advanced.text 필드에는 해당 슬라이드의 핵심 주제를 한 문장으로 논리적으로 요약하라.
+                - advanced.sections 는 basic.sections 의 index를 그대로 사용한다. (개수와 인덱스 집합 누락/추가 금지)
+                - advanced.sections[i].text 는 **basic.sections[i]의 내용만** 한 문장으로 요약한다. (슬라이드 전체 요약 금지)
+                - 각 advanced.text 는 해당 섹션의 keyword/본문을 반영한 1문장 요약이어야 한다.
                 - 요약문은 간결하고, 핵심 키워드만 포함하라.
                 - 주요 메시지를 빠르게 파악할 수 있도록 선언문 또는 설명문 형태로 작성하라.
                 - 비언어적 표현 아이콘은 advanced에 절대 포함하지 않는다.
@@ -636,6 +642,13 @@ public class GenerateCueService {
                 - 표지(1번 슬라이드)는 “이번 발표의 목적”만 간단히 설명하라.
                 - OCR 인식이 불가능한 경우 “(OCR 인식 불가 – 요약 생략)”을 포함하라.
 
+                ---
+                
+                [슬라이드 맥락 규칙]
+                - 이 슬라이드는 전체 중 %d/%d 번째이다.
+                - 표지(슬라이드 1): 인사/주제 소개만. 팀 소개는 표지에 명시적으로 있을 때만 한 줄 언급.
+                - 마지막 슬라이드(슬라이드 %d): 감사/결론/다음 단계만. 팀 소개/세부 기능 소개 금지.
+                
                 ---
 
                 [출력 규칙]
@@ -675,7 +688,10 @@ public class GenerateCueService {
                 slideNumber,        // 9. line 114: slide = %d
                 maxSections,        // 10. line 115: 최대 %d개
                 slideNumber,        // 11. line 127: 반드시 %d
-                slideText           // 12. line 138: %s
+                slideNumber,        // 12 "전체 중 %d/%d 번째"의 현재 번호
+                totalSlides,        // 13 "전체 중 %d/%d 번째"의 전체 개수
+                totalSlides,        // 14 "마지막 슬라이드(슬라이드 %d)"
+                slideText           // 15. line 138: %s
         );
     }
 }
