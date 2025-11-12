@@ -24,7 +24,7 @@ public class PresentationImageService {
 
     private final PresentationImageRepository presentationImageRepository;
 
-    @Value("${app.base-url:http://54.180.107.216:8080}")
+    @Value("${app.base-url:http://54.180.25.217:8080}")
     private String baseUrl;
 
     /**
