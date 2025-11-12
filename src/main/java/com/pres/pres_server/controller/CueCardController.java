@@ -80,9 +80,10 @@ public class CueCardController {
             CueCardUpdateResponseDTO response = cueCardService.updateCueCardMode(cueId, request, user);
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            // 에러 메시지를 클라이언트에 전달
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(CueCardUpdateResponseDTO.builder()
-                            .message("예상치 못한 오류가 발생했습니다")
+                            .message(e.getMessage())
                             .build());
         }
     }
