@@ -12,9 +12,11 @@ import com.pres.pres_server.repository.CommentRepository;
 import com.pres.pres_server.repository.CueCardRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -49,15 +51,14 @@ public class CommentService {
     // 대댓글 생성
     public ReplyDTO createReply(Long parentCommentId, CommentRequestDTO request, User user) {
         Comment parentComment = commentRepository.findById(parentCommentId)
-                .orElseThrow(() -> new EntityNotFoundException("최상위 댓글이 존재하지 않습니다."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent comment not found"));
 
-        Comment reply = Comment.builder()
-                .cueCard(parentComment.getCueCard())
-                .authorUser(user)
-                .content(request.getContent())
-                .parentComment(parentComment)
-                .createdAt(LocalDateTime.now())
-                .build();
+        Comment reply = new Comment();
+        reply.setParentComment(parentComment);
+        reply.setCueCard(parentComment.getCueCard());
+        reply.setAuthorUser(user);
+        reply.setContent(request.getContent());
+        reply.setCreatedAt(LocalDateTime.now());
 
         parentComment.getReplies().add(reply);
         commentRepository.save(reply);
