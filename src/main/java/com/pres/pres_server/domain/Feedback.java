@@ -23,7 +23,7 @@ public class Feedback {
     @JoinColumn(name = "session_id", nullable = false, unique = true)
     private PracticeSession practiceSession;
 
-    @OneToMany(mappedBy = "feedback", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "feedback", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<SlideFeedback> slideFeedbacks = new ArrayList<>();
 
     // =======점수========
