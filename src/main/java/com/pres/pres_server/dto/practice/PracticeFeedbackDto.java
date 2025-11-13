@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -17,14 +19,15 @@ public class PracticeFeedbackDto {
     private Integer spmScore;
     private Integer fillerScore;
     private Integer repeatScore;
+    private Integer accuracyScore; // 정확도 점수 추가
     private Integer totalScore;
     private String grade;
 
-    // 공백 감지 관련 필드
-    private Integer silenceCount; // 2.5초 이상 공백 횟수
-    private Double totalSilenceDuration; // 총 공백 시간 (초)
-    private Integer silenceScore; // 공백 점수 (0~100)
-    // silenceAnalysisSuccess는 사용자에게 노출하지 않음 (내부 로그/모니터링용)
+    // 슬라이드별 피드백 (이슈가 있는 슬라이드만)
+    private List<SlideFeedbackDto> slideFeedbacks;
+
+    // 전체 STT 텍스트
+    private String fullSttText;
 
     // QnA 비교 결과 (선택적)
     private QnaComparisonDto qnaComparison; // QnA 진행 시에만 포함, 미진행 시 null

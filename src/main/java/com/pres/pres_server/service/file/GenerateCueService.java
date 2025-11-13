@@ -88,14 +88,15 @@ public class GenerateCueService {
 
                 failed.add(slideNum);
                 String msg = Optional.ofNullable(e.getMessage()).orElse("원인 불명 오류");
-                if (msg.length() > 300) msg = msg.substring(0, 300) + "...";
+                if (msg.length() > 300)
+                    msg = msg.substring(0, 300) + "...";
                 slideErrors.put(slideNum, msg);
                 log.error("슬라이드 {} 처리 실패: {}", slideNum, e.getMessage(), e);
             }
         }
-        List<CueCard> entities =
-                cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
-        //qr slug/url 세팅, 저장 없음
+        List<CueCard> entities = cueCardRepository
+                .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+        // qr slug/url 세팅 및 변경된 엔티티 저장
         generateQrMeta(entities);
 
         log.info("완료: 총 {}슬라이드 중 {}개 실패", totalSlides, failed.size());
@@ -112,33 +113,34 @@ public class GenerateCueService {
                 .build();
     }
 
-    //조회용 메서드, qr 미포함 반환
+    // 조회용 메서드, qr 미포함 반환
     public CueCardDto getCueCardsByFileId(Long fileId) {
         if (fileId == null || fileId <= 0)
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
 
         List<CueCard> cards = cueCardRepository
                 .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
-        if (cards.isEmpty()) throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
+        if (cards.isEmpty())
+            throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
 
         return toDto(fileId, cards, Collections.emptyMap(), false);
     }
 
-    //조회용 메서드, qr 포함 반환
+    // 조회용 메서드, qr 포함 반환
     public CueCardDto getCueCardsWithQrByFileId(Long fileId) {
         if (fileId == null || fileId <= 0)
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
 
         List<CueCard> cards = cueCardRepository
                 .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
-        if (cards.isEmpty()) throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
+        if (cards.isEmpty())
+            throw new IllegalArgumentException("해당 파일의 큐카드가 존재하지 않습니다: " + fileId);
 
         return toDto(fileId, cards, Collections.emptyMap(), true);
     }
 
-
     private void generateQrMeta(List<CueCard> cueCards) {
-        //슬라이드별로 그룹핑
+        // 슬라이드별로 그룹핑
         Map<Integer, List<CueCard>> bySlide = cueCards.stream()
                 .collect(Collectors.groupingBy(CueCard::getSlideNumber));
 
@@ -151,10 +153,12 @@ public class GenerateCueService {
                     .sorted(Comparator.comparing(c -> Optional.ofNullable(c.getSectionNumber()).orElse(0)))
                     .findFirst();
 
-            if (advOpt.isEmpty()) continue; // 없다면 패스(정책에 따라 생성해도 됨)
+            if (advOpt.isEmpty())
+                continue; // 없다면 패스(정책에 따라 생성해도 됨)
 
             CueCard adv = advOpt.get();
-            if (adv.getQrSlug() != null && !adv.getQrSlug().isBlank()) continue;
+            if (adv.getQrSlug() != null && !adv.getQrSlug().isBlank())
+                continue;
 
             String slug;
             int tries = 0;
@@ -163,10 +167,21 @@ public class GenerateCueService {
                 tries++;
             } while (cueCardRepository.findByQrSlug(slug).isPresent() && tries < 3);
 
-            if (tries >= 3) throw new IllegalStateException("QR slug 충돌 다중 발생");
+            if (tries >= 3)
+                throw new IllegalStateException("QR slug 충돌 다중 발생");
 
             adv.setQrSlug(slug);
             adv.setQrUrl("https://pres.app/cuecard/" + slug);
+        }
+
+        // 변경된 ADV 엔티티만 모아서 명시적으로 저장
+        List<CueCard> modified = cueCards.stream()
+                .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
+                .filter(c -> c.getQrSlug() != null && c.getQrUrl() != null)
+                .toList();
+
+        if (!modified.isEmpty()) {
+            cueCardRepository.saveAll(modified);
         }
     }
 
@@ -174,7 +189,7 @@ public class GenerateCueService {
      * 엔티티 → 구조화 DTO 변환 메서드
      */
     private CueCardDto toDto(Long fileId, List<CueCard> entities,
-                             Map<Integer, String> slideErrors, boolean includeQr) {
+            Map<Integer, String> slideErrors, boolean includeQr) {
         Map<Integer, List<CueCard>> bySlide = entities.stream()
                 .collect(Collectors.groupingBy(CueCard::getSlideNumber, TreeMap::new, Collectors.toList()));
 
@@ -219,9 +234,7 @@ public class GenerateCueService {
                                 a.setText(Optional.ofNullable(c.getContent()).orElse(""));
                                 return a;
                             },
-                            (a, b) -> a
-                    ));
-
+                            (a, b) -> a));
 
             List<CueAdvancedDto> advancedList = new ArrayList<>();
             for (Integer idx : basicIndexOrdered) {
@@ -250,7 +263,7 @@ public class GenerateCueService {
                 s.setQrSlug(null);
                 s.setQrUrl(null);
             }
-            //s.setAdvanced(advancedList);
+            // s.setAdvanced(advancedList);
             slides.add(s);
         }
 
@@ -260,7 +273,6 @@ public class GenerateCueService {
         dto.setErrors(slideErrors == null ? Collections.emptyMap() : slideErrors);
         return dto;
     }
-
 
     /**
      * OpenAI 호출: JSON Schema를 maxSections에 맞춰 강제
@@ -281,8 +293,7 @@ public class GenerateCueService {
                 Map.of("role", "system", "content",
                         "너는 발표 큐카드를 JSON으로만 생성한다. " +
                                 "설명/예시/마크다운을 절대 출력하지 말고, 유효한 JSON 한 덩어리만 출력하라."),
-                Map.of("role", "user", "content", prompt)
-        ));
+                Map.of("role", "user", "content", prompt)));
         requestBody.put("temperature", 0.5);
         requestBody.put("max_tokens", 2000);
         requestBody.put("response_format", buildResponseFormat(maxSections));
@@ -293,7 +304,8 @@ public class GenerateCueService {
             @SuppressWarnings("rawtypes")
             ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
             Map<String, Object> body = response.getBody();
-            if (body == null) throw new RuntimeException("OpenAI API 응답이 비어있습니다.");
+            if (body == null)
+                throw new RuntimeException("OpenAI API 응답이 비어있습니다.");
 
             if (body.containsKey("error")) {
                 @SuppressWarnings("unchecked")
@@ -310,10 +322,12 @@ public class GenerateCueService {
             @SuppressWarnings("unchecked")
             Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
 
-            if (message == null) throw new RuntimeException("OpenAI API 응답에 message가 없습니다.");
+            if (message == null)
+                throw new RuntimeException("OpenAI API 응답에 message가 없습니다.");
 
-//            String content = (String) message.get("content");
-//            if (content == null || content.trim().isEmpty()) throw new RuntimeException("OpenAI API 응답 content가 비어있습니다.");
+            // String content = (String) message.get("content");
+            // if (content == null || content.trim().isEmpty()) throw new
+            // RuntimeException("OpenAI API 응답 content가 비어있습니다.");
 
             Object contentAny = message.get("content");
             String content;
@@ -324,7 +338,8 @@ public class GenerateCueService {
                 for (Object p : parts) {
                     if (p instanceof Map<?, ?> m) {
                         Object t = m.get("text");
-                        if (t instanceof String ts) sb.append(ts);
+                        if (t instanceof String ts)
+                            sb.append(ts);
                     }
                 }
                 content = sb.toString();
@@ -355,12 +370,15 @@ public class GenerateCueService {
     }
 
     private String stripCodeFence(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         String x = s.trim();
         if (x.startsWith("```")) {
             int idx = x.indexOf('\n');
-            if (idx > 0) x = x.substring(idx + 1);
-            if (x.endsWith("```")) x = x.substring(0, x.length() - 3);
+            if (idx > 0)
+                x = x.substring(idx + 1);
+            if (x.endsWith("```"))
+                x = x.substring(0, x.length() - 3);
         }
         return x.trim();
     }
@@ -374,11 +392,9 @@ public class GenerateCueService {
                 "properties", Map.of(
                         "index", Map.of("type", "integer", "minimum", 1, "maximum", maxSections),
                         "keyword", Map.of("type", "string", "minLength", 1),
-                        "text", Map.of("type", "string", "minLength", 1)
-                ),
+                        "text", Map.of("type", "string", "minLength", 1)),
                 "required", List.of("index", "keyword", "text"),
-                "additionalProperties", false
-        );
+                "additionalProperties", false);
 
         Map<String, Object> basicSchema = Map.of(
                 "type", "object",
@@ -387,23 +403,18 @@ public class GenerateCueService {
                                 "type", "array",
                                 "minItems", 1,
                                 "maxItems", maxSections,
-                                "items", sectionItemSchema
-                        )
-                ),
+                                "items", sectionItemSchema)),
                 "required", List.of("sections"),
-                "additionalProperties", false
-        );
-        //keyword는 basic과 동일
+                "additionalProperties", false);
+        // keyword는 basic과 동일
         Map<String, Object> sectionItemSchemaAdvanced = Map.of(
                 "type", "object",
                 "properties", Map.of(
                         "index", Map.of("type", "integer", "minimum", 1, "maximum", maxSections),
-                        "text", Map.of("type", "string", "minLength", 1)
-                ),
+                        "text", Map.of("type", "string", "minLength", 1)),
                 "required", List.of("index", "text"),
-                "additionalProperties", false
-        );
-        
+                "additionalProperties", false);
+
         Map<String, Object> advancedSchema = Map.of(
                 "type", "object",
                 "properties", Map.of(
@@ -411,32 +422,25 @@ public class GenerateCueService {
                                 "type", "array",
                                 "minItems", 1,
                                 "maxItems", maxSections,
-                                "items", sectionItemSchemaAdvanced
-                        )
-                ),
+                                "items", sectionItemSchemaAdvanced)),
                 "required", List.of("sections"),
-                "additionalProperties", false
-        );
+                "additionalProperties", false);
 
         Map<String, Object> schema = Map.of(
                 "type", "object",
                 "properties", Map.of(
                         "slide", Map.of("type", "integer", "minimum", 1),
                         "basic", basicSchema,
-                        "advanced", advancedSchema
-                ),
+                        "advanced", advancedSchema),
                 "required", List.of("slide", "basic", "advanced"),
-                "additionalProperties", false
-        );
+                "additionalProperties", false);
 
         return Map.of(
                 "type", "json_schema",
                 "json_schema", Map.of(
                         "name", "CueCardSchema",
                         "schema", schema,
-                        "strict", true
-                )
-        );
+                        "strict", true));
     }
 
     /**
@@ -444,8 +448,8 @@ public class GenerateCueService {
      * - slide 번호는 expectedSlide로 강제
      * - BASIC: 섹션 필수(1..max), keyword/text 필수, 중복 인덱스는 최초 1개만 채택
      * - ADVANCED: 섹션/text만 입력 받음(keyword는 입력 안 받음); BASIC과 동일 섹션 집합으로 강제 정렬
-     *   · 누락된 섹션은 빈 텍스트("")로 보강
-     *   · keyword는 BASIC의 동일 섹션 keyword로 주입
+     * · 누락된 섹션은 빈 텍스트("")로 보강
+     * · keyword는 BASIC의 동일 섹션 keyword로 주입
      */
     private CueSlideDto parseToCueSlideDto(String json, int expectedSlide, int maxSections) throws Exception {
         JsonNode root = objectMapper.readTree(json);
@@ -465,10 +469,14 @@ public class GenerateCueService {
             String kw = s.path("keyword").asText("");
             String tx = s.path("text").asText("");
 
-            if (idx < 1 || idx > maxSections) continue;
-            if (kw == null || kw.isBlank()) continue;     // ✅ BASIC 키워드 필수
-            if (tx == null || tx.isBlank()) continue;     // ✅ BASIC 텍스트 필수
-            if (!basicSeen.add(idx)) continue;
+            if (idx < 1 || idx > maxSections)
+                continue;
+            if (kw == null || kw.isBlank())
+                continue; // ✅ BASIC 키워드 필수
+            if (tx == null || tx.isBlank())
+                continue; // ✅ BASIC 텍스트 필수
+            if (!basicSeen.add(idx))
+                continue;
 
             CueBasicDto b = new CueBasicDto();
             b.setSection(idx);
@@ -477,7 +485,8 @@ public class GenerateCueService {
             basicList.add(b);
         }
         basicList.sort(Comparator.comparingInt(CueBasicDto::getSection));
-        if (basicList.isEmpty()) throw new IllegalStateException("유효 섹션 없음");
+        if (basicList.isEmpty())
+            throw new IllegalStateException("유효 섹션 없음");
 
         // BASIC 맵/인덱스 집합
         Map<Integer, CueBasicDto> basicBySec = basicList.stream()
@@ -490,25 +499,28 @@ public class GenerateCueService {
         JsonNode advSectionsNode = root.path("advanced").path("sections");
         Map<Integer, CueAdvancedDto> advBySec = new HashMap<>();
 
-        if(advSectionsNode.isArray() && advSectionsNode.size() > 0) {
+        if (advSectionsNode.isArray() && advSectionsNode.size() > 0) {
             Set<Integer> advSeen = new HashSet<>();
             for (JsonNode s : advSectionsNode) {
                 int idx = s.path("index").asInt(-1);
                 String tx = s.path("text").asText("");
 
-                if (idx < 1 || idx > maxSections) continue;
-                if (tx == null || tx.isBlank()) continue;
-                if (!advSeen.add(idx)) continue;
+                if (idx < 1 || idx > maxSections)
+                    continue;
+                if (tx == null || tx.isBlank())
+                    continue;
+                if (!advSeen.add(idx))
+                    continue;
 
                 CueAdvancedDto a = new CueAdvancedDto();
                 a.setSection(idx);
                 a.setText(tx.trim());
-                advBySec.put(idx, a); //인덱스별로 바로 접근 가능
+                advBySec.put(idx, a); // 인덱스별로 바로 접근 가능
             }
         }
 
         List<CueAdvancedDto> advancedList = new ArrayList<>();
-        for(Integer idx : basicIndexOrdered) {
+        for (Integer idx : basicIndexOrdered) {
             CueAdvancedDto a = advBySec.get(idx);
             if (a == null) {
                 a = new CueAdvancedDto();
@@ -530,7 +542,7 @@ public class GenerateCueService {
     // ======================= Prompt Builder =======================
 
     private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections,
-                                      int totalSlides) {
+            int totalSlides) {
         return """
                 너는 대학생 발표자료에서 발표자가 사용할 발표 대본과 요약 큐카드를 생성하는 전문가다.
                 출력은 반드시 JSON 형식으로만 하며, JSON 외의 설명문이나 텍스트를 포함하지 말라.
@@ -606,27 +618,27 @@ public class GenerateCueService {
                 ---
                 [대본 작성 형식 참고]
                             입력 예: "연구 방법론 - 데이터 수집 방식, 분석 기법, 검증 절차"
-                           
+
                             대본 형식 (각 섹션의 keyword와 text):
-                           
+
                             #1 [첫번째 주제]
                             [슬라이드의 첫 번째 핵심 내용]에 대해 설명드리겠습니다. <🌬 호흡>
                             [구체적인 설명 2~3문장]. <🔍 청중 바라보기>
                             [다음 단계로의 연결]. <👉 화면 가리키기>
-                           
+
                             #2 [두번째 주제]
                             [두 번째 핵심 개념]은 [구체적 설명]입니다.
                             이는 [중요성/의미]를 높이는 데 중요합니다. <✋ 제스처>
                             [다음 내용과의 연결]. <🌬 호흡>
-                           
+
                             #3 [세번째 주제]
                             [세 번째 내용]을 통해 [기대 결과]를 확인할 수 있습니다.
                             [추가 설명]. <🔍 청중 바라보기>
                             [마무리 또는 다음 슬라이드 예고]. <🌬 호흡>
-                           
+
                             ⚠️ 주의: 위는 구조 참고용이며, 반드시 입력된 슬라이드의 실제 내용을 사용할 것.
                             대괄호 [] 안의 내용은 실제 슬라이드 텍스트의 구체적 내용으로 채워야 함.
-                            예시에 나온 "연구 방법론", "데이터 수집" 같은 단어를 그대로 쓰지 말 것.    
+                            예시에 나온 "연구 방법론", "데이터 수집" 같은 단어를 그대로 쓰지 말 것.
                 ---
 
                 [심화버전 작성 규칙]
@@ -643,12 +655,12 @@ public class GenerateCueService {
                 - OCR 인식이 불가능한 경우 “(OCR 인식 불가 – 요약 생략)”을 포함하라.
 
                 ---
-                
+
                 [슬라이드 맥락 규칙]
                 - 이 슬라이드는 전체 중 %d/%d 번째이다.
                 - 표지(슬라이드 1): 인사/주제 소개만. 팀 소개는 표지에 명시적으로 있을 때만 한 줄 언급.
                 - 마지막 슬라이드(슬라이드 %d): 감사/결론/다음 단계만. 팀 소개/세부 기능 소개 금지.
-                
+
                 ---
 
                 [출력 규칙]
@@ -658,7 +670,7 @@ public class GenerateCueService {
                 - 각 section에는 index, keyword, text 필드가 반드시 존재해야 한다.
                 - advanced.text는 반드시 존재해야 하며 비어 있으면 안 된다.
                 - 반드시 입력된 슬라이드 텍스트의 실제 내용을 기반으로 작성한다.
-             
+
 
                 ---
 
@@ -671,27 +683,27 @@ public class GenerateCueService {
                 - advanced.text 누락 금지
                 - 입력되지 않은 내용을 임의로 생성하는 것 금지
                 - 예시 단어("연구 방법론", "데이터 수집" 등)를 그대로 사용하는 것 금지
-                
+
                 ---
 
                 [입력 슬라이드 텍스트]
                 %s
                 """.formatted(
-                maxSections,        // 1. line 12: (1~%d)
-                maxSections,        // 2. line 21: (1~%d)
-                slideNumber,        // 3. line 30: 슬라이드 %d번
-                slideNumber,        // 4. line 31: slide = %d
-                slideNumber + 1,    // 5. line 31: 예: %d
-                slideNumber - 1,    // 6. line 31: 예: %d
-                maxSections,        // 7. line 66: 최대 %d개
-                maxSections,        // 8. line 67: 상위 %d개
-                slideNumber,        // 9. line 114: slide = %d
-                maxSections,        // 10. line 115: 최대 %d개
-                slideNumber,        // 11. line 127: 반드시 %d
-                slideNumber,        // 12 "전체 중 %d/%d 번째"의 현재 번호
-                totalSlides,        // 13 "전체 중 %d/%d 번째"의 전체 개수
-                totalSlides,        // 14 "마지막 슬라이드(슬라이드 %d)"
-                slideText           // 15. line 138: %s
+                maxSections, // 1. line 12: (1~%d)
+                maxSections, // 2. line 21: (1~%d)
+                slideNumber, // 3. line 30: 슬라이드 %d번
+                slideNumber, // 4. line 31: slide = %d
+                slideNumber + 1, // 5. line 31: 예: %d
+                slideNumber - 1, // 6. line 31: 예: %d
+                maxSections, // 7. line 66: 최대 %d개
+                maxSections, // 8. line 67: 상위 %d개
+                slideNumber, // 9. line 114: slide = %d
+                maxSections, // 10. line 115: 최대 %d개
+                slideNumber, // 11. line 127: 반드시 %d
+                slideNumber, // 12 "전체 중 %d/%d 번째"의 현재 번호
+                totalSlides, // 13 "전체 중 %d/%d 번째"의 전체 개수
+                totalSlides, // 14 "마지막 슬라이드(슬라이드 %d)"
+                slideText // 15. line 138: %s
         );
     }
 }

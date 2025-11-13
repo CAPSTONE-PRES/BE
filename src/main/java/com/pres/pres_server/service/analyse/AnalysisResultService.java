@@ -2,17 +2,20 @@ package com.pres.pres_server.service.analyse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pres.pres_server.domain.Feedback;
+import com.pres.pres_server.domain.SlideFeedback;
 import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.SessionWindow;
 import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.repository.FeedbackRepository;
+import com.pres.pres_server.repository.SlideFeedbackRepository;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PracticeSessionRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.SessionWindowRepository;
+import com.pres.pres_server.service.analyse.utils.SlideSegmentExtractor;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,8 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 분석 결과 저장 서비스
@@ -38,6 +41,7 @@ public class AnalysisResultService {
     private final ProjectRepository projectRepository;
     private final CueCardRepository cueCardRepository;
     private final PresentationFileRepository presentationFileRepository;
+    private final SlideFeedbackRepository slideFeedbackRepository;
     private final ObjectMapper objectMapper;
     private final ScriptAccuracyService scriptAccuracyService;
 
@@ -225,26 +229,27 @@ public class AnalysisResultService {
         int repeatScore = getRepeatScore(analysisResult);
         feedback.setRepeatScore(repeatScore);
 
-        // 4. 공백 점수 (AudioAnalysisService에서 이미 분석됨)
-        int silenceScore = setSilenceInfo(feedback, analysisResult);
-
-        // 5. 정확도 점수 (대본 필요 - 여기서 분석)
+        // 4. 정확도 점수 (대본 필요 - 여기서 분석)
         int accuracyScore = analyzeAndSetAccuracy(session, analysisResult.getFullSttText(), feedback);
 
-        // 6. 총점 계산 (SPM 20% + Filler 15% + Repeat 15% + Silence 15% + Accuracy 35%)
+        // 5. 총점 계산 (SPM 25% + Filler 25% + Repeat 25% + Accuracy 25%)
         int totalScore = (int) Math.round(
-                avgSpmScore * 0.2 +
-                        fillerScore * 0.15 +
-                        repeatScore * 0.15 +
-                        silenceScore * 0.15 +
-                        accuracyScore * 0.35);
+                avgSpmScore * 0.25 +
+                        fillerScore * 0.25 +
+                        repeatScore * 0.25 +
+                        accuracyScore * 0.25);
         feedback.setTotalScore(totalScore);
 
         // 7. 등급 계산
         String grade = calculateGrade(totalScore);
         feedback.setGrade(grade);
 
-        return feedbackRepository.save(feedback);
+        Feedback savedFeedback = feedbackRepository.save(feedback);
+
+        // 8. 슬라이드별 피드백 저장
+        saveSlideAnalysis(savedFeedback, analysisResult);
+
+        return savedFeedback;
     }
 
     /**
@@ -254,10 +259,6 @@ public class AnalysisResultService {
         feedback.setSpmScore(0);
         feedback.setFillerScore(0);
         feedback.setRepeatScore(0);
-        feedback.setSilenceScore(0);
-        feedback.setSilenceCount(0);
-        feedback.setTotalSilenceDuration(0.0);
-        feedback.setSilenceAnalysisSuccess(false);
         feedback.setAccuracyScore(0);
         feedback.setTotalScore(0);
         feedback.setGrade("F");
@@ -282,36 +283,6 @@ public class AnalysisResultService {
     }
 
     /**
-     * 공백 정보 설정 및 점수 반환
-     */
-    private int setSilenceInfo(Feedback feedback, AudioAnalysisService.AnalysisResult analysisResult) {
-        SilenceDetectionService.SilenceStatistics silenceStats = analysisResult.getSilenceStats();
-
-        if (silenceStats != null) {
-            feedback.setSilenceCount(silenceStats.getSilenceCount());
-            feedback.setTotalSilenceDuration(silenceStats.getTotalSilenceDuration());
-            feedback.setSilenceAnalysisSuccess(silenceStats.isSuccess());
-
-            if (silenceStats.isSuccess()) {
-                int score = Math.max(0, 100 - (silenceStats.getSilenceCount() * 10));
-                feedback.setSilenceScore(score);
-                log.info("  • 공백 점수: {} (횟수: {}, 총 {}초)",
-                        score, silenceStats.getSilenceCount(),
-                        String.format("%.2f", silenceStats.getTotalSilenceDuration()));
-                return score;
-            }
-        }
-
-        // 기본값 설정
-        feedback.setSilenceCount(0);
-        feedback.setTotalSilenceDuration(0.0);
-        feedback.setSilenceScore(100);
-        feedback.setSilenceAnalysisSuccess(false);
-        log.warn("  • 공백 분석 결과 없음 - 기본값 100점 적용");
-        return 100;
-    }
-
-    /**
      * 정확도 분석 및 설정
      */
     private int analyzeAndSetAccuracy(PracticeSession session, String sttText, Feedback feedback) {
@@ -333,7 +304,8 @@ public class AnalysisResultService {
             Long fileId = presentationFileOpt.get().getFileId();
 
             // 2. 큐카드 전체 조회
-            List<CueCard> cueCards = cueCardRepository.findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+            List<CueCard> cueCards = cueCardRepository
+                    .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
 
             if (cueCards.isEmpty()) {
                 log.info("  • 큐카드 없음 - 정확도 분석 생략");
@@ -408,5 +380,160 @@ public class AnalysisResultService {
         if (totalScore >= 55)
             return "D";
         return "F";
+    }
+
+    /**
+     * 슬라이드별 분석 결과 저장
+     */
+    private void saveSlideAnalysis(Feedback feedback, AudioAnalysisService.AnalysisResult analysisResult) {
+        AudioAnalysisService.SlideAnalysisResult slideAnalysis = analysisResult.getSlideAnalysis();
+
+        if (slideAnalysis == null || slideAnalysis.isEmpty()) {
+            log.info("  • 슬라이드별 분석 결과 없음 - 저장 생략");
+            return;
+        }
+
+        List<FillerService.SlideFillerDto> fillerResults = slideAnalysis.getFillerResults();
+        List<List<SilenceDetectionService.SilenceInterval>> silenceResults = slideAnalysis.getSilenceResults();
+        List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = slideAnalysis.getAccuracyResults();
+        List<AudioAnalysisService.SlideSpmResult> spmResults = slideAnalysis.getSpmResults();
+        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = slideAnalysis.getRepetitionResults();
+        List<String> slideSttTexts = slideAnalysis.getSlideSttTexts();
+        List<SlideSegmentExtractor.SlideInterval> intervals = slideAnalysis.getIntervals();
+
+        int slideCount = fillerResults != null ? fillerResults.size() : 0;
+        log.info("• 슬라이드별 피드백 저장 시작 - {} 개", slideCount);
+
+        // 슬라이드별 반복 결과를 Map으로 변환 (빠른 조회를 위해)
+        Map<Integer, List<RepetitiveTextAnalysisService.SlideRepetition>> repetitionMap = new HashMap<>();
+        if (repetitionResults != null) {
+            for (RepetitiveTextAnalysisService.SlideRepetition rep : repetitionResults) {
+                repetitionMap.computeIfAbsent(rep.getSlideIndex(), k -> new ArrayList<>()).add(rep);
+            }
+        }
+
+        for (int i = 0; i < slideCount; i++) {
+            SlideFeedback slideFeedback = new SlideFeedback();
+            slideFeedback.setFeedback(feedback);
+            slideFeedback.setSlideNumber(i + 1); // 슬라이드 번호는 1부터 시작
+
+            // 타임스탬프와 STT 텍스트 설정
+            if (intervals != null && i < intervals.size()) {
+                slideFeedback.setTimestampSeconds(intervals.get(i).getStartTime());
+            }
+            if (slideSttTexts != null && i < slideSttTexts.size()) {
+                slideFeedback.setSlideText(slideSttTexts.get(i));
+            }
+
+            boolean hasIssue = false;
+
+            // 1. SPM 정보
+            if (spmResults != null && i < spmResults.size()) {
+                AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
+                slideFeedback.setSpmUser(spmResult.getSpm());
+                slideFeedback.setSpmAverage(290); // 평균 SPM 기준값
+
+                // SPM이 적정 범위를 벗어난 경우 이슈로 표시 (250 미만 또는 330 초과)
+                if (spmResult.getSpm() < 250 || spmResult.getSpm() > 330) {
+                    slideFeedback.setIssueType("SPEED");
+                    hasIssue = true;
+                }
+            }
+
+            // 2. 필러 정보
+            if (fillerResults != null && i < fillerResults.size()) {
+                FillerService.SlideFillerDto fillerDto = fillerResults.get(i);
+                int totalFillers = fillerDto.getFillerCounts().values().stream()
+                        .mapToInt(Integer::intValue)
+                        .sum();
+
+                if (totalFillers > 0) {
+                    if (slideFeedback.getIssueType() == null) {
+                        slideFeedback.setIssueType("FILLER");
+                    }
+                    slideFeedback.setFillerCount(totalFillers);
+                    try {
+                        String fillerDetail = objectMapper.writeValueAsString(fillerDto.getFillerCounts());
+                        slideFeedback.setFillerDetail(fillerDetail);
+                    } catch (Exception e) {
+                        log.warn("필러 상세 정보 JSON 변환 실패 - slideNumber: {}", i + 1, e);
+                    }
+                    hasIssue = true;
+                }
+            }
+
+            // 3. 공백 정보
+            if (silenceResults != null && i < silenceResults.size()) {
+                List<SilenceDetectionService.SilenceInterval> silences = silenceResults.get(i);
+                if (!silences.isEmpty()) {
+                    int silenceCount = silences.size();
+                    double totalDuration = silences.stream()
+                            .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration)
+                            .sum();
+
+                    slideFeedback.setSilenceCount(silenceCount);
+                    slideFeedback.setTotalSilenceDuration(totalDuration);
+                    int silenceScore = Math.max(0, 100 - (silenceCount * 10));
+                    slideFeedback.setSilenceScore(silenceScore);
+                    slideFeedback.setSilenceAnalysisSuccess(true);
+
+                    if (slideFeedback.getIssueType() == null) {
+                        slideFeedback.setIssueType("SILENCE");
+                    }
+                    hasIssue = true;
+                }
+            }
+
+            // 4. 반복 어휘 정보
+            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // slideIndex는
+                                                                                                             // 1부터 시작
+            if (slideRepetitions != null && !slideRepetitions.isEmpty()) {
+                int totalRepeatCount = slideRepetitions.stream()
+                        .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
+                        .sum();
+
+                if (totalRepeatCount >= 3) {
+                    if (slideFeedback.getIssueType() == null) {
+                        slideFeedback.setIssueType("REPETITION");
+                    }
+                    slideFeedback.setRepeatCount(totalRepeatCount);
+
+                    // 상위 3개 반복 패턴만 추출
+                    String repeatDetail = slideRepetitions.stream()
+                            .sorted(Comparator.comparingInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
+                                    .reversed())
+                            .limit(3)
+                            .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
+                            .collect(Collectors.joining(", "));
+                    slideFeedback.setRepeatDetail(repeatDetail);
+                    hasIssue = true;
+                }
+            }
+
+            // 5. 정확도 정보 (대본이 있을 때만)
+            if (accuracyResults != null && i < accuracyResults.size()) {
+                ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
+                if (accuracyResult.isSuccess()) {
+                    // 정확도가 낮은 경우만 이슈로 표시 (80% 미만)
+                    if (accuracyResult.getAccuracyScore() < 80) {
+                        if (slideFeedback.getIssueType() == null) {
+                            slideFeedback.setIssueType("ACCURACY");
+                        }
+                        slideFeedback.setErrorCount(
+                                accuracyResult.getTotalKeywordCount() - accuracyResult.getMatchedKeywordCount());
+                        hasIssue = true;
+                    }
+                }
+            }
+
+            // 피드백이 있는 경우만 저장 (이슈가 있는 슬라이드만)
+            if (hasIssue) {
+                slideFeedbackRepository.save(slideFeedback);
+                log.info("    • 슬라이드 {} 피드백 저장 완료 - issueType: {}",
+                        i + 1, slideFeedback.getIssueType());
+            }
+        }
+
+        log.info("  • 슬라이드별 피드백 저장 완료");
     }
 }

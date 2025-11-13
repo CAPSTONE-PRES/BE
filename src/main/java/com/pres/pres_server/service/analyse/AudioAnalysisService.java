@@ -122,20 +122,18 @@ public class AudioAnalysisService {
         log.info("  - Full STT text: {} chars", fullSttText.length());
 
         // 4. 전체 기반 분석
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult =
-                analyzeRepetition(fullSttText, segments, slideTransitions);
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analyzeRepetition(fullSttText,
+                segments, slideTransitions);
 
-        SilenceDetectionService.SilenceStatistics silenceStats =
-                silenceDetectionService.calculateStatistics(
-                        silenceDetectionService.detectSilences(segments));
+        SilenceDetectionService.SilenceStatistics silenceStats = silenceDetectionService.calculateStatistics(
+                silenceDetectionService.detectSilences(segments));
 
-        ScriptAccuracyService.AccuracyAnalysisResult accuracyResult =
-                analyzeAccuracy(fullSttText, projectId);
+        ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = analyzeAccuracy(fullSttText, projectId);
 
         // 5. 슬라이드별 분석 (옵션)
         SlideAnalysisResult slideAnalysis = (slideTransitions != null && !slideTransitions.isEmpty())
                 ? performSlideAnalysis(segments, audioFile.getDurationSeconds(),
-                slideTransitions, slideScripts)
+                        slideTransitions, slideScripts)
                 : SlideAnalysisResult.empty();
 
         log.info("[AudioAnalysis] Complete: {} windows, {} slides",
@@ -183,13 +181,12 @@ public class AudioAnalysisService {
         log.info("    • Filler analysis: {} slides", fillerResults.size());
 
         // 2) 침묵 분석
-        List<List<SilenceDetectionService.SilenceInterval>> silenceResults =
-                silenceDetectionService.detectSilencesBySlides(slideSegmentsList);
+        List<List<SilenceDetectionService.SilenceInterval>> silenceResults = silenceDetectionService
+                .detectSilencesBySlides(slideSegmentsList);
         log.info("    • Silence analysis: {} slides", silenceResults.size());
 
         // 3) 정확도 분석 (대본이 있을 때만)
-        List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults =
-                Collections.emptyList();
+        List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = Collections.emptyList();
 
         if (slideScripts != null && slideScripts.size() == slideSttTexts.size()) {
             accuracyResults = scriptAccuracyService
@@ -197,11 +194,71 @@ public class AudioAnalysisService {
             log.info("    • Accuracy analysis: {} slides", accuracyResults.size());
         }
 
+        // 4) SPM 분석 (슬라이드별)
+        List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals);
+        log.info("    • SPM analysis: {} slides", spmResults.size());
+
+        // 5) 반복 어휘 분석 (슬라이드별) - 전체 분석에서 추출
+        // 전체 STT 텍스트로 분석 수행
+        String fullSttText = slideSttTexts.stream()
+                .filter(text -> text != null && !text.trim().isEmpty())
+                .collect(Collectors.joining(" "));
+
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionAnalysis = repetitiveTextAnalysisService
+                .analyzeRepetition(
+                        fullSttText,
+                        transitions,
+                        segments);
+
+        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repetitionAnalysis
+                .getSlideRepetitions();
+        log.info("    • Repetition analysis: {} slides", repetitionResults.size());
+
         return SlideAnalysisResult.builder()
                 .fillerResults(fillerResults)
                 .silenceResults(silenceResults)
                 .accuracyResults(accuracyResults)
+                .spmResults(spmResults)
+                .repetitionResults(repetitionResults)
+                .slideSttTexts(slideSttTexts)
+                .intervals(intervals)
                 .build();
+    }
+
+    /**
+     * 슬라이드별 SPM 분석
+     */
+    private List<SlideSpmResult> analyzeSlideSpm(List<String> slideSttTexts, List<SlideInterval> intervals) {
+        List<SlideSpmResult> results = new ArrayList<>();
+
+        for (int i = 0; i < slideSttTexts.size(); i++) {
+            String text = slideSttTexts.get(i);
+            SlideInterval interval = intervals.get(i);
+
+            if (text == null || text.trim().isEmpty()) {
+                continue;
+            }
+
+            // 슬라이드 구간의 시간(초) 계산
+            double durationSeconds = interval.getEndTime() - interval.getStartTime();
+
+            if (durationSeconds <= 0) {
+                continue;
+            }
+
+            // SPM 계산
+            int syllableCount = speechSpeedService.countKoreanSyllables(text);
+            int spm = speechSpeedService.calculateSpm(syllableCount, durationSeconds);
+            int spmScore = speechSpeedService.mapSpmToScore(spm);
+
+            results.add(SlideSpmResult.builder()
+                    .slideNumber(i + 1)
+                    .spm(spm)
+                    .spmScore(spmScore)
+                    .build());
+        }
+
+        return results;
     }
 
     /**
@@ -433,12 +490,22 @@ public class AudioAnalysisService {
         private final List<FillerService.SlideFillerDto> fillerResults = Collections.emptyList();
 
         @lombok.Builder.Default
-        private final List<List<SilenceDetectionService.SilenceInterval>> silenceResults =
-                Collections.emptyList();
+        private final List<List<SilenceDetectionService.SilenceInterval>> silenceResults = Collections.emptyList();
 
         @lombok.Builder.Default
-        private final List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults =
-                Collections.emptyList();
+        private final List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = Collections.emptyList();
+
+        @lombok.Builder.Default
+        private final List<SlideSpmResult> spmResults = Collections.emptyList();
+
+        @lombok.Builder.Default
+        private final List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = Collections.emptyList();
+
+        @lombok.Builder.Default
+        private final List<String> slideSttTexts = Collections.emptyList();
+
+        @lombok.Builder.Default
+        private final List<SlideSegmentExtractor.SlideInterval> intervals = Collections.emptyList();
 
         public static SlideAnalysisResult empty() {
             return SlideAnalysisResult.builder().build();
@@ -447,7 +514,20 @@ public class AudioAnalysisService {
         public boolean isEmpty() {
             return fillerResults.isEmpty()
                     && silenceResults.isEmpty()
-                    && accuracyResults.isEmpty();
+                    && accuracyResults.isEmpty()
+                    && spmResults.isEmpty()
+                    && repetitionResults.isEmpty();
         }
+    }
+
+    /**
+     * 슬라이드별 SPM 결과
+     */
+    @lombok.Getter
+    @lombok.Builder
+    public static class SlideSpmResult {
+        private final int slideNumber;
+        private final int spm; // 사용자 SPM
+        private final int spmScore; // SPM 점수 (0-100)
     }
 }

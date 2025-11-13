@@ -18,7 +18,7 @@ public interface PresentationFileRepository extends JpaRepository<PresentationFi
     Optional<PresentationFile> findByProject(Project project);
 
     // 프로젝트에 연결된 발표 파일 조회 (ExtractedText와 slideTexts까지 함께 fetch join)
-    @Query("SELECT pf FROM PresentationFile pf " +
+    @Query("SELECT DISTINCT pf FROM PresentationFile pf " +
             "LEFT JOIN FETCH pf.extractedText et " +
             "LEFT JOIN FETCH et.slideTexts " +
             "WHERE pf.project = :project")

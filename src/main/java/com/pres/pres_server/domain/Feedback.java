@@ -27,19 +27,19 @@ public class Feedback {
     private List<SlideFeedback> slideFeedbacks = new ArrayList<>();
 
     // =======점수========
-    //말의 속도
+    // 말의 속도
     @Column(name = "spm_score")
     private int spmScore;
 
-    //말의 망설임 항목, filler+silence, 임의로 filler라고 명시
+    // 말의 망설임 항목, filler+silence, 임의로 filler라고 명시
     @Column(name = "filler_score")
     private int fillerScore;
 
-    //말의 반복
+    // 말의 반복
     @Column(name = "repeat_score")
     private int repeatScore;
 
-    //발표 정확도
+    // 발표 정확도
     @Column(name = "accuracy_score")
     private Integer accuracyScore; // 대본 대비 발표 정확도 점수 (0~100)
 
@@ -66,6 +66,5 @@ public class Feedback {
     private LocalDateTime createdAt;
 
     // 피드백이 제공된 슬라이드 번호 (슬라이드 별 피드백 제공)
-
 
 }
