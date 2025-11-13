@@ -40,4 +40,3 @@ src/main/resources/application-*.yml
 !src/main/resources/application-example.yml
 
 main.py
-/src/test/java/com/pres/pres_server/service/auth
