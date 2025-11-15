@@ -19,9 +19,11 @@ public class PracticeFeedbackDto {
     private Integer spmScore;
     private Integer fillerScore;
     private Integer repeatScore;
-    private Integer accuracyScore; // 정확도 점수 추가
+    private Integer accuracyScore;
     private Integer totalScore;
     private String grade;
+    private Double totalDurationSeconds;
+    private List<PracticeHistoryDto> history;
 
     // 슬라이드별 피드백 (이슈가 있는 슬라이드만)
     private List<SlideFeedbackDto> slideFeedbacks;
