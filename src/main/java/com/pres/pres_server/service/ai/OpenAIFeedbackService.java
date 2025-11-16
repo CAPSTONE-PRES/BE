@@ -8,10 +8,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * OpenAI ChatCompletion 기반 피드백 생성 서비스
- * (QnA 비교 등에서 자연어 피드백 생성)
  */
 @Slf4j
 @Service
@@ -23,16 +23,53 @@ public class OpenAIFeedbackService {
 
     private static final String CHAT_MODEL = "gpt-4o-mini";
     private static final String OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
 
     /**
-     * QnA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환
-     * 
-     * @param question    질문
-     * @param idealAnswer 모범 답변
-     * @param userAnswer  사용자 답변
-     * @return Map<String, String> (expression, logic)
+     * 공통: OpenAI 응답 Map에서 content 문자열을 안전하게 추출합니다.
+     * 문제 발생 시 RuntimeException을 던져 호출자가 처리하게 합니다.
      */
+    private String extractContentFromResponse(Map<String, Object> responseBody) {
+        if (responseBody == null) {
+            throw new RuntimeException("AI 서비스 응답이 비어있습니다.");
+        }
+
+        Object errorObj = responseBody.get("error");
+        if (errorObj instanceof Map) {
+            Map<?, ?> error = (Map<?, ?>) errorObj;
+            String errorMessage = error.get("message") != null ? error.get("message").toString() : "알 수 없는 오류";
+            String errorType = error.get("type") != null ? error.get("type").toString() : "error";
+            throw new RuntimeException("AI 서비스 오류: [" + errorType + "] " + errorMessage);
+        }
+
+        Object choicesObj = responseBody.get("choices");
+        if (!(choicesObj instanceof List)) {
+            throw new RuntimeException("AI 서비스 응답에 choices가 없습니다.");
+        }
+        List<?> choices = (List<?>) choicesObj;
+        if (choices.isEmpty() || !(choices.get(0) instanceof Map)) {
+            throw new RuntimeException("AI 서비스 응답에 choices가 비어있거나 형식이 올바르지 않습니다.");
+        }
+
+        Map<?, ?> firstChoice = (Map<?, ?>) choices.get(0);
+        Object messageObj = firstChoice.get("message");
+        if (!(messageObj instanceof Map)) {
+            throw new RuntimeException("AI 응답에 message가 없습니다.");
+        }
+        Map<?, ?> message = (Map<?, ?>) messageObj;
+        Object contentObj = message.get("content");
+        if (!(contentObj instanceof String)) {
+            throw new RuntimeException("AI 응답 content가 문자열이 아닙니다.");
+        }
+        String content = (String) contentObj;
+        if (content == null || content.isBlank()) {
+            throw new RuntimeException("AI 응답 content가 비어있습니다.");
+        }
+        return content;
+    }
+
+    // QNA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환
     public Map<String, String> generateQnaFeedback(String question, String idealAnswer, String userAnswer) {
         String prompt = buildPrompt(question, idealAnswer, userAnswer);
         try {
@@ -66,54 +103,20 @@ public class OpenAIFeedbackService {
                 log.error("OpenAI API 연결 오류: {}", e.getMessage());
                 return Map.of("error", "AI 서비스 연결 실패: " + e.getMessage());
             }
-
-            Object bodyObj = (response != null) ? response.getBody() : null;
-            if (!(bodyObj instanceof Map)) {
-                log.error("OpenAI API 응답이 비어있거나 Map이 아님: {}", bodyObj);
-                return Map.of("error", "AI 서비스 응답이 비어있거나 올바르지 않습니다.");
-            }
             @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = (Map<String, Object>) bodyObj;
-            // responseBody는 이미 null 아님이 보장됨
-
-            // OpenAI error 필드 처리
-            Object errorObj = responseBody.get("error");
-            if (errorObj instanceof Map) {
-                Map<?, ?> error = (Map<?, ?>) errorObj;
-                String errorMessage = error.get("message") != null ? error.get("message").toString() : "알 수 없는 오류";
-                String errorType = error.get("type") != null ? error.get("type").toString() : "error";
-                log.error("OpenAI API 오류 [{}]: {}", errorType, errorMessage);
-                return Map.of("error", "AI 서비스 오류: [" + errorType + "] " + errorMessage);
+            Map<String, Object> responseBody = (Map<String, Object>) ((response != null) ? response.getBody() : null);
+            String content;
+            try {
+                content = extractContentFromResponse(responseBody);
+            } catch (Exception ex) {
+                log.error("OpenAI 응답 처리 실패: {}", ex.getMessage());
+                return Map.of("error", "AI 서비스 응답 처리 실패: " + ex.getMessage());
             }
 
-            Object choicesObj = responseBody.get("choices");
-            if (!(choicesObj instanceof List)) {
-                log.error("OpenAI 응답에 choices 없음 또는 타입 불일치: {}", choicesObj);
-                return Map.of("error", "AI 서비스 응답에 choices가 없습니다.");
-            }
-            List<?> choices = (List<?>) choicesObj;
-            if (choices.isEmpty() || !(choices.get(0) instanceof Map)) {
-                log.error("OpenAI 응답 choices 비어있음 또는 첫 요소 타입 불일치: {}", choices);
-                return Map.of("error", "AI 서비스 응답에 choices가 없습니다.");
-            }
-            Map<?, ?> firstChoice = (Map<?, ?>) choices.get(0);
-            Object messageObj = firstChoice.get("message");
-            if (!(messageObj instanceof Map)) {
-                log.error("OpenAI 응답에 message 없음 또는 타입 불일치: {}", messageObj);
-                return Map.of("error", "AI 서비스 응답에 message가 없습니다.");
-            }
-            Map<?, ?> message = (Map<?, ?>) messageObj;
-            Object contentObj = message.get("content");
-            String content = (contentObj instanceof String) ? (String) contentObj : null;
-            if (content == null || content.isBlank()) {
-                log.error("OpenAI 응답 content가 비어있음");
-                return Map.of("error", "AI 서비스 응답 content가 비어있습니다.");
-            }
             // JSON 파싱
             try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 @SuppressWarnings("unchecked")
-                Map<String, String> result = mapper.readValue(content, Map.class);
+                Map<String, String> result = objectMapper.readValue(content, Map.class);
                 return result;
             } catch (Exception jsonEx) {
                 log.error("OpenAI 피드백 JSON 파싱 실패", jsonEx);
@@ -128,9 +131,116 @@ public class OpenAIFeedbackService {
         }
     }
 
-    /**
-     * 프롬프트 생성 (표현방식, 논리 흐름)
-     */
+    // (피드백 타입 enum은 필요시 다시 추가)
+
+    // 공통: 텍스트 프롬프트를 보내고 content 문자열을 반환
+    // HTTP 관련 예외를 중앙에서 처리하여 모든 피드백 함수에 일관된 동작을 제공합니다.
+    private String executeChatRequest(String systemPrompt, String userPrompt) throws Exception {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", CHAT_MODEL);
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(Map.of("role", "user", "content", userPrompt));
+        requestBody.put("messages", messages);
+        requestBody.put("temperature", 0.3);
+        requestBody.put("max_tokens", 800);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+        ResponseEntity<?> response = null;
+        try {
+            response = restTemplate.postForEntity(OPENAI_CHAT_URL, request, Map.class);
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("OpenAI API 클라이언트 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 서비스 요청 오류: " + e.getMessage());
+        } catch (org.springframework.web.client.HttpServerErrorException e) {
+            log.error("OpenAI API 서버 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 서비스 일시적 오류: " + e.getMessage());
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            log.error("OpenAI API 연결 오류: {}", e.getMessage());
+            throw new RuntimeException("AI 서비스 연결 실패: " + e.getMessage());
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseBody = (Map<String, Object>) ((response != null) ? response.getBody() : null);
+        // extractContentFromResponse가 내부 structure 검사 및 error 필드를 처리합니다.
+        return extractContentFromResponse(responseBody);
+    }
+
+    // 항목별 피드백 생성 예시: 망설임(침묵+추임새)
+    public Map<String, String> generateHesitationFeedback(String slideId, String transcript, int hesitationCount,
+            double totalSilenceSec) {
+        String system = "너는 발표 코칭 전문가야. 아래 조건에 맞춰 친절하고 구체적으로 피드백을 JSON으로 반환해.";
+        String user = String.format(
+                "슬라이드: %s\n대본/전사: %s\n망설임 횟수: %d\n총 침묵(초): %.2f\n\n" +
+                        "요구: 'hesitation' 키에 피드백을 담은 JSON으로만 응답해. 예: {\"hesitation\":\"...\"}",
+                slideId, transcript, hesitationCount, totalSilenceSec);
+        try {
+            String content = executeChatRequest(system, user);
+            @SuppressWarnings("unchecked")
+            Map<String, String> result = objectMapper.readValue(content, Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("망설임 피드백 생성 실패", e);
+            return Map.of("error", "망설임 피드백 생성 실패", "raw", e.getMessage());
+        }
+    }
+
+    // 항목별: 반복
+    public Map<String, String> generateRepetitionFeedback(String slideId, String transcript, int repeatedWordCount,
+            List<String> repeatedWords) {
+        String system = "너는 발표 코칭 전문가야. 반복되는 단어/구문에 대해 친절하게 지적하고 대체 표현을 제시해. JSON으로 반환.";
+        String user = String.format(
+                "슬라이드: %s\n전사: %s\n반복 단어 수: %d\n반복 단어 목록: %s\n\n요구: {\"repetition\":\"...\"}",
+                slideId, transcript, repeatedWordCount, repeatedWords);
+        try {
+            String content = executeChatRequest(system, user);
+            @SuppressWarnings("unchecked")
+            Map<String, String> result = objectMapper.readValue(content, Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("반복 피드백 생성 실패", e);
+            return Map.of("error", "반복 피드백 생성 실패", "raw", e.getMessage());
+        }
+    }
+
+    // 항목별: 정확도
+    public Map<String, String> generateAccuracyFeedback(String slideId, String transcript, String expectedKeyPoints) {
+        String system = "너는 발표 코칭 전문가야. 발표 정확도(핵심내용 누락/오류)를 평가하고 보완 문장을 제시해. JSON으로 반환.";
+        String user = String.format(
+                "슬라이드: %s\n전사: %s\n기대 핵심포인트: %s\n\n요구: {\"accuracy\":\"...\"}",
+                slideId, transcript, expectedKeyPoints);
+        try {
+            String content = executeChatRequest(system, user);
+            @SuppressWarnings("unchecked")
+            Map<String, String> result = objectMapper.readValue(content, Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("정확도 피드백 생성 실패", e);
+            return Map.of("error", "정확도 피드백 생성 실패", "raw", e.getMessage());
+        }
+    }
+
+    // 항목별: 속도
+    public Map<String, String> generatePaceFeedback(String slideId, String transcript, double wpm, double idealWpm) {
+        String system = "너는 발표 코칭 전문가야. 말의 속도가 적절한지 판단하고 조절 팁을 JSON으로 반환해.";
+        String user = String.format(
+                "슬라이드: %s\n전사: %s\n현재 WPM: %.1f\n권장 WPM: %.1f\n\n요구: {\"pace\":\"...\"}",
+                slideId, transcript, wpm, idealWpm);
+        try {
+            String content = executeChatRequest(system, user);
+            @SuppressWarnings("unchecked")
+            Map<String, String> result = objectMapper.readValue(content, Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("속도 피드백 생성 실패", e);
+            return Map.of("error", "속도 피드백 생성 실패", "raw", e.getMessage());
+        }
+    }
+
     private String buildPrompt(String question, String idealAnswer, String userAnswer) {
         return String.format(
                 "아래는 면접/발표 QnA입니다.\n" +
