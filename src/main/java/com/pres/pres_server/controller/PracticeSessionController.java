@@ -4,6 +4,7 @@ import com.pres.pres_server.dto.practice.PracticeFeedbackDto;
 import com.pres.pres_server.dto.practice.PracticeSessionStartDto;
 import com.pres.pres_server.dto.qna.QnaAnswerResponseDto;
 import com.pres.pres_server.dto.qna.QnaQuestionDto;
+import com.pres.pres_server.dto.qna.QnaComparisonDto;
 import com.pres.pres_server.service.practice.PracticeQnaService;
 import com.pres.pres_server.service.practice.PracticeSessionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -55,7 +56,7 @@ public class PracticeSessionController {
         @PostMapping(value = "/{sessionId}/end", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         public ResponseEntity<Long> endSession(
                         @PathVariable("sessionId") Long sessionId,
-                        @RequestParam("audio") MultipartFile audioFile){
+                        @RequestParam("audio") MultipartFile audioFile) {
 
                 log.info("▶ 연습 세션 종료 요청 - sessionId: {}, audioFile: {}",
                                 sessionId, audioFile.getOriginalFilename());
@@ -99,6 +100,22 @@ public class PracticeSessionController {
                                 sessionId, questionId, response.getAnswerId());
 
                 return ResponseEntity.ok(response);
+        }
+
+        @Operation(summary = "질문 단위 QnA 피드백 조회", description = "특정 질문에 대해 제출된 사용자의 답변을 비교하여 피드백을 반환합니다.")
+        @GetMapping("/{sessionId}/qna/{questionId}/feedback")
+        public ResponseEntity<QnaComparisonDto> getQuestionFeedback(
+                        @PathVariable("sessionId") Long sessionId,
+                        @PathVariable("questionId") Long questionId) {
+
+                log.info("▶ 질문 피드백 요청 - sessionId: {}, questionId: {}", sessionId, questionId);
+
+                QnaComparisonDto comparison = practiceQnaService.getQuestionComparison(sessionId, questionId);
+
+                log.info("✅ 질문 피드백 반환 - sessionId: {}, questionId: {}, comparisonId: {}",
+                                sessionId, questionId, comparison.getComparisonId());
+
+                return ResponseEntity.ok(comparison);
         }
 
         /**

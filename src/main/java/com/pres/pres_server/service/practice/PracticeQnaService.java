@@ -94,4 +94,23 @@ public class PracticeQnaService {
 
         return comparison;
     }
+
+    /**
+     * 특정 질문에 대한 비교 결과를 즉시 실행하여 반환
+     * 
+     * @param sessionId  연습 세션 ID
+     * @param questionId 질문 ID
+     * @return 질문 단위 비교 결과
+     */
+    @Transactional(readOnly = true)
+    public QnaComparisonDto getQuestionComparison(Long sessionId, Long questionId) {
+        log.info("▶ 질문 단위 QnA 비교 요청 - sessionId: {}, questionId: {}", sessionId, questionId);
+
+        QnaComparisonDto comparison = qnaComparisonService.compareAnswerForQuestion(sessionId, questionId);
+
+        log.info("✅ 질문 단위 QnA 비교 완료 - sessionId: {}, questionId: {}, comparisonId: {}",
+                sessionId, questionId, comparison.getComparisonId());
+
+        return comparison;
+    }
 }
