@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -45,6 +44,7 @@ public class GenerateQnaService {
     private final QnaAnswerRepository qnaAnswerRepository;
     private final PresentationFileRepository presentationFileRepository;
     private final ExtractTextService extractTextService;
+    private final ObjectMapper objectMapper;
 
     // === 핵심 API 메서드들 ===
 
@@ -182,9 +182,8 @@ public class GenerateQnaService {
             log.info("=== JSON 파싱 시작 ===");
             log.info("Q&A 응답 전체 내용:\n{}", qnaResponse);
 
-            // Jackson ObjectMapper를 사용한 JSON 파싱 (UTF-8 인코딩 및 제어문자 허용)
-            ObjectMapper objectMapper = new ObjectMapper();
-            objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
+            // Jackson ObjectMapper를 사용한 JSON 파싱
+            // (공유 빈으로 주입되어 JsonReadFeature는 AppConfig에서 설정됨)
 
             // 이스케이프된 JSON 문자열 처리 (확실한 방법)
             String cleanedResponse = qnaResponse.trim();

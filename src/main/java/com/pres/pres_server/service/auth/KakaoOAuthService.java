@@ -25,17 +25,6 @@ import com.pres.pres_server.exception.KakaoBadRequestException;
 import com.pres.pres_server.exception.KakaoInternalServerException;
 import com.pres.pres_server.exception.KakaoUnauthorizedException;
 
-import jakarta.servlet.http.HttpSession;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor

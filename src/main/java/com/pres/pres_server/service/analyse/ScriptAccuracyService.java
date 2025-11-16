@@ -84,8 +84,6 @@ public class ScriptAccuracyService {
         // 6. 최종 유사도 계산 (키워드 70% + 의미론적 유사도 30%)
         double finalSimilarity = (keywordMatchRate * 0.7) + (semanticSimilarity * 0.3);                                                                                                                     
 
-        
-
         // 7. 점수 계산 (0~100)
         int accuracyScore = (int) Math.round(finalSimilarity * 100);
 
