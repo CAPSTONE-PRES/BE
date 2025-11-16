@@ -17,4 +17,8 @@ public class QnaAnswerResponseDto {
     private Long questionId;
     private String sttText;
     private String message;
+    // 비교 결과가 이미 존재하는 경우 반환되는 비교 ID
+    private Long comparisonId;
+    // 비교 결과가 준비되어 있는지 여부
+    private boolean comparisonAvailable;
 }
