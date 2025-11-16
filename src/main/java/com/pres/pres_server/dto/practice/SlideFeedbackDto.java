@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * 슬라이드별 피드백 DTO
@@ -43,4 +44,10 @@ public class SlideFeedbackDto {
 
     // 코멘트
     private String comment; // 해당 슬라이드 코멘트
+    // 여러 이슈(배열) - API 응답에서 사용
+    private List<IssueDto> issues;
+    // 썸네일 URL (프론트가 바로 불러올 수 있는 이미지 URL)
+    private String thumbnailUrl;
+    // 필요시 base64 인라인 이미지(크기가 작을 때만 사용 권장)
+    private String thumbnailBase64;
 }

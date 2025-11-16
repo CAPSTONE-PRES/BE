@@ -83,4 +83,8 @@ public class SlideFeedback {
     // -------------------
     @Column(name = "comment", columnDefinition = "TEXT")
     private String comment;
+
+    // 여러 이슈를 JSON 배열로 저장 (API 응답에서 issues 배열로 제공)
+    @Column(name = "issues", columnDefinition = "TEXT")
+    private String issues;
 }

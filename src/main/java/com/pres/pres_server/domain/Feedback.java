@@ -35,6 +35,10 @@ public class Feedback {
     @Column(name = "filler_score")
     private int fillerScore;
 
+    // 전체 공백(silence) 관련 점수
+    @Column(name = "silence_score")
+    private Integer silenceScore;
+
     // 말의 반복
     @Column(name = "repeat_score")
     private int repeatScore;
