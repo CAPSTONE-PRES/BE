@@ -22,6 +22,10 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.io.IOException;
 import java.nio.file.Files;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import org.springframework.stereotype.Service;
 
@@ -153,7 +157,7 @@ public class FileUploadService {
         try (XMLSlideShow show = new XMLSlideShow(Files.newInputStream(pptxPath))) {
             final String baseName = pptxPath.getFileName().toString().replaceAll("(?i)\\.pptx$",
                     "");
-            final Dimension pg = show.getPageSize();          // pt 단위 (1/72 inch)
+            final Dimension pg = show.getPageSize(); // pt 단위 (1/72 inch)
             final double scale = dpi / 72.0; // 최소 72dpi 보정
             final int w = (int) Math.round(pg.getWidth() * scale);
             final int h = (int) Math.round(pg.getHeight() * scale);
@@ -252,7 +256,7 @@ public class FileUploadService {
 
             for (int pageIndex = 0; pageIndex < totalPages; pageIndex++) {
                 BufferedImage bim = null;
-                try { //메모리 체크
+                try { // 메모리 체크
                     checkMemoryAndWait();
                     // 렌더링
                     bim = renderer.renderImageWithDPI(pageIndex, safeDpi);
@@ -288,7 +292,7 @@ public class FileUploadService {
                         bim = null;
                     }
 
-                    //메모리 정리 힌트
+                    // 메모리 정리 힌트
                     if (pageIndex % 3 == 0) {
                         System.gc();
                         Thread.sleep(100);
@@ -305,13 +309,57 @@ public class FileUploadService {
             throw new RuntimeException("PDF 변환 중단 됨", e);
         } finally {
             if (document != null) {
-                try {document.close();} catch (IOException ignore) { }
+                try {
+                    document.close();
+                } catch (IOException ignore) {
+                }
             }
         }
         log.info("end createPdfImages");
         return result;
     }
-    //메모리 상태 체크 및 대기
+
+    /**
+     * 업로드 시 생성된 파일 URL(예: "/files/{saveName}")로부터 실제 파일 시스템 경로를 반환합니다.
+     * 
+     * @param fileUrl 저장된 파일의 public URL
+     * @return 절대 파일 시스템 경로
+     */
+    public String resolveFilePathFromUrl(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            throw new IllegalArgumentException("fileUrl is null or empty");
+        }
+        // Expecting format "/files/{saveName}"
+        String prefix = "/files/";
+        if (!fileUrl.startsWith(prefix)) {
+            throw new IllegalArgumentException("Unsupported fileUrl format: " + fileUrl);
+        }
+        String saveName = fileUrl.substring(prefix.length());
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+        Path fullPath = uploadPath.resolve(saveName);
+        return fullPath.toString();
+    }
+
+    /**
+     * 업로드된 파일 URL로부터 {@link Resource} 반환 (컨트롤러/서비스에서 바로 사용 가능)
+     * 예외 발생 시 적절한 HTTP 상태코드로 변환하여 던집니다.
+     */
+    public Resource getFileResource(String fileUrl) {
+        try {
+            String path = resolveFilePathFromUrl(fileUrl);
+            FileSystemResource resource = new FileSystemResource(path);
+            if (!resource.exists()) {
+                log.error("업로드 파일이 디스크에 존재하지 않습니다: {}", path);
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "파일이 존재하지 않습니다");
+            }
+            return resource;
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid fileUrl provided: {}", fileUrl);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    // 메모리 상태 체크 및 대기
     private void checkMemoryAndWait() throws InterruptedException {
         Runtime runtime = Runtime.getRuntime();
         long freeMemory = runtime.freeMemory();
@@ -327,7 +375,7 @@ public class FileUploadService {
         }
     }
 
-    //png 압축 옵션으로 이미지 저장
+    // png 압축 옵션으로 이미지 저장
     private void saveImageWithCompression(BufferedImage image, Path outputPath) throws IOException {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("png");
         if (!writers.hasNext()) {
