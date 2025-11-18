@@ -266,4 +266,79 @@ public class ExtractTextService {
                 .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트를 찾을 수 없습니다: " + fileId));
         return extractedText.getFullText();
     }
+
+    /**
+     * 사용자가 특정 슬라이드의 텍스트를 덮어쓰기(수정) 합니다.
+     * 수정 후에는 ExtractedText의 fullText 및 insufficientSlides 등을 재계산하여 저장하고 결과 DTO를
+     * 반환합니다.
+     */
+    public ExtractedTextDto updateSlideText(Long fileId, Integer pageNumber, String newText) {
+        ExtractedText extractedText = extractedTextRepository.findByPresentationFileFileId(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트를 찾을 수 없습니다: " + fileId));
+
+        List<String> slideTexts = extractedText.getSlideTexts();
+        if (pageNumber == null || pageNumber < 1 || pageNumber > slideTexts.size()) {
+            throw new IllegalArgumentException("잘못된 페이지 번호입니다: " + pageNumber);
+        }
+
+        // 덮어쓰기
+        slideTexts.set(pageNumber - 1, newText == null ? "" : newText);
+        extractedText.setSlideTexts(slideTexts);
+
+        // fullText 재조합
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < slideTexts.size(); i++) {
+            sb.append("[페이지 ").append(i + 1).append("]\n");
+            sb.append(slideTexts.get(i) == null ? "" : slideTexts.get(i)).append("\n\n");
+        }
+        extractedText.setFullText(sb.toString());
+
+        // 간단한 재검증: 텍스트 길이 기준(MIN_TEXT_LENGTH = 30) 사용
+        List<Integer> insufficientSlides = new ArrayList<>();
+        for (int i = 0; i < slideTexts.size(); i++) {
+            String t = slideTexts.get(i) == null ? "" : slideTexts.get(i).trim();
+            if (t.length() < 30) {
+                insufficientSlides.add(i + 1);
+            }
+        }
+
+        if (insufficientSlides.isEmpty()) {
+            extractedText.setIsSufficient(true);
+            extractedText.setInsufficientSlides(null);
+            extractedText.setInsufficientMessage(null);
+        } else {
+            extractedText.setIsSufficient(false);
+            extractedText.setInsufficientSlides(insufficientSlides.toString());
+            StringBuilder msg = new StringBuilder();
+            for (int idx = 0; idx < insufficientSlides.size(); idx++) {
+                if (idx > 0)
+                    msg.append(", ");
+                msg.append("슬라이드 ").append(insufficientSlides.get(idx)).append(": 텍스트 부족");
+            }
+            extractedText.setInsufficientMessage("텍스트가 부족한 페이지가 있습니다. (" + msg.toString() + ")");
+        }
+
+        extractedTextRepository.save(extractedText);
+
+        // 반환 DTO 생성
+        ExtractedTextDto dto = new ExtractedTextDto(extractedText.getFullText(), extractedText.getSlideTexts());
+        if (extractedText.getInsufficientSlides() != null) {
+            // 간단 파싱
+            String insufficientSlidesStr = extractedText.getInsufficientSlides();
+            List<Integer> list = new ArrayList<>();
+            if (insufficientSlidesStr.contains(",")) {
+                String[] parts = insufficientSlidesStr.replace("[", "").replace("]", "").split(",");
+                for (String part : parts) {
+                    try {
+                        list.add(Integer.parseInt(part.trim()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            dto.setInsufficientSlides(list);
+            dto.setInsufficientMessage(extractedText.getInsufficientMessage());
+        }
+
+        return dto;
+    }
 }

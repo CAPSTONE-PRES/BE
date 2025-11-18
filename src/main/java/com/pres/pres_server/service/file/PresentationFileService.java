@@ -14,6 +14,8 @@ import com.pres.pres_server.dto.file.FileInfoDto;
 import com.pres.pres_server.dto.file.FileUploadDto;
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.UserRepository;
+import com.pres.pres_server.repository.ExtractedTextRepository;
+import com.pres.pres_server.service.file.ExtractTextService;
 
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -31,10 +33,18 @@ import java.util.List;
 public class PresentationFileService {
     private final UserRepository userRepository;
     private final FileUploadService fileUploadService;
+    private final ExtractedTextRepository extractedTextRepository;
+    private final ExtractTextService extractTextService;
     private final ProjectRepository projectRepository;
     private final PresentationFileRepository presentationFileRepository;
     private final PresentationImageRepository presentationImageRepository;
 
+    // TODO: 제한 위치 옮기는 것 고려
+    @org.springframework.beans.factory.annotation.Value("${file.max-slides:500}")
+    private int maxSlidesAllowed;
+
+    @org.springframework.beans.factory.annotation.Value("${file.max-path-length:1024}")
+    private int maxPathLength;
 
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
@@ -46,8 +56,8 @@ public class PresentationFileService {
         String origName = origin.getOriginalName();
         String lower = (origName == null ? "" : origName.toLowerCase());
         final boolean isPdf = lower.endsWith(".pdf");
-        final int dpi = 150;       // 기본값 (웹 미리보기 용도)
-        final int maxSlides = 0;   // 0 = 전체
+        final int dpi = 150; // 기본값 (웹 미리보기 용도)
+        final int maxSlides = 0; // 0 = 전체
         log.info("is pdf:" + isPdf);
 
         // 3) 원본 → 이미지 변환 (리스트)
@@ -74,18 +84,54 @@ public class PresentationFileService {
         } catch (RuntimeException e) {
             // 변환 실패 보상
             for (FileInfoDto img : images) {
-                try { fileUploadService.deleteFile(img.getFilePath()); } catch (Exception ignore) {}
+                try {
+                    fileUploadService.deleteFile(img.getFilePath());
+                } catch (Exception ignore) {
+                }
             }
-            try { fileUploadService.deleteFile(origin.getFilePath()); } catch (Exception ignore) {}
+            try {
+                fileUploadService.deleteFile(origin.getFilePath());
+            } catch (Exception ignore) {
+            }
             throw e;
         }
-//        PresentationFile을 먼저 DB에 저장해서 PK(fileId)를 확보.
-//        각 페이지(슬라이드)마다 바로 PresentationImage insert.
-//                썸네일은 첫 장만 기억했다가 마지막에 update.
-        // 4) DB 저장
+        // PresentationFile을 먼저 DB에 저장해서 PK(fileId)를 확보.
+        // 각 페이지(슬라이드)마다 바로 PresentationImage insert.
+        // 썸네일은 첫 장만 기억했다가 마지막에 update.
+        // 4) DB 저장 (방어 로직: 슬라이드 수 제한, 길이 검증, 배치 이미지 저장)
+        // 상한 초과시 변환된 파일과 원본을 정리하고 실패 반환
+        if (images.size() > maxSlidesAllowed) {
+            for (FileInfoDto img : images) {
+                try {
+                    fileUploadService.deleteFile(img.getFilePath());
+                } catch (Exception ignore) {
+                }
+            }
+            try {
+                fileUploadService.deleteFile(origin.getFilePath());
+            } catch (Exception ignore) {
+            }
+            throw new IllegalArgumentException("슬라이드 수가 허용치를 초과했습니다: " + images.size());
+        }
+
+        // 경로/URL 길이 검증
+        if (origin.getFilePath() != null && origin.getFilePath().length() > maxPathLength) {
+            for (FileInfoDto img : images) {
+                try {
+                    fileUploadService.deleteFile(img.getFilePath());
+                } catch (Exception ignore) {
+                }
+            }
+            try {
+                fileUploadService.deleteFile(origin.getFilePath());
+            } catch (Exception ignore) {
+            }
+            throw new IllegalArgumentException("파일 경로 길이가 허용치를 초과했습니다.");
+        }
+
         try {
+            // PresentationFile을 먼저 저장(이미지 없음)
             PresentationFile entity = new PresentationFile();
-            // 원본 파일 메타
             entity.setSaveName(origin.getSaveName());
             entity.setFilePath(origin.getFilePath());
             entity.setFileUrl(origin.getFileUrl());
@@ -94,13 +140,6 @@ public class PresentationFileService {
             entity.setFileSize(origin.getSize());
             entity.setUploadedAt(origin.getUploadedAt());
 
-
-            // 썸네일(첫 이미지)
-            FileInfoDto thumb = images.get(0);
-            entity.setThumbnailPath(thumb.getFilePath());
-            entity.setThumbnailUrl(thumb.getFileUrl());
-
-            // 연관 주입
             User uploader = userRepository.findById(uploaderId)
                     .orElseThrow(() -> new IllegalArgumentException("업로더를 찾을 수 없습니다. id=" + uploaderId));
             entity.setUploader(uploader);
@@ -109,20 +148,36 @@ public class PresentationFileService {
                     .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. id=" + projectId));
             entity.setProject(project);
 
-            // 모든 생성 이미지 메타를 자식 엔티티로 붙임
+            PresentationFile saved = presentationFileRepository.save(entity);
+
+            // 이미지 엔티티를 배치로 저장
+            java.util.List<PresentationImage> imageEntities = new java.util.ArrayList<>();
             int pageNo = 1;
             for (FileInfoDto img : images) {
                 PresentationImage pi = PresentationImage.builder()
-                        .file(entity)                 // FK 연결
+                        .file(saved)
                         .pageNumber(pageNo++)
                         .path(img.getFilePath())
                         .url(img.getFileUrl())
                         .size(img.getSize())
                         .build();
-                entity.getImages().add(pi);           // cascade=ALL 이면 한 번에 insert
+                imageEntities.add(pi);
             }
 
-            PresentationFile saved = presentationFileRepository.save(entity);
+            // 배치 사이즈로 저장(메모리/트랜잭션 부담 완화)
+            final int BATCH = 100;
+            for (int i = 0; i < imageEntities.size(); i += BATCH) {
+                int end = Math.min(i + BATCH, imageEntities.size());
+                presentationImageRepository.saveAll(imageEntities.subList(i, end));
+            }
+
+            // 썸네일 업데이트(첫 이미지)
+            if (!images.isEmpty()) {
+                FileInfoDto thumb = images.get(0);
+                saved.setThumbnailPath(thumb.getFilePath());
+                saved.setThumbnailUrl(thumb.getFileUrl());
+                presentationFileRepository.save(saved);
+            }
 
             return FileUploadDto.builder()
                     .fileId(saved.getFileId())
@@ -131,23 +186,124 @@ public class PresentationFileService {
                     .build();
 
         } catch (RuntimeException e) {
-            // DB 실패 시, 생성 파일 보상 삭제
+            // DB 실패 시 보상: 생성된 파일 삭제
             for (FileInfoDto img : images) {
-                try { fileUploadService.deleteFile(img.getFilePath()); } catch (Exception ignore) {}
+                try {
+                    fileUploadService.deleteFile(img.getFilePath());
+                } catch (Exception ignore) {
+                }
             }
-            try { fileUploadService.deleteFile(origin.getFilePath()); } catch (Exception ignore) {}
+            try {
+                fileUploadService.deleteFile(origin.getFilePath());
+            } catch (Exception ignore) {
+            }
             throw new RuntimeException("DB 저장 실패, 파일 롤백됨", e);
         }
     }
 
     public List<String> getAllSlideImages(Long fileId) {
-        PresentationFile file = presentationFileRepository.findById(fileId)
-                .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다" + fileId));
+        if (!presentationFileRepository.existsById(fileId)) {
+            throw new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId);
+        }
 
         return presentationImageRepository.findAllByFile_FileIdOrderByPageNumberAsc(fileId)
                 .stream()
                 .map(PresentationImage::getUrl)
                 .toList();
+    }
+
+    /**
+     * 슬라이드 업서트: 이미지와/또는 텍스트를 업서트합니다.
+     * restrictInsufficient=true인 경우, 해당 슬라이드가 ExtractedText.insufficientSlides에
+     * 포함되어야만 허용합니다.
+     */
+    @Transactional
+    public com.pres.pres_server.dto.file.ExtractedTextDto upsertSlide(Long fileId, Integer pageNumber,
+            MultipartFile image, String text,
+            boolean restrictInsufficient) {
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
+
+        // 검증: restrictive 모드이면 ExtractedText의 insufficientSlides에 포함되는지 확인
+        if (restrictInsufficient) {
+            com.pres.pres_server.domain.ExtractedText ext = extractedTextRepository
+                    .findByPresentationFileFileId(fileId)
+                    .orElseThrow(() -> new IllegalArgumentException("추출된 텍스트가 없습니다. 먼저 텍스트 추출을 수행하세요."));
+            String insufficient = ext.getInsufficientSlides();
+            boolean allowed = false;
+            if (insufficient != null && !insufficient.isBlank()) {
+                String s = insufficient.replace("[", "").replace("]", "");
+                for (String part : s.split(",")) {
+                    try {
+                        if (Integer.parseInt(part.trim()) == pageNumber) {
+                            allowed = true;
+                            break;
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            if (!allowed) {
+                throw new IllegalArgumentException("요청한 슬라이드는 insufficient로 표시되어 있지 않습니다: " + pageNumber);
+            }
+        }
+
+        // 파일 저장은 트랜잭션 외부에서 수행
+        com.pres.pres_server.dto.file.FileInfoDto savedImage = null;
+        if (image != null && !image.isEmpty()) {
+            savedImage = fileUploadService.saveFile(image);
+        }
+
+        try {
+            // 이미지 업데이트
+            if (savedImage != null) {
+                java.util.Optional<com.pres.pres_server.domain.PresentationImage> maybeImg = presentationImageRepository
+                        .findByFile_FileIdAndPageNumber(fileId, pageNumber);
+                if (maybeImg.isPresent()) {
+                    PresentationImage img = maybeImg.get();
+                    img.setPath(savedImage.getFilePath());
+                    img.setUrl(savedImage.getFileUrl());
+                    img.setSize(savedImage.getSize());
+                    presentationImageRepository.save(img);
+                } else {
+                    PresentationImage img = PresentationImage.builder()
+                            .file(file)
+                            .pageNumber(pageNumber)
+                            .path(savedImage.getFilePath())
+                            .url(savedImage.getFileUrl())
+                            .size(savedImage.getSize())
+                            .build();
+                    file.getImages().add(img);
+                    presentationFileRepository.save(file);
+                }
+
+                // 썸네일 갱신(첫 페이지)
+                if (pageNumber == 1) {
+                    file.setThumbnailPath(savedImage.getFilePath());
+                    file.setThumbnailUrl(savedImage.getFileUrl());
+                    presentationFileRepository.save(file);
+                }
+            }
+
+            // 텍스트 업데이트 및 재검증
+            if (text != null) {
+                // ExtractTextService가 내부적으로 ExtractedText를 갱신하여 DTO를 반환
+                return extractTextService.updateSlideText(fileId, pageNumber, text);
+            } else {
+                // 텍스트 변경이 없는 경우, 현재 ExtractedTextDto를 반환
+                return extractTextService.getExtractedTextByFileId(fileId);
+            }
+
+        } catch (RuntimeException e) {
+            // DB 에러 발생 시 업로드된 파일 보상 삭제
+            if (savedImage != null) {
+                try {
+                    fileUploadService.deleteFile(savedImage.getFilePath());
+                } catch (Exception ignore) {
+                }
+            }
+            throw e;
+        }
     }
 
     // 파일 삭제
@@ -157,11 +313,14 @@ public class PresentationFileService {
                 .orElseThrow(() -> new IllegalArgumentException("삭제할 파일을 찾을 수 없습니다. id=" + fileId));
         // 1) 삭제 대상 경로 수집(중복 제거)
         java.util.Set<String> paths = new java.util.HashSet<>();
-        if (file.getFilePath() != null) paths.add(file.getFilePath());
-        if (file.getThumbnailPath() != null) paths.add(file.getThumbnailPath());
+        if (file.getFilePath() != null)
+            paths.add(file.getFilePath());
+        if (file.getThumbnailPath() != null)
+            paths.add(file.getThumbnailPath());
         if (file.getImages() != null) {
             for (PresentationImage img : file.getImages()) {
-                if (img.getPath() != null) paths.add(img.getPath());
+                if (img.getPath() != null)
+                    paths.add(img.getPath());
             }
         }
         // 2) DB 삭제 (자식은 orphanRemoval=true 로 함께 삭제)
@@ -169,7 +328,10 @@ public class PresentationFileService {
 
         // 3) 파일 시스템 정리 (best-effort)
         for (String p : paths) {
-            try { fileUploadService.deleteFile(p); } catch (Exception ignore) {}
+            try {
+                fileUploadService.deleteFile(p);
+            } catch (Exception ignore) {
+            }
         }
-        }
+    }
 }
