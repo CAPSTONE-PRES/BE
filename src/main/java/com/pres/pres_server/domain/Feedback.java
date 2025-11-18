@@ -57,7 +57,7 @@ public class Feedback {
     @Column(name = "script_similarity")
     private Double scriptSimilarity; // 대본과의 유사도 (0.0~1.0)
 
-    @Column(name = "missing_keywords")
+    @Column(name = "missing_keywords", columnDefinition = "TEXT")
     private String missingKeywords; // 누락된 주요 키워드 (JSON 배열 형식)
 
     // === 코멘트 ===
