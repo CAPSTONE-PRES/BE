@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import com.pres.pres_server.service.analyse.TextOffset;
 
 /**
  * 대본(큐카드)과 실제 발표 내용(STT)의 정확도를 분석하는 서비스
@@ -82,7 +83,7 @@ public class ScriptAccuracyService {
         double semanticSimilarity = TextAnalysisUtils.calculateSemanticSimilarity(normalizedScript, normalizedStt);
 
         // 6. 최종 유사도 계산 (키워드 70% + 의미론적 유사도 30%)
-        double finalSimilarity = (keywordMatchRate * 0.7) + (semanticSimilarity * 0.3);                                                                                                                     
+        double finalSimilarity = (keywordMatchRate * 0.7) + (semanticSimilarity * 0.3);
 
         // 7. 점수 계산 (0~100)
         int accuracyScore = (int) Math.round(finalSimilarity * 100);
@@ -91,6 +92,24 @@ public class ScriptAccuracyService {
                 accuracyScore, String.format("%.2f", finalSimilarity), matchedCount, scriptKeywords.size(),
                 TextAnalysisUtils.isAIEnabled() ? "AI enabled" : "AI disabled");
 
+        // compute offsets for missing keywords in the scriptContent (slide-local
+        // indices)
+        List<TextOffset> offsets = new ArrayList<>();
+        try {
+            String normalizedScriptForOffsets = TextAnalysisUtils.normalizeText(scriptContent);
+            for (String kw : missingKeywords) {
+                if (kw == null || kw.isBlank())
+                    continue;
+                int idx = normalizedScriptForOffsets.indexOf(kw);
+                while (idx >= 0) {
+                    int end = Math.min(normalizedScriptForOffsets.length(), idx + kw.length());
+                    offsets.add(new TextOffset(idx, end, 0, normalizedScriptForOffsets.substring(idx, end)));
+                    idx = normalizedScriptForOffsets.indexOf(kw, idx + Math.max(1, kw.length()));
+                }
+            }
+        } catch (Exception ignore) {
+        }
+
         return AccuracyAnalysisResult.builder()
                 .accuracyScore(accuracyScore)
                 .scriptSimilarity(finalSimilarity)
@@ -98,6 +117,7 @@ public class ScriptAccuracyService {
                 .matchedKeywordCount(matchedCount)
                 .totalKeywordCount(scriptKeywords.size())
                 .missingKeywords(new ArrayList<>(missingKeywords))
+                .offsets(offsets)
                 .success(true)
                 .build();
     }
@@ -129,6 +149,9 @@ public class ScriptAccuracyService {
         private final int matchedKeywordCount; // 매칭된 키워드 개수
         private final int totalKeywordCount; // 전체 키워드 개수
         private final List<String> missingKeywords; // 누락된 키워드 목록
+        // missing keyword offsets within the script text (begin/end indices relative to
+        // scriptContent)
+        private final List<TextOffset> offsets;
         private final boolean success; // 분석 성공 여부
         private final String errorMessage; // 실패 사유
 
@@ -148,4 +171,8 @@ public class ScriptAccuracyService {
                     .build();
         }
     }
+
+    // Note: OffsetDto (com.pres.pres_server.dto.practice.OffsetDto) is used to
+    // represent
+    // missing-keyword offsets so other services can consume a single shared DTO.
 }

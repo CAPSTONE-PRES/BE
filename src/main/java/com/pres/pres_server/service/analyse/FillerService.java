@@ -8,6 +8,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.List;
+import java.util.Collections;
+import java.util.ArrayList;
+
+// internal domain TextOffset is used instead of API OffsetDto
 
 /**
  * 필러 워드(Filler) 분석 서비스
@@ -28,10 +33,13 @@ public class FillerService {
     public static class SlideFillerDto {
         private final int slideIndex;
         private final Map<String, Integer> fillerCounts;
+        private final List<TextOffset> offsets;
 
-        public SlideFillerDto(int slideIndex, Map<String, Integer> fillerCounts) {
+        public SlideFillerDto(int slideIndex, Map<String, Integer> fillerCounts,
+                List<TextOffset> offsets) {
             this.slideIndex = slideIndex;
             this.fillerCounts = fillerCounts;
+            this.offsets = offsets == null ? Collections.emptyList() : List.copyOf(offsets);
         }
 
         public int getSlideIndex() {
@@ -40,6 +48,10 @@ public class FillerService {
 
         public Map<String, Integer> getFillerCounts() {
             return fillerCounts;
+        }
+
+        public List<TextOffset> getOffsets() {
+            return offsets;
         }
     }
 
@@ -90,7 +102,39 @@ public class FillerService {
         for (int i = 0; i < slideTexts.size(); i++) {
             String text = slideTexts.get(i);
             Map<String, Integer> counts = countFillersByRegex(text);
-            result.add(new SlideFillerDto(i, counts));
+
+            // compute offsets per filler word using same normalization logic
+            List<TextOffset> offsets = new ArrayList<>();
+            if (text != null && !text.isBlank()) {
+                String normalized = TextAnalysisUtils.normalizeText(text);
+                for (Map.Entry<String, Pattern> entry : FILLER_PATTERNS.entrySet()) {
+                    String fillerWord = entry.getKey();
+                    Pattern pattern = entry.getValue();
+                    Matcher matcher = pattern.matcher(normalized);
+                    while (matcher.find()) {
+                        int b = -1, e = -1;
+                        try {
+                            // group 2 contains the filler token (pattern defined as (prefix)(word))
+                            b = matcher.start(2);
+                            e = matcher.end(2);
+                        } catch (Exception ex) {
+                            b = matcher.start();
+                            e = matcher.end();
+                        }
+                        if (b >= 0 && e >= b) {
+                            String excerpt = "";
+                            try {
+                                excerpt = normalized.substring(b, e);
+                            } catch (Exception ex) {
+                                excerpt = fillerWord;
+                            }
+                            offsets.add(new TextOffset(b, e, i + 1, excerpt));
+                        }
+                    }
+                }
+            }
+
+            result.add(new SlideFillerDto(i, counts, offsets));
         }
         return result;
     }

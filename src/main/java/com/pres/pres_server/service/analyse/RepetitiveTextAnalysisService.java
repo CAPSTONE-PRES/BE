@@ -149,15 +149,15 @@ public class RepetitiveTextAnalysisService {
         Map<String, Long> wordFreq = tokens.stream()
                 .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
 
-        // KomoranAnalyzer로 원문 기준 위치(occurrences) 추출
+        // KomoranAnalyzer로 원문 기준 위치(Offsets) 추출
         List<com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken> normTokens = com.pres.pres_server.service.analyse.utils.KomoranAnalyzer
                 .tokenizeForRepeatWithSpans(sttText);
 
-        // normalize token list -> map of norm -> list of occurrences
-        Map<String, List<Occurrence>> occurrencesMap = new HashMap<>();
+        // normalize token list -> map of norm -> list of Offsets
+        Map<String, List<Offset>> OffsetsMap = new HashMap<>();
         for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
-            occurrencesMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
-                    .add(Occurrence.builder().begin(nt.begin).end(nt.end)
+            OffsetsMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
+                    .add(Offset.builder().begin(nt.begin).end(nt.end)
                             .text(sttText.substring(nt.begin, Math.min(nt.end, sttText.length()))).slideIndex(null)
                             .build());
         }
@@ -193,11 +193,11 @@ public class RepetitiveTextAnalysisService {
                 .filter(e -> !pre.presentationKeywords.contains(e.getKey()))
                 .filter(e -> !FILLER_WORDS.contains(e.getKey())) // 중복 점수 차감 방지
                 .map(e -> {
-                    List<Occurrence> occ = occurrencesMap.getOrDefault(e.getKey(), Collections.emptyList());
+                    List<Offset> occ = OffsetsMap.getOrDefault(e.getKey(), Collections.emptyList());
                     return WordRepetition.builder()
                             .word(e.getKey())
                             .count(e.getValue().intValue())
-                            .occurrences(occ)
+                            .Offsets(occ)
                             .build();
                 })
                 .sorted(Comparator.comparingInt(WordRepetition::getCount).reversed())
@@ -249,8 +249,8 @@ public class RepetitiveTextAnalysisService {
                 if (ge.getValue() < MIN_NGRAM_REPETITION)
                     continue;
 
-                // collect occurrences spans for this slide
-                List<Occurrence> occs = new ArrayList<>();
+                // collect Offsets spans for this slide
+                List<Offset> occs = new ArrayList<>();
                 List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
                 for (int i = 0; i <= normTokens.size() - 2; i++) {
                     List<KomoranAnalyzer.NormToken> window = normTokens.subList(i, i + 2);
@@ -259,7 +259,7 @@ public class RepetitiveTextAnalysisService {
                         int begin = window.get(0).begin;
                         int end = window.get(1).end;
                         String text = slideText.substring(Math.max(0, begin), Math.min(slideText.length(), end));
-                        occs.add(Occurrence.builder().begin(begin).end(end).slideIndex(slideNum).text(text).build());
+                        occs.add(Offset.builder().begin(begin).end(end).slideIndex(slideNum).text(text).build());
                     }
                 }
 
@@ -441,10 +441,10 @@ public class RepetitiveTextAnalysisService {
         // 추가: 원문 스팬 수집을 위해 KomoranAnalyzer의 NormToken 사용
         List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(normalizedText);
 
-        // ngram -> occurrences mapping
-        Map<String, List<Occurrence>> ngramOccurrences = new HashMap<>();
+        // ngram -> Offsets mapping
+        Map<String, List<Offset>> ngramOffsets = new HashMap<>();
 
-        // collect n-gram occurrences (2~3)
+        // collect n-gram Offsets (2~3)
         for (int n = 2; n <= 3; n++) {
             if (normTokens.size() < n)
                 continue;
@@ -463,14 +463,14 @@ public class RepetitiveTextAnalysisService {
                 int end = window.get(window.size() - 1).end;
                 String text = normalizedText.substring(Math.max(0, begin), Math.min(normalizedText.length(), end));
 
-                Occurrence occ = Occurrence.builder()
+                Offset occ = Offset.builder()
                         .begin(begin)
                         .end(end)
                         .slideIndex(null)
                         .text(text)
                         .build();
 
-                ngramOccurrences.computeIfAbsent(key, k -> new ArrayList<>()).add(occ);
+                ngramOffsets.computeIfAbsent(key, k -> new ArrayList<>()).add(occ);
             }
         }
 
@@ -490,7 +490,7 @@ public class RepetitiveTextAnalysisService {
                         .pattern(e.getKey())
                         .count(e.getValue().intValue())
                         .type(e.getKey().split(" ").length + "-GRAM")
-                        .occurrences(ngramOccurrences.getOrDefault(e.getKey(), Collections.emptyList()))
+                        .Offsets(ngramOffsets.getOrDefault(e.getKey(), Collections.emptyList()))
                         .build())
                 .sorted(Comparator.comparingInt(RepetitivePattern::getCount).reversed())
                 .collect(Collectors.toList());
@@ -706,13 +706,13 @@ public class RepetitiveTextAnalysisService {
         private final int count;
 
         @Schema(description = "단어 발생 위치 목록(문자 인덱스, 프론트 하이라이트용)")
-        private final List<Occurrence> occurrences;
+        private final List<Offset> Offsets;
     }
 
     @Getter
     @Builder
     @Schema(description = "토큰 발생 위치 정보 (하이라이트용)")
-    public static class Occurrence {
+    public static class Offset {
         @Schema(description = "원문 기준 시작 인덱스 (inclusive)", example = "15")
         private final int begin;
 
@@ -761,7 +761,7 @@ public class RepetitiveTextAnalysisService {
         private final String type;
 
         @Schema(description = "패턴 발생 위치 목록 (원문 기준, 하이라이트용)")
-        private final List<Occurrence> occurrences;
+        private final List<Offset> Offsets;
     }
 
     @Getter
