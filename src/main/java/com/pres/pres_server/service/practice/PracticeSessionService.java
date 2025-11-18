@@ -184,58 +184,25 @@ public class PracticeSessionService {
                                 sessionId);
 
                 // 5. DTO 변환 및 반환 (발표 피드백 + 슬라이드별 피드백 + QnA 결과)
-                // AI 피드백은 AnalysisResultService에서 슬라이드별로 생성되어 DB에 저장됩니다.
-                // 여기서는 저장된 슬라이드 피드백의 코멘트를 모아 aiFeedback 맵을 조립해서 반환합니다.
+                // AI 피드백: 우선 DB에 저장된 Feedback.overallComment를 사용하고, 없으면 슬라이드 이슈 코멘트를 합쳐서 대체합니다.
                 Map<String, String> aiFeedback = new HashMap<>();
 
-                // 1) 망설임(Hesitation): 슬라이드 이슈가 SILENCE이거나 silenceCount가 있는 경우의 comment 합치기
-                String hesitation = slideFeedbacks.stream()
-                                .filter(s -> "SILENCE".equals(s.getIssueType())
-                                                || (s.getSilenceCount() != null && s.getSilenceCount() > 0))
-                                .map(SlideFeedbackDto::getComment)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.joining(" "));
-                if (hesitation != null && !hesitation.isBlank())
-                        aiFeedback.put("hesitation", hesitation);
+                if (feedback.getOverallComment() != null && !feedback.getOverallComment().isBlank()) {
+                        aiFeedback.put("overall", feedback.getOverallComment());
+                } else {
+                        List<IssueDto> allIssues = slideFeedbacks.stream()
+                                        .flatMap(s -> s.getIssues() == null ? Collections.<IssueDto>emptyList().stream()
+                                                        : s.getIssues().stream())
+                                        .collect(Collectors.toList());
 
-                // 2) 반복(Repetition)
-                String repetition = slideFeedbacks.stream()
-                                .filter(s -> "REPETITION".equals(s.getIssueType())
-                                                || (s.getRepeatCount() != null && s.getRepeatCount() > 0))
-                                .map(SlideFeedbackDto::getComment)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.joining(" "));
-                if (repetition != null && !repetition.isBlank())
-                        aiFeedback.put("repetition", repetition);
-
-                // 3) 정확도(Accuracy)
-                String accuracy = slideFeedbacks.stream()
-                                .filter(s -> "ACCURACY".equals(s.getIssueType())
-                                                || (s.getErrorCount() != null && s.getErrorCount() > 0))
-                                .map(SlideFeedbackDto::getComment)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.joining(" "));
-                if (accuracy != null && !accuracy.isBlank())
-                        aiFeedback.put("accuracy", accuracy);
-
-                // 4) 속도(Pace / SPEED)
-                String pace = slideFeedbacks.stream()
-                                .filter(s -> "SPEED".equals(s.getIssueType())
-                                                || (s.getSpmUser() != null
-                                                                && (s.getSpmUser() < 250 || s.getSpmUser() > 330)))
-                                .map(SlideFeedbackDto::getComment)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.joining(" "));
-                if (pace != null && !pace.isBlank())
-                        aiFeedback.put("pace", pace);
-
-                // 5) 전체 코멘트(옵션): 슬라이드 코멘트 전체를 합쳐서 overall로 둠 (필요시 프론트에서 사용)
-                String overall = slideFeedbacks.stream()
-                                .map(SlideFeedbackDto::getComment)
-                                .filter(Objects::nonNull)
-                                .collect(Collectors.joining(" "));
-                if (overall != null && !overall.isBlank())
-                        aiFeedback.put("overall", overall);
+                        // fallback: 모든 이슈 코멘트 합치기
+                        String overall = allIssues.stream()
+                                        .map(IssueDto::getComment)
+                                        .filter(Objects::nonNull)
+                                        .collect(Collectors.joining(" "));
+                        if (!overall.isBlank())
+                                aiFeedback.put("overall", overall);
+                }
 
                 return PracticeFeedbackDto.builder()
                                 .sessionId(sessionId)
@@ -296,22 +263,85 @@ public class PracticeSessionService {
                         }
                 }
 
+                // Fallback: if issues is null, build IssueDto list from individual fields
+                if (issues == null) {
+                        issues = new ArrayList<>();
+
+                        // SPEED
+                        if (entity.getSpmUser() != null) {
+                                issues.add(IssueDto.builder()
+                                                .issueType("SPEED")
+                                                .spmUser(entity.getSpmUser())
+                                                .spmAverage(entity.getSpmAverage())
+                                                .comment(entity.getComment())
+                                                .build());
+                        }
+
+                        // FILLER
+                        if (entity.getFillerCount() != null && entity.getFillerCount() > 0) {
+                                issues.add(IssueDto.builder()
+                                                .issueType("FILLER")
+                                                .fillerCount(entity.getFillerCount())
+                                                .fillerDetail(fillerDetail)
+                                                .comment(entity.getComment())
+                                                .build());
+                        }
+
+                        // SILENCE
+                        if (entity.getSilenceCount() != null && entity.getSilenceCount() > 0) {
+                                issues.add(IssueDto.builder()
+                                                .issueType("SILENCE")
+                                                .errorCount(entity.getSilenceCount())
+                                                .comment(entity.getComment())
+                                                .build());
+                        }
+
+                        // REPETITION
+                        if (entity.getRepeatCount() != null && entity.getRepeatCount() > 0) {
+                                // try parse repeatDetail into map if it looks like JSON
+                                Map<String, Integer> repeatMap = null;
+                                if (entity.getRepeatDetail() != null) {
+                                        try {
+                                                repeatMap = objectMapper.readValue(entity.getRepeatDetail(),
+                                                                new TypeReference<Map<String, Integer>>() {
+                                                                });
+                                        } catch (Exception ignore) {
+                                                // fallback: create simple map from comma-separated tokens
+                                                try {
+                                                        repeatMap = new LinkedHashMap<>();
+                                                        String[] parts = entity.getRepeatDetail().split(",");
+                                                        for (String p : parts) {
+                                                                String key = p.trim();
+                                                                if (!key.isEmpty())
+                                                                        repeatMap.put(key, 1);
+                                                        }
+                                                } catch (Exception ignore2) {
+                                                        repeatMap = null;
+                                                }
+                                        }
+                                }
+                                issues.add(IssueDto.builder()
+                                                .issueType("REPETITION")
+                                                .repeatCount(entity.getRepeatCount())
+                                                .repeatDetail(repeatMap)
+                                                .comment(entity.getComment())
+                                                .build());
+                        }
+
+                        // ACCURACY
+                        if (entity.getErrorCount() != null && entity.getErrorCount() > 0) {
+                                issues.add(IssueDto.builder()
+                                                .issueType("ACCURACY")
+                                                .errorCount(entity.getErrorCount())
+                                                .comment(entity.getComment())
+                                                .build());
+                        }
+                }
+
                 SlideFeedbackDto.SlideFeedbackDtoBuilder builder = SlideFeedbackDto.builder()
                                 .slideNumber(entity.getSlideNumber())
                                 .timestampSeconds(entity.getTimestampSeconds())
                                 .slideText(entity.getSlideText())
-                                .issueType(entity.getIssueType())
-                                .spmUser(entity.getSpmUser())
-                                .spmAverage(entity.getSpmAverage())
-                                .fillerCount(entity.getFillerCount())
-                                .fillerDetail(fillerDetail)
-                                .silenceCount(entity.getSilenceCount())
-                                .totalSilenceDuration(entity.getTotalSilenceDuration())
-                                .silenceScore(entity.getSilenceScore())
-                                .repeatCount(entity.getRepeatCount())
-                                .repeatDetail(entity.getRepeatDetail())
-                                .errorCount(entity.getErrorCount())
-                                .comment(entity.getComment())
                                 .issues(issues);
 
                 // 썸네일 URL 채우기 (가능하면)
