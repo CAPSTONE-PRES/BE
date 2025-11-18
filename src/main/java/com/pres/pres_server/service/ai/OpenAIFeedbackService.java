@@ -241,6 +241,24 @@ public class OpenAIFeedbackService {
         }
     }
 
+    /**
+     * 전체 세션에 대한 요약 피드백 생성
+     * 반환: 간결한 텍스트(한두 문장)
+     */
+    public String generateOverallFeedback(String sessionId, String aggregatedComments) {
+        String system = "너는 발표 코칭 전문가야. 전체 세션에 대한 간결한 한두 문장 요약 피드백을 제공해줘.";
+        String user = String.format(
+                "세션: %s\n슬라이드별 코멘트(원문): %s\n\n요구: 위 코멘트를 참고해서 전체 연습 세션에 대한 한두 문장짜리 요약 피드백을 자연스러운 한국어 문장으로 반환해줘. 응답은 최대 200토큰의 평문 텍스트로만 제공하고, JSON이 아닌 텍스트만 반환해줘.",
+                sessionId, aggregatedComments == null ? "" : aggregatedComments);
+        try {
+            String content = executeChatRequest(system, user);
+            return content != null ? content.trim() : null;
+        } catch (Exception e) {
+            log.error("전체 요약 피드백 생성 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private String buildPrompt(String question, String idealAnswer, String userAnswer) {
         return String.format(
                 "아래는 면접/발표 QnA입니다.\n" +
