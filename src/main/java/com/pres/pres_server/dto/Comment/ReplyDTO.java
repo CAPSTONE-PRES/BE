@@ -17,6 +17,7 @@ public class ReplyDTO {
     private String authorProfileImageUrl;
     private boolean editable;
     private String content;
+    private LocalDateTime createdAt;
 
     public static ReplyDTO from(Comment comment, User currentUser) {
         return ReplyDTO.builder()
@@ -26,6 +27,7 @@ public class ReplyDTO {
                 .authorProfileImageUrl(comment.getAuthorUser().getProfileImageUrl())
                 .editable(comment.getAuthorUser().getId().equals(currentUser.getId()))
                 .content(comment.getContent())
+                .createdAt(comment.getCreatedAt())
                 .build();
     }
 }
