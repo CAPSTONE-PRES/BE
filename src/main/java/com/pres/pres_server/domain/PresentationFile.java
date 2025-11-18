@@ -1,8 +1,7 @@
 package com.pres.pres_server.domain;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -12,6 +11,9 @@ import java.util.List;
 @Table(name = "presentation_files")
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class PresentationFile {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,4 +76,5 @@ public class PresentationFile {
     @OneToMany(mappedBy = "file", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("pageNumber ASC")
     private List<PresentationImage> images = new ArrayList<>();
+
 }
