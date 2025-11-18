@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.util.*;
 
@@ -33,7 +34,8 @@ public class OpenAIEmbeddingService {
     private static final int MAX_CACHE_SIZE = 1000;
     // 청크 분할 관련 기본값(추정)
     private static final int MAX_TOKENS_PER_REQUEST = 4000; // 모델 한도보다 여유있게 설정
-    private static final int APPROX_CHARS_PER_TOKEN = 4; // 경험적 추정: 1 token ~= 4 chars
+    private static final int SAFETY_TOKENS = 512; // 안전 여유 토큰
+    private static final int APPROX_CHARS_PER_TOKEN = 2; // 더 보수적인 추정 (한 토큰 당 문자 수)
 
     /**
      * 두 텍스트의 의미론적 유사도 계산 (0.0 ~ 1.0)
@@ -78,7 +80,7 @@ public class OpenAIEmbeddingService {
         }
 
         // 긴 텍스트는 청크로 분할하여 임베딩을 집계
-        int maxChars = MAX_TOKENS_PER_REQUEST * APPROX_CHARS_PER_TOKEN;
+        int maxChars = (MAX_TOKENS_PER_REQUEST - SAFETY_TOKENS) * APPROX_CHARS_PER_TOKEN;
         if (text != null && text.length() > maxChars) {
             log.info("  • 긴 텍스트 감지 - 청크 분할하여 임베딩 처리 (length={})", text.length());
             float[] aggregated = getAggregatedEmbeddingByChunks(text, maxChars);
@@ -91,16 +93,39 @@ public class OpenAIEmbeddingService {
 
         // 캐시 미스 → API 호출
         log.debug("  • 캐시 미스 → API 호출");
-        float[] embedding = getEmbedding(text);
+        try {
+            float[] embedding = getEmbedding(text);
 
-        // 캐시 저장 (용량 제한)
-        if (embeddingCache.size() < MAX_CACHE_SIZE) {
-            embeddingCache.put(cacheKey, embedding);
-        } else {
-            log.warn("  • 캐시 용량 초과 - 저장 생략");
+            // 캐시 저장 (용량 제한)
+            if (embeddingCache.size() < MAX_CACHE_SIZE) {
+                embeddingCache.put(cacheKey, embedding);
+            } else {
+                log.warn("  • 캐시 용량 초과 - 저장 생략");
+            }
+
+            return embedding;
+        } catch (RuntimeException e) {
+            // OpenAI가 토큰 초과로 400을 반환한 경우, 더 작은 청크로 재시도
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            Throwable cause = e.getCause();
+            boolean isTokenError = (cause instanceof HttpClientErrorException)
+                    && msg.toLowerCase().contains("maximum context length")
+                    || msg.toLowerCase().contains("maximum context length");
+
+            if (isTokenError) {
+                log.warn("  • OpenAI 토큰 초과 오류 감지 - 보수적 청크로 재시도");
+                // 더 보수적인 청크 크기 (예: 절반 토큰 또는 고정값)
+                int conservativeMaxChars = Math.max(4096,
+                        (MAX_TOKENS_PER_REQUEST / 2 - SAFETY_TOKENS) * APPROX_CHARS_PER_TOKEN);
+                float[] aggregated = getAggregatedEmbeddingByChunks(text, conservativeMaxChars);
+                if (embeddingCache.size() < MAX_CACHE_SIZE) {
+                    embeddingCache.put(cacheKey, aggregated);
+                }
+                return aggregated;
+            }
+
+            throw e;
         }
-
-        return embedding;
     }
 
     /**
@@ -208,6 +233,16 @@ public class OpenAIEmbeddingService {
      */
     private float[] getAggregatedEmbeddingByChunks(String text, int maxChars) {
         List<String> chunks = splitToChunksIfNeeded(text, maxChars);
+        // 청크 분할 여부/사이즈 확인 로그 추가
+        if (chunks.size() > 1) {
+            StringBuilder sizes = new StringBuilder();
+            for (String c : chunks) {
+                if (sizes.length() > 0)
+                    sizes.append(",");
+                sizes.append(c.length());
+            }
+            log.info("  • 청크 분할 결과 - 개수: {}, 길이(문자): [{}]", chunks.size(), sizes.toString());
+        }
         if (chunks.isEmpty()) {
             return getEmbedding(text);
         }
