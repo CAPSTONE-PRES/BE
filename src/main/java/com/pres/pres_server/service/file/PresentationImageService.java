@@ -24,9 +24,6 @@ public class PresentationImageService {
 
     private final PresentationImageRepository presentationImageRepository;
 
-    @Value("${app.base-url:http://54.180.25.217:8080}")
-    private String baseUrl;
-
     /**
      * 파일의 전체 이미지 URL 리스트 조회
      */
@@ -44,7 +41,7 @@ public class PresentationImageService {
             throw new IllegalStateException("이미지가 생성되지 않았습니다: fileId=" + fileId);
         }
 
-        String apiPath = baseUrl + "/api/files/";
+        String apiPath = "/api/files/";
 
         return images.stream()
                 .map(img -> apiPath + fileId + "/page/" + img.getPageNumber() + "/image")
