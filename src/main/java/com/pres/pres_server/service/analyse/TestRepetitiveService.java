@@ -54,7 +54,7 @@ public class TestRepetitiveService {
         // ⭐ 테스트에서는 키워드 없음 (발표 자료가 없으므로)
         Set<String> keywords = Collections.emptySet();
 
-        // 3. 자체 추정 슬라이드 수 (window 기반) — word occurrences에 슬라이드 인덱스를 채우기 위해 먼저 계산
+        // 3. 자체 추정 슬라이드 수 (window 기반) — word Offsets에 슬라이드 인덱스를 채우기 위해 먼저 계산
         int estimatedSlides = 3;
         // 1) 문장 분리/정규화 전부 제거
         // 2) Komoran 정규화 토큰 + 절대 오프셋 한 번에 생성
@@ -74,10 +74,10 @@ public class TestRepetitiveService {
                 .map(e -> WordRepetition.builder()
                         .word(e.getKey())
                         .count(e.getValue().size())
-                        .occurrences(
+                        .Offsets(
                                 e.getValue().stream().map((nt ->{
                                     int extEnd = extendToWordBoundary(sttText, nt.end);
-                                    return RepetitiveTextAnalysisService.Occurrence.builder()
+                                    return RepetitiveTextAnalysisService.Offset.builder()
                                         .begin(nt.begin)
                                         .end(extEnd) // ★ 어절 경계 확장
                                         .slideIndex(null) // 테스트 모드이므로 없음
@@ -132,7 +132,7 @@ public class TestRepetitiveService {
             var occ = list.stream()
                     .map(pm -> {
                         int extEnd = extendToWordBoundary(sttText, pm.last().end);
-                        return RepetitiveTextAnalysisService.Occurrence.builder()
+                        return RepetitiveTextAnalysisService.Offset.builder()
                             .begin(pm.first().begin)
                             .end(extendToWordBoundary(sttText, pm.last().end))
                             .slideIndex(null)
@@ -146,7 +146,7 @@ public class TestRepetitiveService {
                             .pattern(key)
                             .type("3-GRAM")
                             .count(list.size())
-                            .occurrences(occ)
+                            .Offsets(occ)
                             .build()
             );
         });
@@ -163,7 +163,7 @@ public class TestRepetitiveService {
                             .map(pm ->
                             {
                                 int extEnd = extendToWordBoundary(sttText, pm.last().end);
-                                return RepetitiveTextAnalysisService.Occurrence.builder()
+                                return RepetitiveTextAnalysisService.Offset.builder()
                                     .begin(pm.first().begin)
                                     .end(extendToWordBoundary(sttText, pm.last().end))
                                     .slideIndex(null)
@@ -176,7 +176,7 @@ public class TestRepetitiveService {
                                     .pattern(e.getKey())
                                     .type("2-GRAM")
                                     .count(e.getValue().size())
-                                    .occurrences(occ)
+                                    .Offsets(occ)
                                     .build()
                     );
                 });
@@ -266,7 +266,7 @@ public class TestRepetitiveService {
         Map<String, Long> wordFreq = tokens.stream()
                 .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
 
-        // 2) 원문 기준 위치(occurrences) 추출 - KomoranAnalyzer 사용
+        // 2) 원문 기준 위치(Offsets) 추출 - KomoranAnalyzer 사용
         List<com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken> normTokens = com.pres.pres_server.service.analyse.utils.KomoranAnalyzer
                 .tokenizeForRepeatWithSpans(sttText);
 
@@ -294,7 +294,7 @@ public class TestRepetitiveService {
 
         int sentencesPerSlide = Math.max(1, sentences.size() / Math.max(1, estimatedSlides));
 
-        Map<String, List<RepetitiveTextAnalysisService.Occurrence>> occurrencesMap = new HashMap<>();
+        Map<String, List<RepetitiveTextAnalysisService.Offset>> OffsetsMap = new HashMap<>();
         for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
             int tokenBegin = nt.begin;
             Integer slideIdx = null;
@@ -314,8 +314,8 @@ public class TestRepetitiveService {
                 text = nt.norm;
             }
 
-            occurrencesMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
-                    .add(RepetitiveTextAnalysisService.Occurrence.builder()
+            OffsetsMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
+                    .add(RepetitiveTextAnalysisService.Offset.builder()
                             .begin(nt.begin)
                             .end(nt.end)
                             .text(text)
@@ -323,7 +323,7 @@ public class TestRepetitiveService {
                             .build());
         }
 
-        // 4) 결과 구성: occurrences 포함
+        // 4) 결과 구성: Offsets 포함
         return wordFreq.entrySet().stream()
                 .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
                 .filter(e -> !keywords.contains(e.getKey()))
@@ -331,7 +331,7 @@ public class TestRepetitiveService {
                 .map(e -> RepetitiveTextAnalysisService.WordRepetition.builder()
                         .word(e.getKey())
                         .count(e.getValue().intValue())
-                        .occurrences(occurrencesMap.getOrDefault(e.getKey(), Collections.emptyList()))
+                        .Offsets(OffsetsMap.getOrDefault(e.getKey(), Collections.emptyList()))
                         .build())
                 .sorted(Comparator.comparingInt(RepetitiveTextAnalysisService.WordRepetition::getCount).reversed())
                 .collect(Collectors.toList());
@@ -456,11 +456,11 @@ public class TestRepetitiveService {
                         MIN_KEYWORD_FREQUENCY)
                 : keywords;
 
-    // collect occurrences using Komoran spans
+    // collect Offsets using Komoran spans
         List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(normalizedText);
 
-        // build occurrences map for 2~3 grams
-        Map<String, List<RepetitiveTextAnalysisService.Occurrence>> occMap = new HashMap<>();
+        // build Offsets map for 2~3 grams
+        Map<String, List<RepetitiveTextAnalysisService.Offset>> occMap = new HashMap<>();
         for (int n = 2; n <= 3; n++) {
             if (normTokens.size() < n) continue;
             for (int i = 0; i <= normTokens.size() - n; i++) {
@@ -473,7 +473,7 @@ public class TestRepetitiveService {
                 int begin = window.get(0).begin;
                 int end = window.get(window.size() - 1).end;
                 String text = normalizedText.substring(Math.max(0, begin), Math.min(normalizedText.length(), end));
-                RepetitiveTextAnalysisService.Occurrence occ = RepetitiveTextAnalysisService.Occurrence.builder()
+                RepetitiveTextAnalysisService.Offset occ = RepetitiveTextAnalysisService.Offset.builder()
                         .begin(begin).end(end).slideIndex(null).text(text).build();
                 occMap.computeIfAbsent(key, k -> new ArrayList<>()).add(occ);
             }
@@ -494,7 +494,7 @@ public class TestRepetitiveService {
                         .pattern(e.getKey())
                         .count(e.getValue().intValue())
                         .type(e.getKey().split(" ").length + "-GRAM")
-                        .occurrences(occMap.getOrDefault(e.getKey(), Collections.emptyList()))
+                        .Offsets(occMap.getOrDefault(e.getKey(), Collections.emptyList()))
                         .build())
                 .sorted(Comparator.comparingInt(RepetitivePattern::getCount).reversed())
                 .collect(Collectors.toList());
