@@ -171,13 +171,12 @@ public class GenerateCueService {
                 throw new IllegalStateException("QR slug 충돌 다중 발생");
 
             adv.setQrSlug(slug);
-            adv.setQrUrl("https://pres.app/cuecard/" + slug);
         }
 
         // 변경된 ADV 엔티티만 모아서 명시적으로 저장
         List<CueCard> modified = cueCards.stream()
                 .filter(c -> c.getMode() == CueCard.Mode.ADVANCED)
-                .filter(c -> c.getQrSlug() != null && c.getQrUrl() != null)
+                .filter(c -> c.getQrSlug() != null)
                 .toList();
 
         if (!modified.isEmpty()) {
@@ -258,10 +257,8 @@ public class GenerateCueService {
                         .sorted(Comparator.comparing(c -> Optional.ofNullable(c.getSectionNumber()).orElse(0)))
                         .findFirst();
                 s.setQrSlug(advFirst.map(CueCard::getQrSlug).orElse(null));
-                s.setQrUrl(advFirst.map(CueCard::getQrUrl).orElse(null));
             } else {
                 s.setQrSlug(null);
-                s.setQrUrl(null);
             }
             // s.setAdvanced(advancedList);
             slides.add(s);

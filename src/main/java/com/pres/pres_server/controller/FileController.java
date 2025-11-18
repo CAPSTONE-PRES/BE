@@ -117,10 +117,10 @@ public class FileController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "파일의 QR 정보 조회", description = "연습모드에서 사용할 슬라이드별 QR 정보(slug, url)를 조회합니다.")
+    @Operation(summary = "파일의 QR 정보 조회", description = "연습모드에서 사용할 슬라이드별 QR 정보(slug)를 조회합니다.")
     @GetMapping("/qr-info/{fileId}")
-    public ResponseEntity<Map<Integer, QrInfoDto>> getQrInfo(@PathVariable("fileId") Long fileId) {
-        Map<Integer, QrInfoDto> qrInfo = cueSlideService.getQrInfoByFileId(fileId);
+    public ResponseEntity<Map<Integer, String>> getQrInfo(@PathVariable("fileId") Long fileId) {
+        Map<Integer, String> qrInfo = cueSlideService.getQrInfoByFileId(fileId);
         return ResponseEntity.ok(qrInfo);
     }
 
@@ -129,19 +129,6 @@ public class FileController {
     public ResponseEntity<List<String>> getPresentationImages(@PathVariable Long fileId) {
         List<String> urls = presentationImageService.getImageUrls(fileId);
         return ResponseEntity.ok(urls);
-    }
-
-    @Operation(summary = "슬라이드 업서트 (이미지/텍스트)", description = "insufficient로 표시된 슬라이드만 업서트 허용. 이미지와/또는 텍스트를 업로드하여 해당 슬라이드를 보완합니다.")
-    @PostMapping(value = "/{fileId}/slides/{pageNumber}/upsert", consumes = { "multipart/form-data" })
-    public ResponseEntity<?> upsertSlide(
-            @PathVariable Long fileId,
-            @PathVariable Integer pageNumber,
-            @RequestPart(name = "image", required = false) MultipartFile image,
-            @RequestPart(name = "text", required = false) String text,
-            @RequestParam(name = "restrictInsufficient", required = false, defaultValue = "true") boolean restrictInsufficient) {
-        // PresentationFileService에서 권한/검증/저장 처리
-        var dto = presentationFileService.upsertSlide(fileId, pageNumber, image, text, restrictInsufficient);
-        return ResponseEntity.ok(dto);
     }
 
     @Operation(summary = "특정 페이지 이미지 조회", description = "파일 ID와 페이지 번호로 해당 슬라이드 이미지를 조회합니다.")

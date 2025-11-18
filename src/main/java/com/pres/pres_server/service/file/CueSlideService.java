@@ -5,7 +5,6 @@ import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.dto.file.CueAdvancedDto;
 import com.pres.pres_server.dto.file.CueBasicDto;
 import com.pres.pres_server.dto.file.CueSlideDto;
-import com.pres.pres_server.dto.file.QrInfoDto;
 import com.pres.pres_server.repository.CueCardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -210,7 +209,7 @@ public class CueSlideService {
     /**
      * QR 정보만 반환 (대본 제외)
      */
-    public Map<Integer, QrInfoDto> getQrInfoByFileId(Long fileId) {
+    public Map<Integer, String> getQrInfoByFileId(Long fileId) {
         if (fileId == null || fileId <= 0) {
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
         }
@@ -220,10 +219,10 @@ public class CueSlideService {
                 .findByPresentationFile_FileIdAndModeOrderBySlideNumberAsc(fileId, CueCard.Mode.ADVANCED);
 
         return qrCards.stream()
-                .filter(c -> c.getQrSlug() != null && c.getQrUrl() != null)
+                .filter(c -> c.getQrSlug() != null)
                 .collect(Collectors.toMap(
                         CueCard::getSlideNumber,
-                        c -> new QrInfoDto(c.getQrSlug(), c.getQrUrl()),
+                        CueCard::getQrSlug,
                         (existing, replacement) -> existing, // 중복 시 기존 값 유지
                         TreeMap::new // 슬라이드 번호 순 정렬
                 ));
@@ -302,9 +301,6 @@ public class CueSlideService {
                 .basic(basicDtos)
                 .advanced(advancedDtos)
                 .qrSlug(qrCard.getQrSlug())
-                .qrUrl(qrCard.getQrUrl())
-                .prevSlug(prev)
-                .nextSlug(next)
                 .build();
     }
 

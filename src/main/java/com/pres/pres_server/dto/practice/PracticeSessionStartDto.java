@@ -27,6 +27,6 @@ public class PracticeSessionStartDto {
         private String slideText;
         private String imageUrl;
         private String cueCard;
-        private String qrUrl;
+
     }
 }
