@@ -198,12 +198,12 @@ public class CueCardController {
 
     @Operation(summary = "특정 cuecard에 코멘트 전체 불러오기")
     @GetMapping("/{cueId}/comments")
-    public List<CueCardCommentResponseDTO> getComments(@PathVariable Long cueId,
-                                                       @AuthenticationPrincipal User user) {
+    public CueCardCommentResponseDTO getComments(
+            @PathVariable Long cueId,
+            @AuthenticationPrincipal User user
+    ) {
         List<CommentResponseDTO> comments = commentService.getComments(cueId, user);
-
-        CueCardCommentResponseDTO response = new CueCardCommentResponseDTO(cueId, comments);
-        return List.of(response);
+        return new CueCardCommentResponseDTO(cueId, comments);
     }
 
     /*
