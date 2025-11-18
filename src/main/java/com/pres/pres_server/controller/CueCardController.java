@@ -69,24 +69,43 @@ public class CueCardController {
         return ResponseEntity.ok(response);
     }
 
+//    @Operation(summary = "큐카드 내용 업데이트 (cueId + mode 기준)")
+//    @PatchMapping("/cuecard/{cueId}/update")
+//    public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
+//            @PathVariable Long cueId,
+//            @RequestBody CueCardUpdateRequest request,
+//            @AuthenticationPrincipal User user
+//    ) {
+//        try {
+//            CueCardUpdateResponseDTO response = cueCardService.updateCueCardMode(cueId, request, user);
+//            return ResponseEntity.ok(response);
+//        } catch (RuntimeException e) {
+//            // 에러 메시지를 클라이언트에 전달
+//            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+//                    .body(CueCardUpdateResponseDTO.builder()
+//                            .message(e.getMessage())
+//                            .build());
+//        }
+//    }
+
     @Operation(summary = "큐카드 내용 업데이트 (cueId + mode 기준)")
     @PatchMapping("/cuecard/{cueId}/update")
     public ResponseEntity<CueCardUpdateResponseDTO> updateCueCardContent(
             @PathVariable Long cueId,
             @RequestBody CueCardUpdateRequest request,
-            @AuthenticationPrincipal User user
+            @AuthenticationPrincipal(expression = "id") Long userId
     ) {
         try {
-            CueCardUpdateResponseDTO response = cueCardService.updateCueCardMode(cueId, request, user);
+            CueCardUpdateResponseDTO response = cueCardService.updateCueCardMode(cueId, request, userId);
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
-            // 에러 메시지를 클라이언트에 전달
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(CueCardUpdateResponseDTO.builder()
                             .message(e.getMessage())
                             .build());
         }
     }
+
 
     @Operation(summary = "큐카드 체크/취소 api", description = "슬라이드별 큐카드(1,2)에 대한 체크 표시 생성 및 삭제")
     @PatchMapping("/cuecard/{cueId}/check")

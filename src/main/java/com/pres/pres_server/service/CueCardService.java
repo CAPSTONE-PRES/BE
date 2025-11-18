@@ -87,17 +87,44 @@ public class CueCardService {
 
         return new CueCardCreateResponseDTO(fileId, slideNumber, cueCardContents);
     }
+//
+//    // 큐카드 내용 업데이트
+//    @Transactional
+//    public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, User user) {
+//
+//        CueCard.Mode modeEnum = request.getMode(); // 이미 Enum 타입이므로 변환 불필요
+//
+//        CueCard cueCard = cueCardRepository.findByCueIdAndMode(cueId, modeEnum)
+//                .orElseThrow(() -> new RuntimeException("해당 cueId와 mode에 해당하는 큐카드를 찾을 수 없습니다."));
+//
+//        if (!cueCard.getPresentationFile().getProject().getPresenter().equals(user)) {
+//            throw new RuntimeException("큐카드를 수정할 권한이 없습니다.");
+//        }
+//
+//        if (request.getContent() == null || request.getContent().isBlank()) {
+//            throw new RuntimeException("content는 비어있을 수 없습니다.");
+//        }
+//
+//        cueCard.setContent(request.getContent());
+//        cueCardRepository.saveAndFlush(cueCard);
+//
+//        return CueCardUpdateResponseDTO.builder()
+//                .cueId(cueCard.getCueId())
+//                .updatedContent(cueCard.getContent())
+//                .message("큐카드가 성공적으로 수정되었습니다.")
+//                .build();
+//    }
 
-    // 큐카드 내용 업데이트
-    @Transactional
-    public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, User user) {
+    public CueCardUpdateResponseDTO updateCueCardMode(Long cueId, CueCardUpdateRequest request, Long userId) {
 
-        CueCard.Mode modeEnum = request.getMode(); // 이미 Enum 타입이므로 변환 불필요
+        CueCard.Mode modeEnum = request.getMode();
 
         CueCard cueCard = cueCardRepository.findByCueIdAndMode(cueId, modeEnum)
                 .orElseThrow(() -> new RuntimeException("해당 cueId와 mode에 해당하는 큐카드를 찾을 수 없습니다."));
 
-        if (!cueCard.getPresentationFile().getProject().getPresenter().equals(user)) {
+        User presenter = cueCard.getPresentationFile().getProject().getPresenter();
+
+        if (!presenter.getId().equals(userId)) {
             throw new RuntimeException("큐카드를 수정할 권한이 없습니다.");
         }
 
@@ -114,6 +141,7 @@ public class CueCardService {
                 .message("큐카드가 성공적으로 수정되었습니다.")
                 .build();
     }
+
 
 
     // 큐카드 체크 상태 변환 서비스
