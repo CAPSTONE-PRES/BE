@@ -37,5 +37,7 @@ public interface VisitLogRepository extends JpaRepository<VisitLog, Long> {
 
     void deleteByWorkspace(WorkSpace workspace);
 
+    void deleteByProject(Project project);
+
 }
 

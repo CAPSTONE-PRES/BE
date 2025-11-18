@@ -218,19 +218,40 @@ public class ProjectService {
         }
 
         // 프로젝트 삭제 서비스
+//        @Transactional
+//        public void deleteProject(Long projectId, User user) {
+//                Project project = projectRepository.findById(projectId)
+//                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+//
+//                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
+//                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
+//                        && !project.getPresenter().getId().equals(user.getId())) {
+//                        throw new RuntimeException("권한이 없습니다.");
+//                }
+//
+//                projectRepository.delete(project);
+//        }
         @Transactional
         public void deleteProject(Long projectId, User user) {
                 Project project = projectRepository.findById(projectId)
                         .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
 
-                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
-                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
-                        && !project.getPresenter().getId().equals(user.getId())) {
+                // 삭제 권한 : 워크스페이스의 소유자 또는 발표자만 삭제 가능
+                boolean isOwner = project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId());
+                boolean isPresenter = project.getPresenter() != null
+                        && project.getPresenter().getId().equals(user.getId());
+
+                if (!isOwner && !isPresenter) {
                         throw new RuntimeException("권한이 없습니다.");
                 }
 
+                // VisitLog 수동 삭제
+                visitLogRepository.deleteByProject(project);
+
+                // 프로젝트 삭제
                 projectRepository.delete(project);
         }
+
 
         // 특정 프로젝트 정보 반환
         public ProjectInfoDTO getProjectInfo(User user, Long projectId) {
