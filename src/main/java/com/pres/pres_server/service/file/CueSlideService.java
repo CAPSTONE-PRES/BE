@@ -53,15 +53,16 @@ public class CueSlideService {
         Map<Integer, CueCard> basicBySection = existingBasics.stream()
                 .collect(Collectors.toMap(
                         c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
-                        c -> c
-                ));
+                        c -> c));
 
         // 들어온 BASIC 섹션 업서트
         Set<Integer> incomingSections = new HashSet<>();
         if (basics != null) {
             for (CueBasicDto b : basics) {
-                if (b == null) continue;
-                if (b.getText() == null || b.getText().isBlank()) continue;
+                if (b == null)
+                    continue;
+                if (b.getText() == null || b.getText().isBlank())
+                    continue;
 
                 int sec = b.getSection();
                 if (sec <= 0) {
@@ -92,9 +93,9 @@ public class CueSlideService {
     }
 
     private void upsertAdvancedCards(PresentationFile file, int slide,
-                                     List<CueAdvancedDto> advanceds,
-                                     List<CueBasicDto> basics,
-                                     Set<Integer> targetSections) {
+            List<CueAdvancedDto> advanceds,
+            List<CueBasicDto> basics,
+            Set<Integer> targetSections) {
         Long fileId = file.getFileId();
 
         // 기존 ADVANCED 카드 로드
@@ -107,16 +108,17 @@ public class CueSlideService {
         Map<Integer, CueCard> advBySection = existingAdv.stream()
                 .collect(Collectors.toMap(
                         c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
-                        c -> c
-                ));
+                        c -> c));
 
         // 인입 ADVANCED를 섹션별로 맵 구성
         Map<Integer, String> incomingAdvTextBySec = new HashMap<>();
         if (advanceds != null) {
             for (CueAdvancedDto a : advanceds) {
-                if (a == null) continue;
+                if (a == null)
+                    continue;
                 int sec = a.getSection();
-                if (sec <= 0) continue;
+                if (sec <= 0)
+                    continue;
                 incomingAdvTextBySec.put(sec, Optional.ofNullable(a.getText()).orElse("").trim());
             }
         }
@@ -125,7 +127,8 @@ public class CueSlideService {
         Map<Integer, String> basicTextBySec = new HashMap<>();
         if (basics != null) {
             for (CueBasicDto b : basics) {
-                if (b == null) continue;
+                if (b == null)
+                    continue;
                 int sec = b.getSection();
                 if (sec > 0 && b.getText() != null) {
                     basicTextBySec.put(sec, b.getText());
@@ -165,9 +168,9 @@ public class CueSlideService {
         }
     }
 
-    //ocr 인식 실패시 사용
+    // ocr 인식 실패시 사용
     @Transactional
-    public void persistInsufficient (PresentationFile file,int slideNum){
+    public void persistInsufficient(PresentationFile file, int slideNum) {
         // BASIC 업서트
         upsertBasic(file, slideNum, " ");
         // ADVANCED 업서트
@@ -221,12 +224,12 @@ public class CueSlideService {
                 .collect(Collectors.toMap(
                         CueCard::getSlideNumber,
                         c -> new QrInfoDto(c.getQrSlug(), c.getQrUrl()),
-                        (existing, replacement) -> existing,  // 중복 시 기존 값 유지
-                        TreeMap::new  // 슬라이드 번호 순 정렬
+                        (existing, replacement) -> existing, // 중복 시 기존 값 유지
+                        TreeMap::new // 슬라이드 번호 순 정렬
                 ));
     }
 
-    //qr과 대본을 같이 반환함. "/qr/{slug}"에서 사용
+    // qr과 대본을 같이 반환함. "/qr/{slug}"에서 사용
     @Transactional(readOnly = true)
     public CueSlideDto getSlideByQr(String slug) {
         CueCard qrCard = cueCardRepository.findByQrSlug(slug)
@@ -257,8 +260,7 @@ public class CueSlideService {
                 .collect(Collectors.toMap(
                         c -> Optional.ofNullable(c.getSectionNumber()).orElse(0),
                         c -> c,
-                        (a,b) -> a
-                ));
+                        (a, b) -> a));
 
         List<CueAdvancedDto> advancedDtos = new ArrayList<>();
         for (CueBasicDto b : basicDtos) {
@@ -273,12 +275,36 @@ public class CueSlideService {
             advancedDtos.add(a);
         }
 
+        // 이전/다음 슬라이드의 qrSlug 계산
+        List<CueCard> advAll = cueCardRepository
+                .findByPresentationFile_FileIdAndModeOrderBySlideNumberAsc(fileId, CueCard.Mode.ADVANCED);
+
+        // (slideNumber -> qrSlug) ordered map
+        List<java.util.Map.Entry<Integer, String>> slideSlugPairs = advAll.stream()
+                .filter(c -> c.getQrSlug() != null && !c.getQrSlug().isBlank())
+                .map(c -> Map.entry(c.getSlideNumber(), c.getQrSlug()))
+                .distinct()
+                .toList();
+
+        String prev = null, next = null;
+        for (int i = 0; i < slideSlugPairs.size(); i++) {
+            if (slideSlugPairs.get(i).getKey() == slide) {
+                if (i > 0)
+                    prev = slideSlugPairs.get(i - 1).getValue();
+                if (i < slideSlugPairs.size() - 1)
+                    next = slideSlugPairs.get(i + 1).getValue();
+                break;
+            }
+        }
+
         return CueSlideDto.builder()
                 .slideNumber(slide)
                 .basic(basicDtos)
                 .advanced(advancedDtos)
                 .qrSlug(qrCard.getQrSlug())
                 .qrUrl(qrCard.getQrUrl())
+                .prevSlug(prev)
+                .nextSlug(next)
                 .build();
     }
 
@@ -288,12 +314,14 @@ public class CueSlideService {
      * 텍스트의 첫 문장 추출 (마침표 기준, 최대 80자)
      */
     private static String firstSentence(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         String x = s.trim();
         int p1 = x.indexOf('.');
         int p2 = x.indexOf('。');
         int end = (p1 >= 0 && p2 >= 0) ? Math.min(p1, p2) : (p1 >= 0 ? p1 : p2);
-        if (end >= 0) return x.substring(0, end + 1).trim();
+        if (end >= 0)
+            return x.substring(0, end + 1).trim();
         return x.length() > 80 ? x.substring(0, 80) + "…" : x;
     }
 
@@ -311,7 +339,6 @@ public class CueSlideService {
         }
         return t.trim();
     }
-
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
