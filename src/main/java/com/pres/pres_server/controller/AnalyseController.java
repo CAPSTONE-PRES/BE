@@ -6,8 +6,8 @@ import com.pres.pres_server.service.analyse.AudioAnalysisService;
 import com.pres.pres_server.service.analyse.dto.SlideTransition;
 import com.pres.pres_server.service.analyse.AudioAnalysisService.AnalysisResult;
 import com.pres.pres_server.dto.analyse.AnalysisResponseDto;
+// PracticeFeedbackDto and PracticeSessionService removed from this controller; feedback fetched via separate endpoint
 import com.pres.pres_server.service.analyse.AnalysisResultService;
-import com.pres.pres_server.service.analyse.TestRepetitiveService;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.domain.CueCard;
 
@@ -38,7 +38,6 @@ public class AnalyseController {
     private final CueCardRepository cueCardRepository;
     private final ObjectMapper objectMapper;
 
-
     @Operation(summary = "오디오 분석", description = "오디오 파일 업로드 및 분석 수행" +
             "\n\n 예시 slideTransitions 값:\n" +
             "[\n" +
@@ -47,7 +46,7 @@ public class AnalyseController {
             "  { \"slideNumber\": 3, \"startSec\": 21.77, \"endSec\": 35.10 }\n" +
             "]")
     @PostMapping(consumes = "multipart/form-data")
-    public ResponseEntity<AnalysisResponseDto> analyse(
+    public ResponseEntity<Map<String, Long>> analyse(
             @RequestPart("audio") MultipartFile audioFile,
             @RequestParam("projectId") Long projectId,
             @RequestParam("slideTransitions") String slideTransitionsJson) {
@@ -67,48 +66,139 @@ public class AnalyseController {
                     audioFile, projectId, transitions, slideScripts);
 
             // 4. Save to DB
-            Long sessionId = analysisResultService.saveAnalysisResult(
-                    projectId, analysisResult);
+            Long sessionId = analysisResultService.saveAnalysisResult(projectId, analysisResult);
 
-            // 5. Build response
-            AnalysisResponseDto response = AnalysisResponseDto.from(
-                    sessionId,
-                    projectId,
-                    analysisResult
-            );
-
-            log.info("Analysis complete: sessionId={}, windows={}",
-                    sessionId, analysisResult.getWindows().size());
-
-            return ResponseEntity.ok(response);
+            // 5. Return minimal success response (frontend will call feedback endpoint)
+            log.info("Analysis saved: sessionId={}, windows={}", sessionId, analysisResult.getWindows().size());
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("sessionId", sessionId));
 
         } catch (Exception e) {
             log.error("Analysis failed", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(AnalysisResponseDto.builder()
-                            .projectId(projectId)
-                            .build());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
     @Operation(summary = "오디오 분석 (테스트용)", description = "오디오 파일을 업로드하면 분석 결과를 반환합니다.")
     @PostMapping(value = "/test-audio", consumes = "multipart/form-data")
-    public ResponseEntity<?> testAudioAnalysis(
+    public ResponseEntity<AnalysisResponseDto> testAudioAnalysis(
             @RequestPart("audioFile") MultipartFile audioFile,
-            @RequestParam(value = "projectId", required = false) Long projectId) {
+            @RequestParam(value = "projectId", required = false) Long projectId,
+            @RequestParam(value = "slideTransitions", required = false) String slideTransitionsJson) {
         try {
             String originalName = audioFile.getOriginalFilename();
             log.info("[TEST] Audio analysis test request: {} (size={} bytes)", originalName,
                     audioFile.getSize());
-            // 슬라이드별 반복 분석만 필요하므로 대본(cueCards) 조회 없이 호출
-            AnalysisResult result = audioAnalysisService.analyzeAudio(audioFile, projectId, null, null);
+            // optional slideTransitions: parse and pass slide scripts when projectId
+            // provided
+            List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
+            List<String> slideScripts = null;
+            if (projectId != null) {
+                slideScripts = fetchSlideScripts(projectId);
+            }
+            AnalysisResult result = audioAnalysisService.analyzeAudio(audioFile, projectId,
+                    transitions == null || transitions.isEmpty() ? null : transitions,
+                    slideScripts);
             log.info("[TEST] Audio analysis test complete: {} (duration={}s, windows={})", originalName,
                     result.getTotalDurationSeconds(), result.getWindows().size());
-            return ResponseEntity.ok(result);
+
+            AnalysisResponseDto dto = AnalysisResponseDto.from(null, projectId, result,
+                    java.util.Collections.emptyList());
+            return ResponseEntity.ok(dto);
         } catch (Exception e) {
             log.error("[TEST] Audio analysis test failed", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", e.getMessage()));
+                    .body(AnalysisResponseDto.error(projectId, e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "오디오 분석 (테스트용, PracticeFeedbackDto 반환)", description = "오디오 파일을 업로드하면 PracticeFeedbackDto 형태로 분석 결과를 반환합니다.")
+    @PostMapping(value = "/test-audio-practice", consumes = "multipart/form-data")
+    public ResponseEntity<com.pres.pres_server.dto.practice.PracticeFeedbackDto> testAudioPractice(
+            @RequestPart("audioFile") MultipartFile audioFile,
+            @RequestParam(value = "projectId", required = false) Long projectId,
+            @RequestParam(value = "slideTransitions", required = false) String slideTransitionsJson) {
+        try {
+            String originalName = audioFile.getOriginalFilename();
+            log.info("[TEST-PR] Audio analysis test request: {} (size={} bytes)", originalName,
+                    audioFile.getSize());
+            // optional slideTransitions: parse and pass slide scripts when projectId
+            // provided
+            List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
+            // 테스트용 임시 로직: slideTransitions가 비어있으면 기본 윈도우(0-30, 30-end)로 생성
+            if (transitions == null || transitions.isEmpty()) {
+                transitions = java.util.List.of(
+                        SlideTransition.builder().slideNumber(1).startSec(0.0).endSec(30.0).build(),
+                        SlideTransition.builder().slideNumber(2).startSec(30.0).endSec(999999.0).build());
+            }
+            List<String> slideScripts = null;
+            if (projectId != null) {
+                slideScripts = fetchSlideScripts(projectId);
+            }
+            // 분석 호출 (DB 저장 없음)
+            AnalysisResult result = audioAnalysisService.analyzeAudio(audioFile, projectId,
+                    transitions == null || transitions.isEmpty() ? null : transitions,
+                    slideScripts);
+            log.info("[TEST-PR] Audio analysis test complete: {} (duration={}s, windows={})", originalName,
+                    result.getTotalDurationSeconds(), result.getWindows().size());
+
+            // Build PracticeFeedbackDto from analysis result (in-memory, not persisted)
+            // Compute basic scores similar to AnalysisResultService
+            List<com.pres.pres_server.dto.analyse.WindowDto> windows = result.getWindows();
+            double avgSpm = windows.stream().filter(w -> "SUCCESS".equals(w.getStatus())).mapToInt(
+                    com.pres.pres_server.dto.analyse.WindowDto::getSpmScore).average().orElse(0.0);
+            int spmScore = (int) Math.round(avgSpm);
+
+            int totalFillers = windows.stream()
+                    .mapToInt(w -> w.getFillers().values().stream().mapToInt(Integer::intValue).sum()).sum();
+            int fillerScore = Math.max(0, 100 - (totalFillers * 2));
+
+            int repeatScore = 100;
+            if (result.getRepetitionResult() != null && result.getRepetitionResult().isSuccess()) {
+                repeatScore = result.getRepetitionResult().getRepetitionScore();
+            }
+
+            int silenceScore = 100;
+            if (result.getSilenceStats() != null && result.getSilenceStats().isSuccess()) {
+                silenceScore = Math.max(0, 100 - (result.getSilenceStats().getSilenceCount() * 10));
+            }
+
+            int accuracyScore = 100;
+            if (result.getAccuracyResult() != null && result.getAccuracyResult().isSuccess()) {
+                accuracyScore = result.getAccuracyResult().getAccuracyScore();
+            }
+
+            int totalScore = (int) Math.round(
+                    avgSpm * 0.2 + fillerScore * 0.15 + repeatScore * 0.15 + silenceScore * 0.15
+                            + accuracyScore * 0.35);
+
+            String grade = analysisResultService.computeGrade(totalScore);
+
+            // Build slide feedbacks (derive issues/offsets from analysisResult) using
+            // service helper
+            List<com.pres.pres_server.dto.practice.SlideFeedbackDto> slideFeedbacks = analysisResultService
+                    .buildSlideFeedbackDtosFromAnalysis(result);
+
+            com.pres.pres_server.dto.practice.PracticeFeedbackDto dto = com.pres.pres_server.dto.practice.PracticeFeedbackDto
+                    .builder()
+                    .sessionId(null)
+                    .feedbackId(null)
+                    .spmScore(spmScore)
+                    .fillerScore(fillerScore)
+                    .repeatScore(repeatScore)
+                    .silenceScore(silenceScore)
+                    .accuracyScore(accuracyScore)
+                    .totalScore(totalScore)
+                    .grade(grade)
+                    .totalDurationSeconds(result.getTotalDurationSeconds())
+                    .history(java.util.Collections.emptyList())
+                    .slideFeedbacks(slideFeedbacks)
+                    .aiFeedback(java.util.Collections.emptyMap())
+                    .build();
+
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            log.error("[TEST-PR] Audio analysis test failed", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
