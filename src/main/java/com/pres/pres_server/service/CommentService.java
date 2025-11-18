@@ -63,7 +63,7 @@ public class CommentService {
         parentComment.getReplies().add(reply);
         commentRepository.save(reply);
 
-        return ReplyDTO.from(reply);
+        return ReplyDTO.from(reply, user);
     }
 
     // 댓글 수정

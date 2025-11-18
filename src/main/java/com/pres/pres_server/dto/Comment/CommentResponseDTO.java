@@ -37,7 +37,7 @@ public class CommentResponseDTO {
                 .createdAt(comment.getCreatedAt())
                 .replies(comment.getReplies() != null ?
                         comment.getReplies().stream()
-                                .map(ReplyDTO::from)
+                                .map(reply -> ReplyDTO.from(reply, currentUser))
                                 .collect(Collectors.toList())
                         : new ArrayList<>())
                 .build();
