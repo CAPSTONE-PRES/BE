@@ -18,10 +18,7 @@ public class CorsConfig {
         config.setAllowedOrigins(Arrays.asList(
                 "http://localhost:5173",
                 "https://localhost:5173",
-                "http://54.xxx.xxx.xxx:5173",
-                "http://54.xxx.xxx.xxx:8080",
-                "http://54.xxx.xxx.xxx:80",
-                "http://54.xxx.xxx.xxx"
+                "https://54-180-25-217.nip.io"
         ));
 
         config.setAllowedMethods(Arrays.asList(
