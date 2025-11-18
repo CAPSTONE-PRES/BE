@@ -31,6 +31,9 @@ public class OpenAIEmbeddingService {
     // 임베딩 캐시 (비용 절감용)
     private final Map<String, float[]> embeddingCache = new HashMap<>();
     private static final int MAX_CACHE_SIZE = 1000;
+    // 청크 분할 관련 기본값(추정)
+    private static final int MAX_TOKENS_PER_REQUEST = 4000; // 모델 한도보다 여유있게 설정
+    private static final int APPROX_CHARS_PER_TOKEN = 4; // 경험적 추정: 1 token ~= 4 chars
 
     /**
      * 두 텍스트의 의미론적 유사도 계산 (0.0 ~ 1.0)
@@ -72,6 +75,18 @@ public class OpenAIEmbeddingService {
         if (embeddingCache.containsKey(cacheKey)) {
             log.debug("  • 캐시 히트: {}", cacheKey.substring(0, Math.min(50, cacheKey.length())));
             return embeddingCache.get(cacheKey);
+        }
+
+        // 긴 텍스트는 청크로 분할하여 임베딩을 집계
+        int maxChars = MAX_TOKENS_PER_REQUEST * APPROX_CHARS_PER_TOKEN;
+        if (text != null && text.length() > maxChars) {
+            log.info("  • 긴 텍스트 감지 - 청크 분할하여 임베딩 처리 (length={})", text.length());
+            float[] aggregated = getAggregatedEmbeddingByChunks(text, maxChars);
+            // 캐시 저장
+            if (embeddingCache.size() < MAX_CACHE_SIZE) {
+                embeddingCache.put(cacheKey, aggregated);
+            }
+            return aggregated;
         }
 
         // 캐시 미스 → API 호출
@@ -186,6 +201,75 @@ public class OpenAIEmbeddingService {
         // 공백 정규화 후 앞 100자만 사용 (키 길이 제한)
         String normalized = text.trim().replaceAll("\\s+", " ");
         return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
+    }
+
+    /**
+     * 긴 텍스트를 청크로 분할하고 각 청크 임베딩을 집계하여 반환한다.
+     */
+    private float[] getAggregatedEmbeddingByChunks(String text, int maxChars) {
+        List<String> chunks = splitToChunksIfNeeded(text, maxChars);
+        if (chunks.isEmpty()) {
+            return getEmbedding(text);
+        }
+
+        List<float[]> vectors = new ArrayList<>();
+        for (String c : chunks) {
+            try {
+                // 청크는 충분히 짧으므로 getEmbeddingWithCache에서 재귀적 청크 분할이 일어나지 않음
+                float[] v = getEmbeddingWithCache(c);
+                if (v != null)
+                    vectors.add(v);
+            } catch (Exception e) {
+                log.warn("  • 청크 임베딩 실패 - 폴백: {}", e.getMessage());
+            }
+        }
+
+        if (vectors.isEmpty()) {
+            return getEmbedding(text);
+        }
+
+        // 평균 벡터로 집계
+        int dim = vectors.get(0).length;
+        double[] sum = new double[dim];
+        for (float[] vec : vectors) {
+            if (vec.length != dim)
+                continue; // 안전성
+            for (int i = 0; i < dim; i++)
+                sum[i] += vec[i];
+        }
+        float[] avg = new float[dim];
+        int count = vectors.size();
+        for (int i = 0; i < dim; i++)
+            avg[i] = (float) (sum[i] / count);
+        return avg;
+    }
+
+    /**
+     * 간단한 문자 기반 청크 분할. 문장 경계 우선으로 분할 시도.
+     */
+    private List<String> splitToChunksIfNeeded(String text, int maxChars) {
+        List<String> chunks = new ArrayList<>();
+        if (text == null || text.isEmpty())
+            return chunks;
+        if (text.length() <= maxChars) {
+            chunks.add(text);
+            return chunks;
+        }
+
+        int start = 0;
+        while (start < text.length()) {
+            int end = Math.min(text.length(), start + maxChars);
+            // 가능한 문장 경계 찾기 (마침표, 줄바꿈)
+            int boundary = Math.max(text.lastIndexOf('.', end), text.lastIndexOf('\n', end));
+            if (boundary <= start)
+                boundary = end; // 경계 못 찾으면 강제 잘라냄
+            else
+                boundary = Math.min(boundary + 1, text.length()); // 마침표 포함
+
+            chunks.add(text.substring(start, boundary));
+            start = boundary;
+        }
+        return chunks;
     }
 
     /**

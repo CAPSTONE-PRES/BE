@@ -17,6 +17,8 @@ import com.pres.pres_server.service.analyse.TextOffset;
 @RequiredArgsConstructor
 public class ScriptAccuracyService {
 
+    private static final int TOP_MISSING_KEYWORDS = 50; // 저장/표시에 사용할 상위 누락 키워드 수
+
     /**
      * 슬라이드별 대본/발표 쌍에 대해 정확도 분석 수행
      * 
@@ -79,6 +81,10 @@ public class ScriptAccuracyService {
 
         int matchedCount = scriptKeywords.size() - missingKeywords.size();
 
+        // 누락 키워드가 많을 경우 상위 TOP_N개만 저장/표시 (빈도 기준)
+        List<String> limitedMissingKeywords = limitMissingKeywordsByFrequency(missingKeywords, scriptWords,
+                TOP_MISSING_KEYWORDS);
+
         // 5. 의미론적 유사도 계산 (AI 우선, 폴백: Levenshtein)
         double semanticSimilarity = TextAnalysisUtils.calculateSemanticSimilarity(normalizedScript, normalizedStt);
 
@@ -92,12 +98,12 @@ public class ScriptAccuracyService {
                 accuracyScore, String.format("%.2f", finalSimilarity), matchedCount, scriptKeywords.size(),
                 TextAnalysisUtils.isAIEnabled() ? "AI enabled" : "AI disabled");
 
-        // compute offsets for missing keywords in the scriptContent (slide-local
-        // indices)
+        // compute offsets for the limited missing keywords (to avoid huge offsets
+        // lists)
         List<TextOffset> offsets = new ArrayList<>();
         try {
             String normalizedScriptForOffsets = TextAnalysisUtils.normalizeText(scriptContent);
-            for (String kw : missingKeywords) {
+            for (String kw : limitedMissingKeywords) {
                 if (kw == null || kw.isBlank())
                     continue;
                 int idx = normalizedScriptForOffsets.indexOf(kw);
@@ -116,7 +122,7 @@ public class ScriptAccuracyService {
                 .keywordMatchRate(keywordMatchRate)
                 .matchedKeywordCount(matchedCount)
                 .totalKeywordCount(scriptKeywords.size())
-                .missingKeywords(new ArrayList<>(missingKeywords))
+                .missingKeywords(new ArrayList<>(limitedMissingKeywords))
                 .offsets(offsets)
                 .success(true)
                 .build();
@@ -170,6 +176,26 @@ public class ScriptAccuracyService {
                     .errorMessage(errorMessage)
                     .build();
         }
+    }
+
+    /**
+     * missingKeywords 집합을 스크립트 단어 빈도 기준으로 정렬해 상위 N개를 반환
+     */
+    private List<String> limitMissingKeywordsByFrequency(Set<String> missingKeywords, List<String> scriptWords,
+            int topN) {
+        if (missingKeywords == null || missingKeywords.isEmpty())
+            return Collections.emptyList();
+        if (scriptWords == null || scriptWords.isEmpty())
+            return new ArrayList<>(missingKeywords).subList(0, Math.min(topN, missingKeywords.size()));
+
+        Map<String, Integer> freq = new HashMap<>();
+        for (String w : scriptWords)
+            freq.put(w, freq.getOrDefault(w, 0) + 1);
+
+        return missingKeywords.stream()
+                .sorted((a, b) -> Integer.compare(freq.getOrDefault(b, 0), freq.getOrDefault(a, 0)))
+                .limit(topN)
+                .toList();
     }
 
     // Note: OffsetDto (com.pres.pres_server.dto.practice.OffsetDto) is used to
