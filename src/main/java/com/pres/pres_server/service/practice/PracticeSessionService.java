@@ -156,19 +156,11 @@ public class PracticeSessionService {
                         if (pfOpt.isPresent()) {
                                 fileId = pfOpt.get().getFileId();
                                 try {
-                                        List<String> urls = presentationImageService.getImageUrls(fileId);
-                                        for (String u : urls) {
-                                                // url ends with /page/{n}/image
-                                                try {
-                                                        String[] parts = u.split("/page/");
-                                                        if (parts.length > 1) {
-                                                                String rest = parts[1];
-                                                                String pageStr = rest.split("/")[0];
-                                                                int page = Integer.parseInt(pageStr);
-                                                                slideToImageUrl.put(page, u);
-                                                        }
-                                                } catch (Exception ignore) {
-                                                }
+                                        // 페이지 번호 -> 외부 이미지 URL 매핑을 가져와 직접 사용
+                                        java.util.Map<Integer, String> urlMap = presentationImageService
+                                                        .getImageUrlMap(fileId);
+                                        if (urlMap != null && !urlMap.isEmpty()) {
+                                                slideToImageUrl.putAll(urlMap);
                                         }
                                 } catch (Exception e) {
                                         log.info("프레젠테이션 이미지 URL 조회 실패: {}", e.getMessage());

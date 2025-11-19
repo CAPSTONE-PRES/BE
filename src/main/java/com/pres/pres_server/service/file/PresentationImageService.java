@@ -49,6 +49,35 @@ public class PresentationImageService {
     }
 
     /**
+     * 페이지 번호 -> 외부 이미지 URL 매핑을 반환합니다.
+     * 사용처: 썸네일 등 외부에서 직접 불러와야 할 때(img.url 필드 사용).
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, String> getImageUrlMap(Long fileId) {
+        if (fileId == null || fileId <= 0) {
+            throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
+        }
+
+        List<PresentationImage> images = presentationImageRepository
+                .findAllByFile_FileIdOrderByPageNumberAsc(fileId);
+
+        if (images.isEmpty()) {
+            log.warn("이미지를 찾을 수 없습니다: fileId={}", fileId);
+            return java.util.Collections.emptyMap();
+        }
+
+        java.util.Map<Integer, String> map = new java.util.TreeMap<>();
+        for (PresentationImage img : images) {
+            if (img.getPageNumber() != null) {
+                // 프록시 경로를 반환하도록 변경: 프론트는 백엔드 프록시를 통해 이미지를 가져오도록 함
+                String proxyPath = "/api/files/" + fileId + "/page/" + img.getPageNumber() + "/image";
+                map.put(img.getPageNumber(), proxyPath);
+            }
+        }
+        return map;
+    }
+
+    /**
      * 특정 페이지의 이미지 리소스 조회
      */
     @Transactional(readOnly = true)
