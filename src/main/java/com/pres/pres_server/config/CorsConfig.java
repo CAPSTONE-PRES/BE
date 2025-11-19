@@ -20,7 +20,9 @@ public class CorsConfig {
                 "http://127.0.0.1:*",
                 "http://192.168.*:*",
                 "https://localhost:*",
-                "https://54-180-25-217.nip.io"
+                "https://54-180-25-217.nip.io",
+                "http://54.180.25.217.nip.io",
+                "https://54.180.25.217.nip.io"
         ));
 
         config.setAllowedMethods(Arrays.asList(
