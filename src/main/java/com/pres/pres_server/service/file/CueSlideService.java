@@ -296,11 +296,54 @@ public class CueSlideService {
             }
         }
 
+        // nextKeyword: 다음 슬라이드의 첫 BASIC 섹션 키워드(있다면)
+        String nextKeyword = null;
+        if (next != null) {
+            // find slide number for next
+            Integer nextSlideNum = null;
+            for (var e : slideSlugPairs) {
+                if (e.getValue().equals(next)) {
+                    nextSlideNum = e.getKey();
+                    break;
+                }
+            }
+            if (nextSlideNum != null) {
+                List<CueCard> nextCards = cueCardRepository
+                        .findByPresentationFile_FileIdAndSlideNumberOrderByModeAscSectionNumberAsc(fileId,
+                                nextSlideNum);
+                Optional<CueCard> firstBasic = nextCards.stream()
+                        .filter(c -> c.getMode() == CueCard.Mode.BASIC)
+                        .findFirst();
+                if (firstBasic.isPresent()) {
+                    String kw = firstBasic.get().getSectionKeyword();
+                    nextKeyword = kw != null ? kw : null;
+                }
+            }
+        }
+
+        // project title and total slides
+        String projectTitle = null;
+        int totalSlides = 0;
+        PresentationFile pf = qrCard.getPresentationFile();
+        if (pf != null) {
+            if (pf.getProject() != null)
+                projectTitle = pf.getProject().getTitle();
+            if (pf.getSlideTexts() != null && !pf.getSlideTexts().isEmpty())
+                totalSlides = pf.getSlideTexts().size();
+            else if (pf.getImages() != null && !pf.getImages().isEmpty())
+                totalSlides = pf.getImages().size();
+        }
+
         return CueSlideDto.builder()
                 .slideNumber(slide)
                 .basic(basicDtos)
                 .advanced(advancedDtos)
                 .qrSlug(qrCard.getQrSlug())
+                .projectTitle(projectTitle)
+                .totalSlides(totalSlides)
+                .prevSlug(prev)
+                .nextSlug(next)
+                .nextKeyword(nextKeyword)
                 .build();
     }
 

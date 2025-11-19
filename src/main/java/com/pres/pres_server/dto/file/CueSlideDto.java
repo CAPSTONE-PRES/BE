@@ -16,4 +16,9 @@ public class CueSlideDto {
     private List<CueBasicDto> basic; // BASIC 섹션들
     private List<CueAdvancedDto> advanced; // ADVANCED 섹션들
     private String qrSlug; // NULLABLE
+    private String projectTitle;
+    private int totalSlides;
+    private String prevSlug;
+    private String nextSlug;
+    private String nextKeyword;
 }
