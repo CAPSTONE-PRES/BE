@@ -15,9 +15,11 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",
-                "https://localhost:5173",
+        config.setAllowedOriginPatterns(Arrays.asList(
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "http://192.168.*:*",
+                "https://localhost:*",
                 "https://54-180-25-217.nip.io"
         ));
 
