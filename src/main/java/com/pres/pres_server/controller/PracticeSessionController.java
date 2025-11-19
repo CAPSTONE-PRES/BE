@@ -102,6 +102,25 @@ public class PracticeSessionController {
                 return ResponseEntity.ok(response);
         }
 
+        @Operation(summary = "QnA 질문 비교 실행", description = "특정 세션과 질문에 대해 사용자의 답변과 모범답안을 비교하고 결과를 반환합니다.")
+        @PostMapping(value = "/{sessionId}/qna/{questionId}/compare")
+        public ResponseEntity<QnaComparisonDto> compareQnaAnswer(
+                        @PathVariable("sessionId") Long sessionId,
+                        @PathVariable("questionId") Long questionId) {
+                try {
+                        log.info("▶ QnA 비교(분석+ 분석 결과 저장) 요청 - sessionId: {}, questionId: {}", sessionId, questionId);
+                        QnaComparisonDto result = practiceQnaService.runAndSaveQuestionComparison(sessionId,
+                                        questionId);
+                        log.info("✅ QnA 비교(분석+ 분석 결과 저장) 완료 - sessionId: {}, questionId: {}, comparisonId: {}",
+                                        sessionId, questionId, result.getComparisonId());
+                        return ResponseEntity.ok(result);
+                } catch (Exception e) {
+                        log.error("QnA 비교 실패 - sessionId: {} questionId: {}", sessionId, questionId, e);
+                        return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                                        .body(null);
+                }
+        }
+
         @Operation(summary = "질문 단위 QnA 피드백 조회", description = "특정 질문에 대해 제출된 사용자의 답변을 비교하여 피드백을 반환합니다.")
         @GetMapping("/{sessionId}/qna/{questionId}/feedback")
         public ResponseEntity<QnaComparisonDto> getQuestionFeedback(
@@ -110,9 +129,9 @@ public class PracticeSessionController {
 
                 log.info("▶ 질문 피드백 요청 - sessionId: {}, questionId: {}", sessionId, questionId);
 
-                QnaComparisonDto comparison = practiceQnaService.getQuestionComparison(sessionId, questionId);
+                QnaComparisonDto comparison = practiceQnaService.getSavedQuestionComparison(sessionId, questionId);
 
-                log.info("✅ 질문 피드백 반환 - sessionId: {}, questionId: {}, comparisonId: {}",
+                log.info("✅ 질문 피드백(DB) 반환 - sessionId: {}, questionId: {}, comparisonId: {}",
                                 sessionId, questionId, comparison.getComparisonId());
 
                 return ResponseEntity.ok(comparison);

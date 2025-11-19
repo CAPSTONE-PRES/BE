@@ -484,4 +484,52 @@ public class QnaComparisonService {
                                 .missingKeywords(missingKeywords)
                                 .build();
         }
+
+        /**
+         * DB에 이미 저장된 특정 질문에 대한 비교 결과만 조회 (읽기 전용)
+         */
+        @Transactional(readOnly = true)
+        public QnaComparisonDto getSavedComparisonForQuestion(Long sessionId, Long questionId) {
+                log.info("📥 DB 저장된 질문 단위 QnA 비교 조회 - sessionId: {}, questionId: {}", sessionId, questionId);
+
+                PracticeSession session = practiceSessionRepository.findById(sessionId)
+                                .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
+
+                QnaQuestion question = qnaQuestionRepository.findById(questionId)
+                                .orElseThrow(() -> new IllegalArgumentException("질문을 찾을 수 없습니다"));
+
+                Optional<QnaAnswerComparison> existing = qnaAnswerComparisonRepository
+                                .findByPracticeSessionAndQnaQuestion(session, question);
+
+                if (existing.isPresent()) {
+                        QnaAnswerComparison comp = existing.get();
+                        QnaAnswer ideal = comp.getIdealAnswer();
+                        QnaAnswer user = comp.getUserAnswer();
+
+                        String feedback = generateFeedback(
+                                        question.getBody(),
+                                        ideal.getBody(),
+                                        user.getBody(),
+                                        comp.getSimCosine(),
+                                        comp.getKeywordRecall(),
+                                        comp.getCoverage());
+
+                        List<String> missingKeywords = extractMissingKeywords(user.getBody(), ideal.getBody());
+
+                        return QnaComparisonDto.builder()
+                                        .comparisonId(comp.getComparisonId())
+                                        .questionId(question.getQnaId())
+                                        .question(question.getBody())
+                                        .idealAnswer(ideal.getBody())
+                                        .userAnswer(user.getBody())
+                                        .similarity(comp.getSimCosine())
+                                        .keywordRecall(comp.getKeywordRecall())
+                                        .coverage(comp.getCoverage())
+                                        .feedback(feedback)
+                                        .missingKeywords(missingKeywords)
+                                        .build();
+                }
+
+                throw new IllegalStateException("QnA 비교 결과가 없습니다");
+        }
 }
