@@ -61,17 +61,18 @@ public class FileUploadService {
             originalName = null;
         }
 
-        // 파일 저장용 안전한 이름 생성
-        String saveFileName;
+        // 확장자만 떼기
+        String ext = "";
         if (originalName != null) {
-            // Windows에서 지원하지 않는 특수문자 제거/변환
-            saveFileName = originalName.replaceAll("[<>:\"/\\\\|?*]", "_");
-        } else {
-            // 프론트에 warning 전달 고려
-            saveFileName = "unnamed_file";
+            int dotIdx = originalName.lastIndexOf('.');
+            if (dotIdx != -1 && dotIdx < originalName.length() - 1) {
+                ext = originalName.substring(dotIdx); // ".pdf" 같은거
+            }
         }
 
-        String saveName = UUID.randomUUID().toString() + "_" + saveFileName;
+        // 저장용 파일명 UUID + 확장자
+        String saveName = UUID.randomUUID().toString() + ext;
+
         long size = file.getSize();
         String fileType = file.getContentType();
         LocalDateTime uploadedAt = LocalDateTime.now();
