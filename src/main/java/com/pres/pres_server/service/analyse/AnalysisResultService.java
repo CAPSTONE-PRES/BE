@@ -49,6 +49,7 @@ public class AnalysisResultService {
     private final SlideSegmentExtractor slideSegmentExtractor;
     private final ScriptAccuracyService scriptAccuracyService;
     private final OpenAIFeedbackService openAIFeedbackService;
+    private final SpeechSpeedService speechSpeedService;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     /**
@@ -601,8 +602,9 @@ public class AnalysisResultService {
                 slideFeedback.setSpmUser(spmResult.getSpm());
                 slideFeedback.setSpmAverage(290); // 평균 SPM 기준값
 
-                // SPM이 적정 범위를 벗어난 경우 이슈로 추가 (250 미만 또는 330 초과)
-                if (spmResult.getSpm() < 250 || spmResult.getSpm() > 330) {
+                // SPM이 최적 범위(예: SpeechSpeedService 기준)를 벗어난 경우에만 이슈로 추가
+                int spmVal = spmResult.getSpm();
+                if (!speechSpeedService.isOptimalSpeed(spmVal)) {
                     IssueDto.IssueDtoBuilder speedBuilder = IssueDto.builder()
                             .issueType("SPEED")
                             .spmUser(spmResult.getSpm())
@@ -1198,7 +1200,8 @@ public class AnalysisResultService {
             // 1. SPM
             if (spmResults != null && i < spmResults.size()) {
                 AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
-                if (spmResult.getSpm() < 250 || spmResult.getSpm() > 330) {
+                int spmVal = spmResult.getSpm();
+                if (!speechSpeedService.isOptimalSpeed(spmVal)) {
                     IssueDto.IssueDtoBuilder speedBuilder = IssueDto.builder()
                             .issueType("SPEED")
                             .spmUser(spmResult.getSpm())
@@ -1474,7 +1477,7 @@ public class AnalysisResultService {
             // SPEED
             if (spmResults != null && i < spmResults.size()) {
                 AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
-                if (spmResult != null && (spmResult.getSpm() < 250 || spmResult.getSpm() > 330)) {
+                if (spmResult != null && !speechSpeedService.isOptimalSpeed(spmResult.getSpm())) {
                     IssueDto speed = IssueDto.builder()
                             .issueType("SPEED")
                             .spmUser(spmResult.getSpm())

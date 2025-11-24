@@ -143,27 +143,12 @@ public class SpeechSpeedService {
      * SPM 값이 최적 범위인지 확인
      * 
      * @param spm 분당 음절 수
-     * @return 최적 범위(330-370)이면 true
+     * @return 최적 범위이면 true (현재 정의: 330 <= spm < 370)
      */
     public boolean isOptimalSpeed(int spm) {
-        return spm >= 330 && spm <= 370;
+        // TreeMap 기반 score 매핑은 330 -> 100, 370 -> 90 이므로
+        // 최적 범위의 상한을 370 미만으로 설정하여 매핑과 일치시킵니다.
+        return spm >= 330 && spm < 370;
     }
 
-    /**
-     * SPM 값의 속도 등급을 문자열로 반환
-     * 
-     * @param spm 분당 음절 수
-     * @return 속도 등급 ("너무 느림", "느림", "적정", "빠름", "너무 빠름")
-     */
-    public String getSpeedLevel(int spm) {
-        if (spm < 240)
-            return "너무 느림";
-        if (spm < 300)
-            return "느림";
-        if (spm < 370)
-            return "적정";
-        if (spm < 450)
-            return "빠름";
-        return "너무 빠름";
-    }
 }
