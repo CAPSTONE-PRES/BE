@@ -8,13 +8,19 @@ import com.pres.pres_server.dto.qna.QnaComparisonDto;
 import com.pres.pres_server.dto.qna.QnaQuestionDto;
 import com.pres.pres_server.repository.PracticeSessionRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
+import com.pres.pres_server.repository.QnaAnswerRepository;
+import com.pres.pres_server.repository.QnaQuestionRepository;
 import com.pres.pres_server.service.QnaComparisonService;
-import com.pres.pres_server.service.file.GenerateQnaService;
+import com.pres.pres_server.domain.QnaQuestion;
+import com.pres.pres_server.domain.QnaAnswer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.List;
 
 // 연습 세션 내 QnA 워크플로우 관리 전담
 @Slf4j
@@ -24,25 +30,21 @@ public class PracticeQnaService {
 
     private final PracticeSessionRepository practiceSessionRepository;
     private final PresentationFileRepository presentationFileRepository;
-    private final GenerateQnaService generateQnaService;
     private final QnaComparisonService qnaComparisonService;
+    private final QnaAnswerRepository qnaAnswerRepository;
+    private final QnaQuestionRepository qnaQuestionRepository;
 
     /**
-     * 연습 세션에 대한 순차적 QnA 질문 조회
-     * 
-     * @param sessionId 연습 세션 ID
-     * @param index     질문 인덱스 (0부터 시작, 0~4)
-     * @return 해당 인덱스의 질문
+     * 세션에 대해 아직 사용자 답변이 없는 질문 중 랜덤으로 하나를 반환.
+     * 남은 질문이 없으면 null을 반환(컨트롤러에서 204 처리 권장).
      */
     @Transactional(readOnly = true)
-    public QnaQuestionDto getQuestion(Long sessionId, int index) {
-        log.info("📝 QnA 질문 조회 - sessionId: {}, index: {}", sessionId, index);
+    public QnaQuestionDto getRandomUnansweredQuestion(Long sessionId) {
+        log.info("📝 QnA 랜덤 미응답 질문 조회 - sessionId: {}", sessionId);
 
-        // 1. 세션 존재 여부 확인
         PracticeSession session = practiceSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("연습 세션을 찾을 수 없습니다. sessionId: " + sessionId));
 
-        // 2. 세션의 프로젝트에서 fileId 추출
         Project project = session.getProject();
         PresentationFile presentationFile = presentationFileRepository.findByProject(project)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -51,11 +53,40 @@ public class PracticeQnaService {
         Long fileId = presentationFile.getFileId();
         log.info(" 발표 파일 ID: {}", fileId);
 
-        // 3. GenerateQnaService를 통해 순차적으로 질문 조회
-        QnaQuestionDto question = generateQnaService.getQuestionByIndex(fileId, index);
-        log.info(" 질문 조회 완료 - index: {}, questionId: {}", index, question.getQuestionId());
+        // 전체 질문 조회
+        List<QnaQuestion> questions = qnaQuestionRepository.findActiveByFileId(fileId);
+        if (questions.isEmpty()) {
+            log.warn("파일에 저장된 질문이 없습니다. fileId: {}", fileId);
+            // 프론트엔드가 '질문이 아예 생성되지 않음'과 '모두 응답됨'을 구분할 수 있도록 404 반환
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "QnA 질문이 생성되지 않았습니다. fileId: " + fileId);
+        }
 
-        return question;
+        // 해당 세션에서 이미 제출된(사용자) 답변이 있는 질문 ID 집합
+        List<QnaAnswer> userAnswers = qnaAnswerRepository
+                .findByPracticeSessionAndAnswerType(session, "user");
+        java.util.Set<Long> answeredQuestionIds = userAnswers.stream()
+                .map(a -> a.getQnaQuestion().getQnaId())
+                .collect(java.util.stream.Collectors.toSet());
+
+        // 남은 후보
+        List<QnaQuestion> candidates = questions.stream()
+                .filter(q -> !answeredQuestionIds.contains(q.getQnaId()))
+                .toList();
+
+        if (candidates.isEmpty()) {
+            log.info("남은 질문이 없습니다 - 모든 질문에 대해 답변이 존재합니다. sessionId: {}", sessionId);
+            return null;
+        }
+
+        // 랜덤 선택
+        java.util.Random rnd = new java.util.Random();
+        QnaQuestion chosen = candidates.get(rnd.nextInt(candidates.size()));
+
+        return QnaQuestionDto.builder()
+                .questionId(chosen.getQnaId())
+                .questionBody(chosen.getBody())
+                .build();
     }
 
     /**

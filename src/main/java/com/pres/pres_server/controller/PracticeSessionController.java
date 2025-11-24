@@ -68,18 +68,22 @@ public class PracticeSessionController {
                 return ResponseEntity.ok(completedSessionId);
         }
 
-        @Operation(summary = "QnA 질문 조회", description = "연습 세션의 예상 질문을 순차적으로 조회합니다. index는 0부터 시작 (0~4)")
+        @Operation(summary = "QnA 질문 조회", description = "연습 세션의 예상 질문을 랜덤으로 조회합니다. 남은 질문이 없으면 204 응답을 반환합니다.")
         @GetMapping("/{sessionId}/qna-question")
         public ResponseEntity<QnaQuestionDto> getQuestion(
-                        @PathVariable("sessionId") Long sessionId,
-                        @RequestParam(value = "index", defaultValue = "0") int index) {
+                        @PathVariable("sessionId") Long sessionId) {
 
-                log.info("▶ QnA 질문 요청 - sessionId: {}, index: {}", sessionId, index);
+                log.info("▶ QnA 질문 요청(랜덤 미응답 질문) - sessionId: {}", sessionId);
 
-                QnaQuestionDto question = practiceQnaService.getQuestion(sessionId, index);
+                QnaQuestionDto question = practiceQnaService.getRandomUnansweredQuestion(sessionId);
 
-                log.info("✅ QnA 질문 반환 완료 - sessionId: {}, index: {}, questionId: {}",
-                                sessionId, index, question.getQuestionId());
+                if (question == null) {
+                        log.info("ℹ️ 남은 QnA 질문이 없습니다 - sessionId: {}", sessionId);
+                        return ResponseEntity.noContent().build();
+                }
+
+                log.info("✅ QnA 질문 반환 완료 - sessionId: {}, questionId: {}",
+                                sessionId, question.getQuestionId());
 
                 return ResponseEntity.ok(question);
         }
