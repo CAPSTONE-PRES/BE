@@ -743,7 +743,9 @@ public class AnalysisResultService {
                         .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
                         .sum();
 
-                if (totalRepeatCount >= 3) {
+                // 기존에는 임계값을 3으로 두어 소량 반복은 무시했음. 운영상 반복이 검출되어도
+                // 이슈로 표시되지 않는 사례가 있어 문턱을 낮춰 2 이상이면 이슈로 기록합니다.
+                if (totalRepeatCount >= 2) {
                     slideFeedback.setRepeatCount(totalRepeatCount);
 
                     // 반복 패턴을 Map 형태로 저장 (상위 3개)
@@ -802,6 +804,9 @@ public class AnalysisResultService {
                     if (slideFeedback.getIssueType() == null)
                         slideFeedback.setIssueType("REPETITION");
                     hasIssue = true;
+                } else {
+                    // 디버깅용: 반복이 감지되었으나 임계값 미달로 처리된 경우 로그
+                    log.debug("슬라이드 {} 반복 감지(합계={}) - 임계값 미달로 이슈 미생성", i + 1, totalRepeatCount);
                 }
             }
 
