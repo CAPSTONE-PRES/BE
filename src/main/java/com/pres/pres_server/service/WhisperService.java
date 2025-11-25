@@ -181,11 +181,13 @@ public class WhisperService {
     // API 응답에서 segments 추출 (verbose_json 형식)
     @SuppressWarnings("unchecked")
     private List<WhisperSegment> extractSegments(Map<String, Object> response) {
-        Object segmentsObj = response.get("segments");
+        Object segmentsObj = response == null ? null : response.get("segments");
 
         if (segmentsObj == null || !(segmentsObj instanceof List)) {
-            log.warn("      'segments' field is missing or has invalid type in response");
-            return null;
+            log.warn(
+                    "      'segments' field is missing or has invalid type in response. Returning empty list. Full response={}",
+                    response);
+            return new ArrayList<>();
         }
 
         List<Map<String, Object>> segmentsList = (List<Map<String, Object>>) segmentsObj;
@@ -201,6 +203,10 @@ public class WhisperService {
             } catch (Exception e) {
                 log.warn("      Failed to parse segment: {}", e.getMessage());
             }
+        }
+
+        if (segments.isEmpty()) {
+            log.warn("      Extracted segments list is empty after parsing. Full response={}", response);
         }
 
         return segments;
