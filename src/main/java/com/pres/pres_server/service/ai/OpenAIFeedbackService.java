@@ -108,7 +108,10 @@ public class OpenAIFeedbackService {
             String content;
             try {
                 content = extractContentFromResponse(responseBody);
+                log.debug("OpenAI raw content (QnA): {}", content);
             } catch (Exception ex) {
+                // 파싱 실패 시 원시 응답을 경고로 남겨 디버깅에 활용할 수 있게 합니다.
+                log.warn("OpenAI raw response (QnA): {}", responseBody);
                 log.error("OpenAI 응답 처리 실패: {}", ex.getMessage());
                 return Map.of("error", "AI 서비스 응답 처리 실패: " + ex.getMessage());
             }
@@ -167,29 +170,35 @@ public class OpenAIFeedbackService {
         @SuppressWarnings("unchecked")
         Map<String, Object> responseBody = (Map<String, Object>) ((response != null) ? response.getBody() : null);
         // extractContentFromResponse가 내부 structure 검사 및 error 필드를 처리합니다.
-        return extractContentFromResponse(responseBody);
+        try {
+            return extractContentFromResponse(responseBody);
+        } catch (Exception ex) {
+            // 파싱/포맷 오류 발생 시 원시 응답을 WARN으로 남기고 예외를 재던집니다.
+            log.warn("OpenAI raw response (possibly malformed) model={} response={}", CHAT_MODEL, responseBody);
+            throw ex;
+        }
     }
 
-    // 항목별 피드백 생성 예시: 망설임(침묵+추임새)
-    public Map<String, String> generateHesitationFeedback(String slideId, String transcript, int hesitationCount,
+    // 항목별 피드백 생성: silence (침묵 관련, 기존 hesitation 대체용)
+    public Map<String, String> generateSilenceFeedback(String slideId, String transcript, int silenceCount,
             double totalSilenceSec) {
-        String system = "너는 발표 코칭 전문가야. 아래 조건에 맞춰 친절하고 구체적으로 피드백을 JSON으로 반환해.";
+        String system = "너는 발표 코칭 전문가야. 침묵( pauses )과 망설임, 추임새가 발표에 미치는 영향에 대해 친절하고 구체적으로 피드백을 제공하고 연습 팁을 제시해. JSON으로 반환.";
         String user = String.format(
-                "슬라이드: %s\n대본/전사: %s\n망설임 횟수: %d\n총 침묵(초): %.2f\n\n" +
-                        "요구: 'hesitation' 키에 피드백을 담은 JSON으로만 응답해. 예: {\"hesitation\":\"...\"}",
-                slideId, transcript, hesitationCount, totalSilenceSec);
+                "슬라이드: %s\n대본/전사: %s\n침묵 횟수: %d\n총 침묵(초): %.2f\n\n요구: {\"silence\":\"...\"}",
+                slideId, transcript, silenceCount, totalSilenceSec);
         try {
             String content = executeChatRequest(system, user);
+            log.debug("OpenAI raw content (silence): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
             return result;
         } catch (Exception e) {
-            log.error("망설임 피드백 생성 실패", e);
-            return Map.of("error", "망설임 피드백 생성 실패", "raw", e.getMessage());
+            log.error("silence 피드백 생성 실패", e);
+            return Map.of("error", "silence 피드백 생성 실패", "raw", e.getMessage());
         }
     }
 
-    // 항목별: 반복
+    // 항목별: 반복 repetition
     public Map<String, String> generateRepetitionFeedback(String slideId, String transcript, int repeatedWordCount,
             List<String> repeatedWords) {
         String system = "너는 발표 코칭 전문가야. 반복되는 단어/구문에 대해 친절하게 지적하고 대체 표현을 제시해. JSON으로 반환.";
@@ -198,6 +207,7 @@ public class OpenAIFeedbackService {
                 slideId, transcript, repeatedWordCount, repeatedWords);
         try {
             String content = executeChatRequest(system, user);
+            log.debug("OpenAI raw content (repetition): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
             return result;
@@ -207,7 +217,26 @@ public class OpenAIFeedbackService {
         }
     }
 
-    // 항목별: 정확도
+    // 항목별: 필러 filler
+    public Map<String, String> generateFillerFeedback(String slideId, String transcript, int fillerCount,
+            List<String> fillerWords) {
+        String system = "너는 발표 코칭 전문가야. 말 속의 추임새(필러)에 대해 친절하고 구체적으로 지적하고, 대체 표현과 연습 팁을 제시해. JSON으로 반환.";
+        String user = String.format(
+                "슬라이드: %s\n전사: %s\n필러 총 개수: %d\n필러 목록: %s\n\n요구: {\"filler\":\"...\"}",
+                slideId, transcript, fillerCount, fillerWords);
+        try {
+            String content = executeChatRequest(system, user);
+            log.debug("OpenAI raw content (filler): {}", content);
+            @SuppressWarnings("unchecked")
+            Map<String, String> result = objectMapper.readValue(content, Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("필러 피드백 생성 실패", e);
+            return Map.of("error", "필러 피드백 생성 실패", "raw", e.getMessage());
+        }
+    }
+
+    // 항목별: 정확도 accuracy
     public Map<String, String> generateAccuracyFeedback(String slideId, String transcript, String expectedKeyPoints) {
         String system = "너는 발표 코칭 전문가야. 발표 정확도(핵심내용 누락/오류)를 평가하고 보완 문장을 제시해. JSON으로 반환.";
         String user = String.format(
@@ -215,6 +244,7 @@ public class OpenAIFeedbackService {
                 slideId, transcript, expectedKeyPoints);
         try {
             String content = executeChatRequest(system, user);
+            log.debug("OpenAI raw content (accuracy): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
             return result;
@@ -224,7 +254,7 @@ public class OpenAIFeedbackService {
         }
     }
 
-    // 항목별: 속도
+    // 항목별: 속도 pace
     public Map<String, String> generatePaceFeedback(String slideId, String transcript, double wpm, double idealWpm) {
         String system = "너는 발표 코칭 전문가야. 말의 속도가 적절한지 판단하고 조절 팁을 JSON으로 반환해.";
         String user = String.format(
@@ -232,6 +262,7 @@ public class OpenAIFeedbackService {
                 slideId, transcript, wpm, idealWpm);
         try {
             String content = executeChatRequest(system, user);
+            log.debug("OpenAI raw content (pace): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
             return result;
