@@ -79,6 +79,8 @@ public class OpenAIFeedbackService {
             messages.add(Map.of("role", "system", "content", "너는 발표/면접 코칭 전문가야. 피드백은 친절하고 구체적으로 작성해."));
             messages.add(Map.of("role", "user", "content", prompt));
             requestBody.put("messages", messages);
+            // enforce structured json response for QnA feedback to reduce parsing errors
+            requestBody.put("response_format", buildQnaResponseFormat());
             requestBody.put("temperature", 0.3);
             requestBody.put("max_tokens", 500);
 
@@ -139,6 +141,11 @@ public class OpenAIFeedbackService {
     // 공통: 텍스트 프롬프트를 보내고 content 문자열을 반환
     // HTTP 관련 예외를 중앙에서 처리하여 모든 피드백 함수에 일관된 동작을 제공합니다.
     private String executeChatRequest(String systemPrompt, String userPrompt) throws Exception {
+        return executeChatRequest(systemPrompt, userPrompt, null);
+    }
+
+    private String executeChatRequest(String systemPrompt, String userPrompt, Map<String, Object> responseFormat)
+            throws Exception {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", CHAT_MODEL);
         List<Map<String, String>> messages = new ArrayList<>();
@@ -147,6 +154,9 @@ public class OpenAIFeedbackService {
         requestBody.put("messages", messages);
         requestBody.put("temperature", 0.3);
         requestBody.put("max_tokens", 800);
+        if (responseFormat != null) {
+            requestBody.put("response_format", responseFormat);
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -187,7 +197,8 @@ public class OpenAIFeedbackService {
                 "슬라이드: %s\n대본/전사: %s\n침묵 횟수: %d\n총 침묵(초): %.2f\n\n요구: {\"silence\":\"...\"}",
                 slideId, transcript, silenceCount, totalSilenceSec);
         try {
-            String content = executeChatRequest(system, user);
+            Map<String, Object> responseFormat = buildStringFieldResponseFormat("silence", "침묵 관련 코멘트");
+            String content = executeChatRequest(system, user, responseFormat);
             log.debug("OpenAI raw content (silence): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
@@ -206,7 +217,8 @@ public class OpenAIFeedbackService {
                 "슬라이드: %s\n전사: %s\n반복 단어 수: %d\n반복 단어 목록: %s\n\n요구: {\"repetition\":\"...\"}",
                 slideId, transcript, repeatedWordCount, repeatedWords);
         try {
-            String content = executeChatRequest(system, user);
+            Map<String, Object> responseFormat = buildStringFieldResponseFormat("repetition", "반복 관련 코멘트");
+            String content = executeChatRequest(system, user, responseFormat);
             log.debug("OpenAI raw content (repetition): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
@@ -225,7 +237,8 @@ public class OpenAIFeedbackService {
                 "슬라이드: %s\n전사: %s\n필러 총 개수: %d\n필러 목록: %s\n\n요구: {\"filler\":\"...\"}",
                 slideId, transcript, fillerCount, fillerWords);
         try {
-            String content = executeChatRequest(system, user);
+            Map<String, Object> responseFormat = buildStringFieldResponseFormat("filler", "필러 관련 코멘트");
+            String content = executeChatRequest(system, user, responseFormat);
             log.debug("OpenAI raw content (filler): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
@@ -243,7 +256,8 @@ public class OpenAIFeedbackService {
                 "슬라이드: %s\n전사: %s\n기대 핵심포인트: %s\n\n요구: {\"accuracy\":\"...\"}",
                 slideId, transcript, expectedKeyPoints);
         try {
-            String content = executeChatRequest(system, user);
+            Map<String, Object> responseFormat = buildStringFieldResponseFormat("accuracy", "정확도 관련 코멘트");
+            String content = executeChatRequest(system, user, responseFormat);
             log.debug("OpenAI raw content (accuracy): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
@@ -261,7 +275,8 @@ public class OpenAIFeedbackService {
                 "슬라이드: %s\n전사: %s\n현재 WPM: %.1f\n권장 WPM: %.1f\n\n요구: {\"pace\":\"...\"}",
                 slideId, transcript, wpm, idealWpm);
         try {
-            String content = executeChatRequest(system, user);
+            Map<String, Object> responseFormat = buildStringFieldResponseFormat("pace", "속도 관련 코멘트");
+            String content = executeChatRequest(system, user, responseFormat);
             log.debug("OpenAI raw content (pace): {}", content);
             @SuppressWarnings("unchecked")
             Map<String, String> result = objectMapper.readValue(content, Map.class);
@@ -306,5 +321,58 @@ public class OpenAIFeedbackService {
                         "5. 반드시 아래와 같은 JSON 형식으로만 답변해.\n" +
                         "{\\n  \"expression\": \"...표현방식 피드백...\",\\n  \"logic\": \"...논리적 흐름 피드백...\"\\n}\n",
                 question, idealAnswer, userAnswer);
+    }
+
+    // response_format helpers: build a strict json_schema expecting a single string
+    // field
+    private Map<String, Object> buildStringFieldResponseFormat(String fieldName, String description) {
+        Map<String, Object> schema = new HashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> properties = new HashMap<>();
+        Map<String, Object> fieldSpec = new HashMap<>();
+        fieldSpec.put("type", "string");
+        fieldSpec.put("description", description != null ? description : fieldName);
+        properties.put(fieldName, fieldSpec);
+        schema.put("properties", properties);
+        schema.put("required", List.of(fieldName));
+        schema.put("additionalProperties", false);
+
+        Map<String, Object> jsonSchemaContainer = new HashMap<>();
+        jsonSchemaContainer.put("name", fieldName + "Schema");
+        jsonSchemaContainer.put("schema", schema);
+        jsonSchemaContainer.put("strict", true);
+
+        Map<String, Object> responseFormat = new HashMap<>();
+        responseFormat.put("type", "json_schema");
+        responseFormat.put("json_schema", jsonSchemaContainer);
+        return responseFormat;
+    }
+
+    // response_format for QnA feedback expecting expression + logic fields
+    private Map<String, Object> buildQnaResponseFormat() {
+        Map<String, Object> schema = new HashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> properties = new HashMap<>();
+        Map<String, Object> expr = new HashMap<>();
+        expr.put("type", "string");
+        expr.put("description", "표현방식 피드백");
+        Map<String, Object> logic = new HashMap<>();
+        logic.put("type", "string");
+        logic.put("description", "논리적 흐름 피드백");
+        properties.put("expression", expr);
+        properties.put("logic", logic);
+        schema.put("properties", properties);
+        schema.put("required", List.of("expression", "logic"));
+        schema.put("additionalProperties", false);
+
+        Map<String, Object> jsonSchemaContainer = new HashMap<>();
+        jsonSchemaContainer.put("name", "qnaFeedbackSchema");
+        jsonSchemaContainer.put("schema", schema);
+        jsonSchemaContainer.put("strict", true);
+
+        Map<String, Object> responseFormat = new HashMap<>();
+        responseFormat.put("type", "json_schema");
+        responseFormat.put("json_schema", jsonSchemaContainer);
+        return responseFormat;
     }
 }
