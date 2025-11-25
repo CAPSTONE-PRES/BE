@@ -58,10 +58,27 @@ public class AnalyseController {
             // 1. Parse slideTransitions
             List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
 
-            // 2. Fetch slideScripts from DB
-            List<String> slideScripts = fetchSlideScripts(projectId);
+            // 2. Fetch slideScripts from DB (요청으로 전달된 slideTransitions 길이에 맞춰 반환)
+            List<String> slideScripts = null;
+            if (projectId != null) {
+                if (transitions != null && !transitions.isEmpty()) {
+                    slideScripts = fetchSlideScripts(projectId, transitions.size());
+                } else {
+                    slideScripts = fetchSlideScripts(projectId);
+                }
+            }
 
-            // 3. Perform analysis
+            // 3. Log transition/script sizes for mismatch detection
+            int transitionCount = transitions == null ? 0 : transitions.size();
+            int scriptCount = slideScripts == null ? 0 : slideScripts.size();
+            log.info("  • slideTransitions.size()={}, slideScripts.size()={}", transitionCount, scriptCount);
+            if (transitionCount > 0 && scriptCount > 0 && transitionCount != scriptCount) {
+                log.warn(
+                        "  ⚠ slideTransitions count ({}) does not match slideScripts count ({}). Analysis will use controller-provided scripts as-is.",
+                        transitionCount, scriptCount);
+            }
+
+            // 4. Perform analysis
             AnalysisResult analysisResult = audioAnalysisService.analyzeAudio(
                     audioFile, projectId, transitions, slideScripts);
 
@@ -93,8 +110,20 @@ public class AnalyseController {
             List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
             List<String> slideScripts = null;
             if (projectId != null) {
-                slideScripts = fetchSlideScripts(projectId);
+                if (transitions != null && !transitions.isEmpty()) {
+                    slideScripts = fetchSlideScripts(projectId, transitions.size());
+                } else {
+                    slideScripts = fetchSlideScripts(projectId);
+                }
             }
+            int transitionCount = transitions == null ? 0 : transitions.size();
+            int scriptCount = slideScripts == null ? 0 : slideScripts.size();
+            log.info("  • [TEST] slideTransitions.size()={}, slideScripts.size()={}", transitionCount, scriptCount);
+            if (transitionCount > 0 && scriptCount > 0 && transitionCount != scriptCount) {
+                log.warn("  ⚠ [TEST] slideTransitions count ({}) does not match slideScripts count ({}).",
+                        transitionCount, scriptCount);
+            }
+
             AnalysisResult result = audioAnalysisService.analyzeAudio(audioFile, projectId,
                     transitions == null || transitions.isEmpty() ? null : transitions,
                     slideScripts);
@@ -132,7 +161,15 @@ public class AnalyseController {
             }
             List<String> slideScripts = null;
             if (projectId != null) {
-                slideScripts = fetchSlideScripts(projectId);
+                // 여기서는 transitions를 이미 기본값으로 채웠으므로 size 사용
+                slideScripts = fetchSlideScripts(projectId, transitions.size());
+            }
+            int transitionCount = transitions == null ? 0 : transitions.size();
+            int scriptCount = slideScripts == null ? 0 : slideScripts.size();
+            log.info("  • [TEST-PR] slideTransitions.size()={}, slideScripts.size()={}", transitionCount, scriptCount);
+            if (transitionCount > 0 && scriptCount > 0 && transitionCount != scriptCount) {
+                log.warn("  ⚠ [TEST-PR] slideTransitions count ({}) does not match slideScripts count ({}).",
+                        transitionCount, scriptCount);
             }
             // 분석 호출 (DB 저장 없음)
             AnalysisResult result = audioAnalysisService.analyzeAudio(audioFile, projectId,
@@ -224,6 +261,39 @@ public class AnalyseController {
     /**
      * DB에서 슬라이드별 대본 조회
      */
+    private List<String> fetchSlideScripts(Long fileId, int expectedSlideCount) {
+        try {
+            List<CueCard> cueCards = cueCardRepository
+                    .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+
+            if (cueCards == null || cueCards.isEmpty()) {
+                log.info("  • No cue cards found for projectId={} (expected slides={})", fileId, expectedSlideCount);
+                return java.util.Collections.nCopies(expectedSlideCount, "");
+            }
+
+            List<String> scripts = new java.util.ArrayList<>(java.util.Collections.nCopies(expectedSlideCount, ""));
+            for (CueCard cc : cueCards) {
+                int idx = cc.getSlideNumber();
+                if (idx >= 1 && idx <= expectedSlideCount) {
+                    String prev = scripts.get(idx - 1);
+                    String content = cc.getContent() == null ? "" : cc.getContent().trim();
+                    if (prev == null || prev.isBlank())
+                        scripts.set(idx - 1, content);
+                    else if (!content.isBlank())
+                        scripts.set(idx - 1, prev + " " + content);
+                }
+            }
+
+            log.info("  • Fetched {} cue cards and normalized into {} slide scripts", cueCards.size(),
+                    expectedSlideCount);
+            return scripts;
+
+        } catch (Exception e) {
+            log.warn("  ⚠ Failed to fetch slide scripts (expected={}): {}", expectedSlideCount, e.getMessage());
+            return java.util.Collections.nCopies(expectedSlideCount, "");
+        }
+    }
+
     private List<String> fetchSlideScripts(Long fileId) {
         try {
             List<CueCard> cueCards = cueCardRepository
