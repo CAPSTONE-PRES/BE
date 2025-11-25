@@ -18,6 +18,7 @@ import com.pres.pres_server.service.analyse.TextOffset;
 public class ScriptAccuracyService {
 
     private static final int TOP_MISSING_KEYWORDS = 50; // 저장/표시에 사용할 상위 누락 키워드 수
+    private static final int TOP_SCRIPT_KEYWORDS = 10; // 스크립트 비교에 사용할 상위 키워드 수 (기본 10)
 
     /**
      * 슬라이드별 대본/발표 쌍에 대해 정확도 분석 수행
@@ -71,9 +72,19 @@ public class ScriptAccuracyService {
         List<String> sttWords = TextAnalysisUtils.tokenizeKomoran(normalizedStt);
 
         // 3. 주요 키워드 추출 (대본에서)
-        final int MIN_KEYWORD_FREQUENCY = 3; // 최소 빈도수
-        Set<String> scriptKeywords = TextAnalysisUtils.extractKeywordsKomoran(scriptWords, MIN_KEYWORD_FREQUENCY);
+        final int MIN_KEYWORD_FREQUENCY = 3; // 최소 빈도수 (STT 측 추출에 사용)
+        // 기존 scriptKeywords 추출 방식
+        // Set<String> scriptKeywords =
+        // TextAnalysisUtils.extractKeywordsKomoran(scriptWords, MIN_KEYWORD_FREQUENCY);
+
+        // 스크립트 측은 상위 N개 키워드만 사용하여 점수 안정화 (짧은 문서 대비)
+        List<String> topScriptKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(scriptWords, TOP_SCRIPT_KEYWORDS);
+        // 상위 키워드 목록을 집합으로 변환하여 매칭 계산에 사용
+        Set<String> scriptKeywords = new LinkedHashSet<>(topScriptKeywords);
         Set<String> sttKeywords = TextAnalysisUtils.extractKeywordsKomoran(sttWords, MIN_KEYWORD_FREQUENCY);
+
+        // 디버그: 상위 스크립트 키워드 로깅
+        log.debug("Top {} script keywords: {}", TOP_SCRIPT_KEYWORDS, topScriptKeywords);
 
         // 4. 키워드 매칭률 계산
         double keywordMatchRate = TextAnalysisUtils.calculateKeywordMatchRate(scriptKeywords, sttKeywords);
