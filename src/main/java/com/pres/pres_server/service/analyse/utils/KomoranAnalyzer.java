@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 public class KomoranAnalyzer {
     private static volatile Komoran komoran;
@@ -65,6 +66,46 @@ public class KomoranAnalyzer {
     // =========================
     // 공개 API
     // =========================
+
+    // 비언어적/연출 표기 필터(대본에 삽입되는 박수/웃음/효과음/아이콘 등)
+    // include [] , () and <> bracketed expressions
+    private static final Pattern NON_VERBAL_BRACKETED = Pattern.compile("\\[[^\\]]+\\]|\\([^\\)]+\\)|<[^>]+>");
+    // Use LinkedHashSet to silently remove duplicates while preserving order
+    private static final Set<String> NON_VERBAL_WORDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList(
+                    // GenerateCueService에서 사용하는 비언어적 아이콘 라벨 (예: <🔍 청중 바라보기>)
+                    "청중 바라보기", "발표자료 보기", "제스처", "화면 가리키기", "호흡",
+                    // 일부 경우 Komoran이 분리할 수 있는 단어 형태
+                    "청중", "바라보기", "발표자료", "화면", "가리키기")));
+
+    private static boolean isNonVerbal(String token) {
+        if (token == null)
+            return false;
+        String t = token.trim();
+        if (t.isEmpty())
+            return false;
+        if (NON_VERBAL_BRACKETED.matcher(t).find())
+            return true;
+        // direct exact match
+        if (NON_VERBAL_WORDS.contains(t))
+            return true;
+        // remove surrounding punctuation (including emojis) and check
+        String cleaned = t.replaceAll(
+                "^[^\\p{IsAlphabetic}\\p{IsDigit}\\p{IsHangul}]+|[^\\p{IsAlphabetic}\\p{IsDigit}\\p{IsHangul}]+$", "");
+        if (cleaned.isEmpty())
+            return false;
+        if (NON_VERBAL_WORDS.contains(cleaned))
+            return true;
+        // also check if cleaned contains any of the non-verbal labels (substring match)
+        String lower = cleaned.toLowerCase();
+        for (String nv : NON_VERBAL_WORDS) {
+            if (nv == null || nv.isBlank())
+                continue;
+            if (lower.contains(nv.toLowerCase()))
+                return true;
+        }
+        return false;
+    }
 
     /** (하위호환) Komoran 형태소 분석 결과에서 의미있는 토큰만 추출 (정규화 규칙 적용) */
     public static List<String> tokenizeKomoran(String text) {
@@ -176,14 +217,23 @@ public class KomoranAnalyzer {
         }
 
         List<String> nouns = new ArrayList<>();
-        for (String text : words) {
-            KomoranResult result = k.analyze(text);
-            nouns.addAll(result.getNouns());
+        if (words != null) {
+            for (String text : words) {
+                if (text == null || text.isBlank())
+                    continue;
+                KomoranResult result = k.analyze(text);
+                if (result != null && result.getNouns() != null)
+                    nouns.addAll(result.getNouns());
+            }
         }
 
         List<String> filtered = nouns.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(word -> !word.isEmpty())
                 .filter(word -> !TextNormalizer.isStopword(word))
                 .filter(word -> word.length() >= 2)
+                .filter(word -> !isNonVerbal(word))
                 .collect(Collectors.toList());
 
         Map<String, Long> freq = filtered.stream()
@@ -218,14 +268,23 @@ public class KomoranAnalyzer {
         }
 
         List<String> nouns = new ArrayList<>();
-        for (String text : words) {
-            KomoranResult result = k.analyze(text);
-            nouns.addAll(result.getNouns());
+        if (words != null) {
+            for (String text : words) {
+                if (text == null || text.isBlank())
+                    continue;
+                KomoranResult result = k.analyze(text);
+                if (result != null && result.getNouns() != null)
+                    nouns.addAll(result.getNouns());
+            }
         }
 
         List<String> filtered = nouns.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(word -> !word.isEmpty())
                 .filter(word -> !TextNormalizer.isStopword(word))
                 .filter(word -> word.length() >= 2)
+                .filter(word -> !isNonVerbal(word))
                 .collect(Collectors.toList());
 
         Map<String, Long> freq = filtered.stream()
@@ -233,11 +292,19 @@ public class KomoranAnalyzer {
         if (freq.isEmpty())
             return Collections.emptyList();
 
-        return freq.entrySet().stream()
+        List<String> top = freq.entrySet().stream()
                 .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                 .limit(Math.max(0, topN))
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
+
+        if (!top.isEmpty()) {
+            log.info("Komoran top-{} keywords ({} candidates): {}", topN, filtered.size(), top);
+        } else {
+            log.debug("Komoran top-{} keywords: none (filtered size={})", topN, filtered.size());
+        }
+
+        return top;
     }
 
     /** 2회 이상 등장하는 원시 형태소 빈도 분석 */
