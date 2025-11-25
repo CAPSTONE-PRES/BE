@@ -206,6 +206,40 @@ public class KomoranAnalyzer {
                 .collect(Collectors.toSet());
     }
 
+    /**
+     * 상위 N개 키워드를 빈도 기준으로 반환합니다. 전체 키워드 집합 대신
+     * 빈도 상위 `topN`개만 필요할 때 사용하세요.
+     */
+    public static List<String> extractTopKeywordsKomoran(List<String> words, int topN) {
+        Komoran k = getKomoran();
+        if (k == null) {
+            log.warn("Komoran not available for top-keyword extraction");
+            return Collections.emptyList();
+        }
+
+        List<String> nouns = new ArrayList<>();
+        for (String text : words) {
+            KomoranResult result = k.analyze(text);
+            nouns.addAll(result.getNouns());
+        }
+
+        List<String> filtered = nouns.stream()
+                .filter(word -> !TextNormalizer.isStopword(word))
+                .filter(word -> word.length() >= 2)
+                .collect(Collectors.toList());
+
+        Map<String, Long> freq = filtered.stream()
+                .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+        if (freq.isEmpty())
+            return Collections.emptyList();
+
+        return freq.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(Math.max(0, topN))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
     /** 2회 이상 등장하는 원시 형태소 빈도 분석 */
     public static Map<String, Integer> extractRepeatedTokens(String text, int minCount) {
         if (text == null || text.trim().isEmpty())

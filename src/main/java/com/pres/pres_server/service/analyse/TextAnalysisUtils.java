@@ -148,6 +148,11 @@ public class TextAnalysisUtils {
         return KomoranAnalyzer.extractKeywordsKomoran(words, minFrequency);
     }
 
+    /** 상위 N개 키워드(빈도순)를 반환합니다. UI에서 상위 10개만 보여줄 때 사용하세요. */
+    public static List<String> extractTopKeywordsKomoran(List<String> words, int topN) {
+        return KomoranAnalyzer.extractTopKeywordsKomoran(words, topN);
+    }
+
     /** NEW: 스팬 포함 정규화 토큰 반환 (외부 서비스에서 직접 사용) */
     public static List<KomoranAnalyzer.NormToken> tokenizeKomoranWithSpans(String text) {
         return KomoranAnalyzer.tokenizeForRepeatWithSpans(text);
