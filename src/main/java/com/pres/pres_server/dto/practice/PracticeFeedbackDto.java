@@ -29,6 +29,6 @@ public class PracticeFeedbackDto {
     // 슬라이드별 피드백 (이슈가 있는 슬라이드만)
     private List<SlideFeedbackDto> slideFeedbacks;
 
-    // AI 기반 문장별/전반적 피드백 (keys: hesitation,repetition,accuracy,pace)
+    // AI 기반 문장별/전반적 피드백 (keys: filler,silence,repetition,accuracy,pace)
     private Map<String, String> aiFeedback;
 }

@@ -82,6 +82,7 @@ public class QnaComparisonService {
                 QnaAnswerResponseDto.QnaAnswerResponseDtoBuilder respBuilder = QnaAnswerResponseDto.builder()
                                 .answerId(savedAnswer.getAnswerId())
                                 .questionId(questionId)
+                                .sttText(savedAnswer.getBody())
                                 .message("답변이 저장되었습니다");
 
                 if (existingComparison.isPresent()) {

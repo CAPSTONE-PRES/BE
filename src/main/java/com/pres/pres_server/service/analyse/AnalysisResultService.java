@@ -37,6 +37,8 @@ import com.pres.pres_server.dto.practice.OffsetDto;
 @RequiredArgsConstructor
 public class AnalysisResultService {
     private static final Logger log = LoggerFactory.getLogger(AnalysisResultService.class);
+    // AI 폴백 코멘트(사용자에게 빈 화면 대신 노출할 기본 메시지)
+    private static final String AI_FALLBACK_COMMENT = "AI 코멘트 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
 
     private final PracticeSessionRepository sessionRepository;
     private final SessionWindowRepository windowRepository;
@@ -510,7 +512,15 @@ public class AnalysisResultService {
     // Offset/slide mapping helpers moved to SlideSegmentExtractor
 
     /**
-     * 슬라이드별 분석 결과 저장
+     * 주 책임: 분석 결과(analysisResult)를 받아 DB의 SlideFeedback 엔티티들을 생성·저장.
+     * 입력/출력: 입력은 Feedback(상위 피드백)과 AnalysisResult; 출력은 DB에 저장된 SlideFeedback들
+     * (즉시) 각 AI 호출 실패 시 폴백 코멘트 삽입 + 더 자세한 로그 남기기. — 사용자 경험 보호.
+     * (다음) null 방어 전반 적용 (Map/List guard). — 안정성.
+     * (중기) per-slide AI를 AFTER_COMMIT 비동기로 리팩터. — 성능/확장성.
+     * (선택) AI 호출 병합/배치 또는 호출 수 제한 구현.
+     * 작은 코드 스니펫(예: 패턴 Offset 매핑)도 별도 메서드로 분리 고려.
+     * 여러 SlideFeedback 엔티티를 생성하고 slideFeedbackRepository.save(...)로 반복 저장(각
+     * 슬라이드마다).
      */
     private void saveSlideAnalysis(Feedback feedback, AudioAnalysisService.AnalysisResult analysisResult) {
         AudioAnalysisService.SlideAnalysisResult slideAnalysis = analysisResult.getSlideAnalysis();
@@ -676,11 +686,11 @@ public class AnalysisResultService {
                     // OpenAI 호출 (필러에 대한 코멘트)
                     try {
                         List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
-                        Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(String.valueOf(i + 1),
+                        Map<String, String> r = openAIFeedbackService.generateFillerFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
                                 totalFillers, fillers);
-                        if (r != null && r.containsKey("repetition"))
-                            fillerBuilder.comment(r.get("repetition"));
+                        if (r != null && r.containsKey("filler"))
+                            fillerBuilder.comment(r.get("filler"));
                     } catch (Exception e) {
                         log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
                     }
@@ -710,11 +720,11 @@ public class AnalysisResultService {
                             .issueType("SILENCE")
                             .silenceCount(silenceCount);
                     try {
-                        Map<String, String> h = openAIFeedbackService.generateHesitationFeedback(String.valueOf(i + 1),
+                        Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
                                 silenceCount, totalDuration);
-                        if (h != null && h.containsKey("hesitation"))
-                            silenceBuilder.comment(h.get("hesitation"));
+                        if (h != null && h.containsKey("silence"))
+                            silenceBuilder.comment(h.get("silence"));
                     } catch (Exception e) {
                         log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
                     }
@@ -901,18 +911,36 @@ public class AnalysisResultService {
             // 이슈가 있고 전체 코멘트가 수집되지 않았다면 통합 생성기로 폴백(재시도 포함)
             if (hasIssue && (overallComment == null || overallComment.isBlank())) {
                 String transcript = (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "";
-                String issue = slideFeedback.getIssueType();
-                overallComment = generateSlideComment(i, transcript, issue, fillerResults, silenceResults,
-                        accuracyResults, spmResults, repetitionMap);
-                if (overallComment == null) {
-                    log.info("OpenAI 코멘트가 null 입니다. 슬라이드 {} 에 대해 1회 재시도합니다.", i + 1);
-                    overallComment = generateSlideComment(i, transcript, issue, fillerResults, silenceResults,
+                // 감지된 이슈 타입 집합만 전달하도록 변경: null을 넘기지 않음
+                // only include issue types that do not yet have a generated comment
+                java.util.Set<String> detectedTypes = issuesList.stream()
+                        .filter(it -> it != null && (it.getComment() == null || it.getComment().isBlank()))
+                        .map(IssueDto::getIssueType)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                // fallback: slideFeedback에 주 이슈가 설정되어 있으면 포함
+                if (detectedTypes.isEmpty() && slideFeedback.getIssueType() != null)
+                    detectedTypes.add(slideFeedback.getIssueType());
+
+                if (!detectedTypes.isEmpty()) {
+                    overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults, silenceResults,
                             accuracyResults, spmResults, repetitionMap);
+                    if (overallComment == null || overallComment.isBlank()) {
+                        log.warn("OpenAI 통합 코멘트가 비어있음(slide={} types={}) - 1회 재시도합니다.", i + 1,
+                                detectedTypes);
+                        overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults,
+                                silenceResults, accuracyResults, spmResults, repetitionMap);
+                        if (overallComment == null || overallComment.isBlank()) {
+                            log.warn("재시도 후에도 OpenAI 코멘트가 비어있음(slide={} types={}) - 폴백 메시지를 저장합니다.",
+                                    i + 1, detectedTypes);
+                            overallComment = AI_FALLBACK_COMMENT;
+                        }
+                    }
                 }
             }
             if (overallComment == null || overallComment.isBlank()) {
-                // 코멘트가 전혀 없다면 null 로 남기지 말고 빈 문자열로 둡니다.
-                overallComment = "";
+                // 모든 경로에서 코멘트가 없을 경우 폴백 메시지를 저장합니다.
+                overallComment = AI_FALLBACK_COMMENT;
             }
 
             slideFeedback.setComment(overallComment);
@@ -928,79 +956,99 @@ public class AnalysisResultService {
     }
 
     /**
-     * 슬라이드 코멘트 생성 헬퍼 (OpenAI 호출 래퍼)
+     * 주 책임: 슬라이드 단위로 통합(또는 이슈 기반) 코멘트를 생성하기 위해 OpenAI를 호출하고 결과 텍스트(문장)를 반환.
+     * issue == null이면 여러 이슈를 순서대로 시도하며 각각 AI 호출하여 코멘트를 누적(silence,
+     * repetition,accuracy, pace, filler).
+     * issue != null이면 해당 이슈 유형에 대해서만 AI 호출 수행.
+     * 중복성: saveSlideAnalysis 내부에서도 각 이슈에 대해 이미 OpenAI 호출을 하고, generateSlideComment가
+     * 재시도 혹은 통합용으로 동일한(또는 유사한) AI 호출을 수행할 수 있음 → 동일 슬라이드에 대해 AI 호출이 중복될 가능성(성능·비용
+     * 측면).
      */
-    private String generateSlideComment(int i, String transcript, String issue,
+    private String generateSlideComment(int i, String transcript, java.util.Set<String> issueTypes,
             List<FillerService.SlideFillerDto> fillerResults,
             List<List<SilenceDetectionService.SilenceInterval>> silenceResults,
             List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults,
             List<AudioAnalysisService.SlideSpmResult> spmResults,
             Map<Integer, List<RepetitiveTextAnalysisService.SlideRepetition>> repetitionMap) {
         try {
+            if (issueTypes == null || issueTypes.isEmpty())
+                return null;
+
             StringBuilder commentBuilder = new StringBuilder();
-            if (issue == null) {
-                // 여러 항목을 시도
-                // hesitation
-                if (silenceResults != null && i < silenceResults.size()) {
-                    List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(i);
-                    if (sils != null && !sils.isEmpty()) {
-                        int silenceCount = sils.size();
-                        double totalSilence = sils.stream()
-                                .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum();
-                        Map<String, String> h = openAIFeedbackService.generateHesitationFeedback(String.valueOf(i + 1),
-                                transcript, silenceCount, totalSilence);
-                        if (h != null && h.containsKey("hesitation"))
-                            commentBuilder.append(h.get("hesitation")).append(" ");
-                    }
-                }
-                // repetition
-                List<RepetitiveTextAnalysisService.SlideRepetition> reps = repetitionMap.get(i + 1);
-                if (reps != null && !reps.isEmpty()) {
-                    int totalRep = reps.stream().mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
-                            .sum();
-                    List<String> patterns = reps.stream().map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
-                            .distinct().toList();
-                    Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(String.valueOf(i + 1),
-                            transcript, totalRep, patterns);
-                    if (r != null && r.containsKey("repetition"))
-                        commentBuilder.append(r.get("repetition")).append(" ");
-                }
-                // accuracy
-                if (accuracyResults != null && i < accuracyResults.size()) {
-                    ScriptAccuracyService.AccuracyAnalysisResult acc = accuracyResults.get(i);
-                    if (acc != null && acc.isSuccess()) {
-                        String expectedKeyPoints = "";
-                        Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(String.valueOf(i + 1),
-                                transcript, expectedKeyPoints);
-                        if (a != null && a.containsKey("accuracy"))
-                            commentBuilder.append(a.get("accuracy")).append(" ");
-                    }
-                }
-                // pace
-                if (spmResults != null && i < spmResults.size()) {
-                    AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(i);
-                    if (spmRes != null) {
-                        double currentWpm = spmRes.getSpm();
-                        double idealWpm = 130.0;
-                        Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
-                                transcript, currentWpm, idealWpm);
-                        if (p != null && p.containsKey("pace"))
-                            commentBuilder.append(p.get("pace")).append(" ");
-                    }
-                }
-            } else {
-                // issueType 기반 단일 호출
-                switch (issue) {
+
+            // 우선순위 유지: SILENCE -> REPETITION -> ACCURACY -> SPEED(PACE) -> FILLER
+            List<String> priority = java.util.List.of("SILENCE", "REPETITION", "ACCURACY", "SPEED", "FILLER");
+
+            for (String t : priority) {
+                if (!issueTypes.contains(t))
+                    continue;
+
+                switch (t) {
+                    case "SILENCE":
+                        if (silenceResults != null && i < silenceResults.size()) {
+                            List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(i);
+                            if (sils != null && !sils.isEmpty()) {
+                                int silenceCount = sils.size();
+                                double totalSilence = sils.stream()
+                                        .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum();
+                                try {
+                                    Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(
+                                            String.valueOf(i + 1), transcript, silenceCount, totalSilence);
+                                    if (h != null && h.containsKey("silence"))
+                                        commentBuilder.append(h.get("silence")).append(" ");
+                                } catch (Exception e) {
+                                    log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                }
+                            }
+                        }
+                        break;
+                    case "REPETITION":
+                        List<RepetitiveTextAnalysisService.SlideRepetition> reps = repetitionMap.get(i + 1);
+                        if (reps != null && !reps.isEmpty()) {
+                            int totalRep = reps.stream()
+                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
+                            List<String> patterns = reps.stream()
+                                    .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
+                            try {
+                                Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(
+                                        String.valueOf(i + 1), transcript, totalRep, patterns);
+                                if (r != null && r.containsKey("repetition"))
+                                    commentBuilder.append(r.get("repetition")).append(" ");
+                            } catch (Exception e) {
+                                log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                            }
+                        }
+                        break;
+                    case "ACCURACY":
+                        if (accuracyResults != null && i < accuracyResults.size()) {
+                            ScriptAccuracyService.AccuracyAnalysisResult acc = accuracyResults.get(i);
+                            if (acc != null && acc.isSuccess()) {
+                                String expectedKeyPoints = "";
+                                try {
+                                    Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
+                                            String.valueOf(i + 1), transcript, expectedKeyPoints);
+                                    if (a != null && a.containsKey("accuracy"))
+                                        commentBuilder.append(a.get("accuracy")).append(" ");
+                                } catch (Exception e) {
+                                    log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                }
+                            }
+                        }
+                        break;
                     case "SPEED":
                         if (spmResults != null && i < spmResults.size()) {
                             AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(i);
                             if (spmRes != null) {
                                 double currentWpm = spmRes.getSpm();
                                 double idealWpm = 130.0;
-                                Map<String, String> p = openAIFeedbackService
-                                        .generatePaceFeedback(String.valueOf(i + 1), transcript, currentWpm, idealWpm);
-                                if (p != null && p.containsKey("pace"))
-                                    commentBuilder.append(p.get("pace")).append(" ");
+                                try {
+                                    Map<String, String> p = openAIFeedbackService.generatePaceFeedback(
+                                            String.valueOf(i + 1), transcript, currentWpm, idealWpm);
+                                    if (p != null && p.containsKey("pace"))
+                                        commentBuilder.append(p.get("pace")).append(" ");
+                                } catch (Exception e) {
+                                    log.warn("속도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                }
                             }
                         }
                         break;
@@ -1010,87 +1058,33 @@ public class AnalysisResultService {
                             int totalFillers = fillerDto.getFillerCounts().values().stream().mapToInt(Integer::intValue)
                                     .sum();
                             List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
-                            Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(
-                                    String.valueOf(i + 1), transcript, totalFillers, fillers);
-                            if (r != null && r.containsKey("repetition"))
-                                commentBuilder.append(r.get("repetition")).append(" ");
-                        }
-                        break;
-                    case "SILENCE":
-                        if (silenceResults != null && i < silenceResults.size()) {
-                            List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(i);
-                            int silenceCount = sils.size();
-                            double totalSilence = sils.stream()
-                                    .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum();
-                            Map<String, String> h = openAIFeedbackService.generateHesitationFeedback(
-                                    String.valueOf(i + 1), transcript, silenceCount, totalSilence);
-                            if (h != null && h.containsKey("hesitation"))
-                                commentBuilder.append(h.get("hesitation")).append(" ");
-                        }
-                        break;
-                    case "REPETITION":
-                        List<RepetitiveTextAnalysisService.SlideRepetition> reps2 = repetitionMap.get(i + 1);
-                        if (reps2 != null && !reps2.isEmpty()) {
-                            int totalRep = reps2.stream()
-                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
-                            List<String> patterns = reps2.stream()
-                                    .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
-                            Map<String, String> r2 = openAIFeedbackService
-                                    .generateRepetitionFeedback(String.valueOf(i + 1), transcript, totalRep, patterns);
-                            if (r2 != null && r2.containsKey("repetition"))
-                                commentBuilder.append(r2.get("repetition")).append(" ");
-                        }
-                        break;
-                    case "ACCURACY":
-                        if (accuracyResults != null && i < accuracyResults.size()) {
-                            ScriptAccuracyService.AccuracyAnalysisResult acc2 = accuracyResults.get(i);
-                            if (acc2 != null && acc2.isSuccess()) {
-                                String expectedKeyPoints = "";
-                                Map<String, String> a2 = openAIFeedbackService
-                                        .generateAccuracyFeedback(String.valueOf(i + 1), transcript, expectedKeyPoints);
-                                if (a2 != null && a2.containsKey("accuracy"))
-                                    commentBuilder.append(a2.get("accuracy")).append(" ");
+                            try {
+                                Map<String, String> r = openAIFeedbackService.generateFillerFeedback(
+                                        String.valueOf(i + 1), transcript, totalFillers, fillers);
+                                if (r != null && r.containsKey("filler"))
+                                    commentBuilder.append(r.get("filler")).append(" ");
+                            } catch (Exception e) {
+                                log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
                             }
                         }
                         break;
                     default:
-                        List<RepetitiveTextAnalysisService.SlideRepetition> reps3 = repetitionMap.get(i + 1);
-                        if (silenceResults != null && i < silenceResults.size()) {
-                            List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(i);
-                            if (sils != null && !sils.isEmpty()) {
-                                int silenceCount = sils.size();
-                                double totalSilence = sils.stream()
-                                        .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum();
-                                Map<String, String> h = openAIFeedbackService.generateHesitationFeedback(
-                                        String.valueOf(i + 1), transcript, silenceCount, totalSilence);
-                                if (h != null && h.containsKey("hesitation"))
-                                    commentBuilder.append(h.get("hesitation")).append(" ");
-                            }
-                        }
-                        if (reps3 != null && !reps3.isEmpty()) {
-                            int totalRep = reps3.stream()
-                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
-                            List<String> patterns = reps3.stream()
-                                    .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
-                            Map<String, String> r3 = openAIFeedbackService
-                                    .generateRepetitionFeedback(String.valueOf(i + 1), transcript, totalRep, patterns);
-                            if (r3 != null && r3.containsKey("repetition"))
-                                commentBuilder.append(r3.get("repetition")).append(" ");
-                        }
+                        // 알 수 없는 타입은 무시
                         break;
                 }
             }
+
             return commentBuilder.length() > 0 ? commentBuilder.toString().trim() : null;
         } catch (Exception e) {
             log.warn("OpenAI 기반 슬라이드 코멘트 생성 실패: {}", e.getMessage());
-            return null;
+            log.error("OpenAI 기반 슬라이드 코멘트 생성 중 예외 발생 (issueTypes={}, slideIndex={}, transcriptLen={}): {}",
+                    issueTypes, i + 1, transcript == null ? 0 : Math.min(transcript.length(), 200), e.getMessage(), e);
+            // 폴백 메시지를 반환하여 프론트엔드에 빈 문자열이 노출되는 상황을 방지합니다.
+            return AI_FALLBACK_COMMENT;
         }
     }
 
-    /**
-     * 저장된 세션 ID로부터 슬라이드별 IssueDto 리스트를 복원하여 반환
-     * 각 슬라이드마다 List<IssueDto>를 요소로 가지는 리스트를 반환한다.
-     */
+    @Deprecated
     public List<List<IssueDto>> loadSlideIssuesForSession(Long sessionId) {
         if (sessionId == null)
             return Collections.emptyList();
@@ -1127,10 +1121,7 @@ public class AnalysisResultService {
         }
     }
 
-    /**
-     * AnalysisResult로부터 DB에 저장하지 않고 슬라이드별 IssueDto 리스트를 생성하여 반환합니다.
-     * 테스트용 혹은 임시 미저장 피드백을 구성할 때 사용합니다.
-     */
+    @Deprecated
     public List<List<IssueDto>> buildSlideIssuesFromAnalysis(AudioAnalysisService.AnalysisResult analysisResult) {
         if (analysisResult == null)
             return Collections.emptyList();
@@ -1255,11 +1246,11 @@ public class AnalysisResultService {
                     }
                     try {
                         List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
-                        Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(String.valueOf(i + 1),
+                        Map<String, String> r = openAIFeedbackService.generateFillerFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
                                 totalFillers, fillers);
-                        if (r != null && r.containsKey("repetition"))
-                            fillerBuilder.comment(r.get("repetition"));
+                        if (r != null && r.containsKey("filler"))
+                            fillerBuilder.comment(r.get("filler"));
                     } catch (Exception e) {
                         log.warn("필러 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
                     }
@@ -1276,12 +1267,12 @@ public class AnalysisResultService {
                             .issueType("SILENCE")
                             .silenceCount(silenceCount);
                     try {
-                        Map<String, String> h = openAIFeedbackService.generateHesitationFeedback(String.valueOf(i + 1),
+                        Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
                                 silenceCount, silences.stream()
                                         .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum());
-                        if (h != null && h.containsKey("hesitation"))
-                            silenceBuilder.comment(h.get("hesitation"));
+                        if (h != null && h.containsKey("silence"))
+                            silenceBuilder.comment(h.get("silence"));
                     } catch (Exception e) {
                         log.warn("공백 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
                     }
@@ -1401,6 +1392,11 @@ public class AnalysisResultService {
     /**
      * 분석 결과(메모리)를 기반으로 프론트용 SlideFeedbackDto 리스트를 생성합니다.
      * DB에 저장하지 않고 테스트 응답에서 사용하기 위한 헬퍼입니다.
+     * 주 책임: DB 저장 없이 프론트엔드로 보낼 SlideFeedbackDto 객체 리스트(각 슬라이드의 요약: 번호, 타임스탬프, 텍스트,
+     * issues 등)를 생성.
+     * 입력/출력: 입력은 AnalysisResult; 출력은 List<SlideFeedbackDto>.
+     * 특징/주의점:
+     * buildSlideIssuesFromAnalysis와 매우 유사한 데이터 구성 로직을 포함하지만, 최종 포맷이 DTO임.
      */
     public List<com.pres.pres_server.dto.practice.SlideFeedbackDto> buildSlideFeedbackDtosFromAnalysis(
             AudioAnalysisService.AnalysisResult analysisResult) {
