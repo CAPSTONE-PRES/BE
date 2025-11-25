@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AudioAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AudioAnalysisService.class);
+    // TODO: 윈도우 크기 상수화
     private static final double WINDOW_SEC = 30.0;
 
     // Core services
@@ -130,10 +131,45 @@ public class AudioAnalysisService {
 
         ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = analyzeAccuracy(fullSttText, projectId);
 
-        // 5. 슬라이드별 분석 (옵션)
+        // 5. 슬라이드별 분석
+        // 슬라이드별 스크립트 리스트가 제공되지 않았거나 길이가 일치하지 않으면
+        // 프로젝트의 CueCard를 조회하여 슬라이드별 스크립트를 생성합니다. 이렇게 하면
+        // 슬라이드별 비교를 항상 시도하도록 보장할 수 있습니다.
+        List<String> slideScriptsToUse = slideScripts;
+        if ((slideScriptsToUse == null
+                || (slideTransitions != null && slideScriptsToUse.size() != slideTransitions.size()))
+                && projectId != null) {
+            try {
+                Optional<PresentationFile> presentationFileOpt = presentationFileRepository
+                        .findByProject_ProjectId(projectId);
+                if (presentationFileOpt.isPresent() && slideTransitions != null && !slideTransitions.isEmpty()) {
+                    Long fileId = presentationFileOpt.get().getFileId();
+                    List<CueCard> cueCards = cueCardRepository
+                            .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
+                    if (cueCards != null && !cueCards.isEmpty()) {
+                        int slideCount = slideTransitions.size();
+                        slideScriptsToUse = new ArrayList<>(Collections.nCopies(slideCount, ""));
+                        for (CueCard cc : cueCards) {
+                            int idx = cc.getSlideNumber();
+                            if (idx >= 1 && idx <= slideCount) {
+                                String prev = slideScriptsToUse.get(idx - 1);
+                                String content = cc.getContent() == null ? "" : cc.getContent().trim();
+                                if (prev == null || prev.isBlank())
+                                    slideScriptsToUse.set(idx - 1, content);
+                                else if (!content.isBlank())
+                                    slideScriptsToUse.set(idx - 1, prev + " " + content);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("슬라이드별 스크립트 생성 중 오류: {}", e.getMessage());
+            }
+        }
+
         SlideAnalysisResult slideAnalysis = (slideTransitions != null && !slideTransitions.isEmpty())
-                ? performSlideAnalysis(segments, audioFile.getDurationSeconds(),
-                        slideTransitions, slideScripts)
+                ? performSlideAnalysis(segments, audioFile.getDurationSeconds(), slideTransitions,
+                        slideScriptsToUse)
                 : SlideAnalysisResult.empty();
 
         log.info("[AudioAnalysis] Complete: {} windows, {} slides",
