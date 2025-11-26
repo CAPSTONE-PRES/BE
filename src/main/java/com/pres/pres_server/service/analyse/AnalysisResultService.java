@@ -417,10 +417,19 @@ public class AnalysisResultService {
         Map<Integer, List<RepetitiveTextAnalysisService.SlideRepetition>> repetitionMap = new HashMap<>();
         if (repetitionResults != null) {
             for (RepetitiveTextAnalysisService.SlideRepetition rep : repetitionResults) {
-                repetitionMap.computeIfAbsent(rep.getSlideIndex(), k -> new ArrayList<>()).add(rep);
+                Integer key = rep.getSlideIndex();
+                // fallback to slideIndices first entry if slideIndex is null
                 try {
-                    log.debug("반복 결과 매핑: slideIndex={}, pattern={}, count={}", rep.getSlideIndex(), rep.getPattern(),
-                            rep.getCount());
+                    if (key == null && rep.getSlideIndices() != null && !rep.getSlideIndices().isEmpty())
+                        key = rep.getSlideIndices().get(0);
+                } catch (Exception ignore) {
+                }
+                if (key == null)
+                    continue; // skip entries with no slide mapping
+
+                repetitionMap.computeIfAbsent(key, k -> new ArrayList<>()).add(rep);
+                try {
+                    log.debug("반복 결과 매핑: slideIndex={}, pattern={}, count={}", key, rep.getPattern(), rep.getCount());
                 } catch (Exception ex) {
                     log.debug("반복 결과 항목 로깅 실패: {}", ex.getMessage());
                 }
@@ -636,14 +645,61 @@ public class AnalysisResultService {
                 if (totalRepeatCount >= 2) {
                     slideFeedback.setRepeatCount(totalRepeatCount);
                     // 반복 패턴을 Map 형태로 저장 (상위 3개)
-                    Map<String, Integer> repeatMapTop = slideRepetitions.stream()
-                            .sorted(Comparator.comparingInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
-                                    .reversed())
+                    // 디버깅 로그: slideRepetitions와 계산된 repeatMapTop을 남겨 어떤 값이 사용되는지 확인
+                    try {
+                        log.debug("슬라이드 {} - slideRepetitions details: {}",
+                                i + 1,
+                                slideRepetitions.stream().map(r -> String.format("{pattern=%s,slideIndex=%s,count=%d}",
+                                        r.getPattern(), r.getSlideIndex(), r.getCount())).toList());
+                    } catch (Exception ignore) {
+                    }
+                    // 간단한 로직: SlideRepetition의 slideIndex/slideIndices 정보를 우선 사용하여
+                    // 해당 슬라이드에 속한 발생 횟수를 계산합니다. patternOffsetMap은 하이라이팅용으로만 사용.
+                    Map<String, Integer> aggregated = new LinkedHashMap<>();
+                    List<String> distinctPatterns = slideRepetitions.stream()
+                            .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
+                            .distinct().toList();
+                    int targetSlideIndex = i + 1;
+                    for (String pattern : distinctPatterns) {
+                        final String p = pattern;
+                        int localizedCount = slideRepetitions.stream().mapToInt(r -> {
+                            try {
+                                // 명시적 슬라이드 인덱스가 있으면 비교
+                                if (r.getSlideIndex() != null) {
+                                    return r.getSlideIndex().intValue() == targetSlideIndex ? r.getCount() : 0;
+                                }
+                                // 슬라이드 인덱스 리스트가 있으면 해당 리스트에서 현재 슬라이드가 몇 번 등장하는지 센다
+                                if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
+                                    return (int) r.getSlideIndices().stream()
+                                            .filter(si -> si != null && si.intValue() == targetSlideIndex).count();
+                                }
+                                // 그 외에는 폴백으로 0
+                                return 0;
+                            } catch (Exception ex) {
+                                return 0;
+                            }
+                        }).sum();
+
+                        // 폴백: 만약 위에서 아무것도 못 세면 기존 slideRepetitions의 getCount 합계를 사용
+                        if (localizedCount == 0) {
+                            int fallback = slideRepetitions.stream()
+                                    .filter(r -> p.equals(r.getPattern()))
+                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
+                            localizedCount = fallback;
+                        }
+
+                        aggregated.put(pattern, localizedCount);
+                    }
+
+                    Map<String, Integer> repeatMapTop = aggregated.entrySet().stream()
+                            .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
                             .limit(3)
-                            .collect(Collectors.toMap(
-                                    RepetitiveTextAnalysisService.SlideRepetition::getPattern,
-                                    RepetitiveTextAnalysisService.SlideRepetition::getCount,
-                                    (a, b) -> a, LinkedHashMap::new));
+                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a,
+                                    LinkedHashMap::new));
+                    try {
+                        log.debug("슬라이드 {} - computed repeatMapTop: {}", i + 1, repeatMapTop);
+                    } catch (Exception ignore) {
+                    }
                     // 기존 DB 필드에는 문자열로도 남겨 둠
                     String repeatDetailStr = String.join(", ", repeatMapTop.keySet());
                     slideFeedback.setRepeatDetail(repeatDetailStr);
@@ -1029,7 +1085,15 @@ public class AnalysisResultService {
         Map<Integer, List<RepetitiveTextAnalysisService.SlideRepetition>> repetitionMap = new HashMap<>();
         if (repetitionResults != null) {
             for (RepetitiveTextAnalysisService.SlideRepetition rep : repetitionResults) {
-                repetitionMap.computeIfAbsent(rep.getSlideIndex(), k -> new ArrayList<>()).add(rep);
+                Integer key = rep.getSlideIndex();
+                try {
+                    if (key == null && rep.getSlideIndices() != null && !rep.getSlideIndices().isEmpty())
+                        key = rep.getSlideIndices().get(0);
+                } catch (Exception ignore) {
+                }
+                if (key == null)
+                    continue;
+                repetitionMap.computeIfAbsent(key, k -> new ArrayList<>()).add(rep);
             }
         }
 
@@ -1102,13 +1166,51 @@ public class AnalysisResultService {
                 int totalRepeatCount = slideReps.stream()
                         .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
                 if (totalRepeatCount >= 1) {
-                    Map<String, Integer> repeatMapTop = slideReps.stream()
-                            .sorted(Comparator.comparingInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
-                                    .reversed())
+                    // 디버깅 로그: slideReps 상세와 생성되는 repeatMapTop 확인
+                    try {
+                        log.debug("DTO 빌드 - slide {} slideReps: {}", slideNumber,
+                                slideReps.stream().map(r -> String.format("{pattern=%s,slideIndex=%s,count=%d}",
+                                        r.getPattern(), r.getSlideIndex(), r.getCount())).toList());
+                    } catch (Exception ignore) {
+                    }
+                    // DTO 빌드에서도 SlideRepetition의 슬라이드 인덱스 정보를 우선 사용하여 간단히 집계
+                    Map<String, Integer> aggregated = new LinkedHashMap<>();
+                    List<String> distinctPatternsDto = slideReps.stream()
+                            .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
+                    for (String pattern : distinctPatternsDto) {
+                        final String p = pattern;
+                        int localizedCount = slideReps.stream().mapToInt(r -> {
+                            try {
+                                if (r.getSlideIndex() != null) {
+                                    return r.getSlideIndex().intValue() == slideNumber ? r.getCount() : 0;
+                                }
+                                if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
+                                    return (int) r.getSlideIndices().stream()
+                                            .filter(si -> si != null && si.intValue() == slideNumber).count();
+                                }
+                                return 0;
+                            } catch (Exception ex) {
+                                return 0;
+                            }
+                        }).sum();
+                        if (localizedCount == 0) {
+                            int fallback = slideReps.stream()
+                                    .filter(r -> p.equals(r.getPattern()))
+                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
+                            localizedCount = fallback;
+                        }
+                        aggregated.put(pattern, localizedCount);
+                    }
+
+                    Map<String, Integer> repeatMapTop = aggregated.entrySet().stream()
+                            .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
                             .limit(3)
-                            .collect(Collectors.toMap(RepetitiveTextAnalysisService.SlideRepetition::getPattern,
-                                    RepetitiveTextAnalysisService.SlideRepetition::getCount, (a, b) -> a,
+                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a,
                                     LinkedHashMap::new));
+                    try {
+                        log.debug("DTO 빌드 - slide {} repeatMapTop: {}", slideNumber, repeatMapTop);
+                    } catch (Exception ignore) {
+                    }
 
                     IssueDto.IssueDtoBuilder rb = IssueDto.builder().issueType("REPETITION")
                             .repeatCount(totalRepeatCount).repeatDetail(repeatMapTop);
