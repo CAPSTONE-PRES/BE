@@ -149,6 +149,54 @@ public class QnaComparisonService {
         }
 
         /**
+         * 특정 세션에 저장된 모든 QnA 비교 결과를 DTO 리스트로 반환
+         */
+        @Transactional(readOnly = true)
+        public java.util.List<QnaComparisonDto> getAllComparisons(Long sessionId) {
+                log.info("📚 세션의 모든 QnA 비교 결과 조회 - sessionId: {}", sessionId);
+
+                PracticeSession session = practiceSessionRepository.findById(sessionId)
+                                .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
+
+                java.util.List<QnaAnswerComparison> comps = qnaAnswerComparisonRepository
+                                .findAllByPracticeSession(session);
+
+                java.util.List<QnaComparisonDto> out = new java.util.ArrayList<>();
+                for (QnaAnswerComparison comp : comps) {
+                        QnaQuestion question = comp.getQnaQuestion();
+                        QnaAnswer ideal = comp.getIdealAnswer();
+                        QnaAnswer user = comp.getUserAnswer();
+
+                        String feedback = generateFeedback(
+                                        question.getBody(),
+                                        ideal.getBody(),
+                                        user.getBody(),
+                                        comp.getSimCosine(),
+                                        comp.getKeywordRecall(),
+                                        comp.getCoverage());
+
+                        java.util.List<String> missingKeywords = extractMissingKeywords(user.getBody(),
+                                        ideal.getBody());
+
+                        out.add(QnaComparisonDto.builder()
+                                        .comparisonId(comp.getComparisonId())
+                                        .questionId(question.getQnaId())
+                                        .question(question.getBody())
+                                        .idealAnswer(ideal.getBody())
+                                        .userAnswer(user.getBody())
+                                        .similarity(comp.getSimCosine())
+                                        .keywordRecall(comp.getKeywordRecall())
+                                        .coverage(comp.getCoverage())
+                                        .feedback(feedback)
+                                        .missingKeywords(missingKeywords)
+                                        .build());
+                }
+
+                log.info("✅ 세션의 QnA 비교 결과 개수: {}", out.size());
+                return out;
+        }
+
+        /**
          * 사용자 답변과 모범 답변 비교 및 피드백 생성 (최초 비교 시)
          * 
          * @param sessionId 연습 세션 ID

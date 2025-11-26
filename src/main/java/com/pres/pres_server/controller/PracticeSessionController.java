@@ -160,4 +160,22 @@ public class PracticeSessionController {
 
                 return ResponseEntity.ok(feedback);
         }
+
+        @Operation(summary = "세션의 QnA 비교(피드백) 목록 조회", description = "세션에 저장된 모든 QnA 비교 결과(피드백) 목록을 반환합니다.")
+        @GetMapping("/{sessionId}/qna/feedbacks")
+        public ResponseEntity<java.util.List<com.pres.pres_server.dto.qna.QnaComparisonDto>> getAllQnaFeedbacks(
+                        @PathVariable("sessionId") Long sessionId) {
+                try {
+                        log.info("▶ 세션의 QnA 피드백 목록 요청 - sessionId: {}", sessionId);
+                        java.util.List<com.pres.pres_server.dto.qna.QnaComparisonDto> list = practiceQnaService
+                                        .getAllComparisons(sessionId);
+                        log.info("✅ QnA 피드백 목록 반환 - sessionId: {}, count: {}", sessionId,
+                                        list == null ? 0 : list.size());
+                        return ResponseEntity.ok(list);
+                } catch (Exception e) {
+                        log.error("QnA 피드백 목록 조회 실패 - sessionId: {}", sessionId, e);
+                        return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                                        .body(null);
+                }
+        }
 }
