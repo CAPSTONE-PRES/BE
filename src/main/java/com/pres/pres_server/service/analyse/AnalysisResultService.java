@@ -3,16 +3,14 @@ package com.pres.pres_server.service.analyse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pres.pres_server.domain.Feedback;
 import com.pres.pres_server.domain.SlideFeedback;
-import com.pres.pres_server.domain.CueCard;
 import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.domain.SessionWindow;
 import com.pres.pres_server.dto.analyse.WindowDto;
 import com.pres.pres_server.repository.FeedbackRepository;
 import com.pres.pres_server.repository.SlideFeedbackRepository;
-import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PracticeSessionRepository;
-import com.pres.pres_server.repository.PresentationFileRepository;
+
 import com.pres.pres_server.repository.ProjectRepository;
 import com.pres.pres_server.repository.SessionWindowRepository;
 import com.pres.pres_server.service.analyse.utils.SlideSegmentExtractor;
@@ -27,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.pres.pres_server.dto.practice.IssueDto;
+import com.pres.pres_server.domain.IssueType;
 import com.pres.pres_server.dto.practice.OffsetDto;
 
 /**
@@ -44,12 +43,9 @@ public class AnalysisResultService {
     private final SessionWindowRepository windowRepository;
     private final FeedbackRepository feedbackRepository;
     private final ProjectRepository projectRepository;
-    private final CueCardRepository cueCardRepository;
-    private final PresentationFileRepository presentationFileRepository;
     private final SlideFeedbackRepository slideFeedbackRepository;
     private final ObjectMapper objectMapper;
     private final SlideSegmentExtractor slideSegmentExtractor;
-    private final ScriptAccuracyService scriptAccuracyService;
     private final OpenAIFeedbackService openAIFeedbackService;
     private final SpeechSpeedService speechSpeedService;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -231,7 +227,10 @@ public class AnalysisResultService {
                     globalAcc.getMatchedKeywordCount(),
                     globalAcc.getTotalKeywordCount());
         } else {
-            accuracyScore = analyzeAndSetAccuracy(session, analysisResult.getFullSttText(), feedback);
+            log.warn("  • 정확도 결과 없음 - AudioAnalysisService에서 계산된 accuracyResult가 필요합니다. 기본값 100점 적용");
+            accuracyScore = 100;
+            feedback.setScriptSimilarity(0.0);
+            feedback.setMissingKeywords(toJsonSafe(Collections.emptyList()));
         }
 
         // 저장용 정확도 필드 설정
@@ -396,82 +395,6 @@ public class AnalysisResultService {
         feedback.setSilenceScore(100);
         log.warn("  • 공백 분석 결과 없음 - 기본값 100점 적용");
         return 100;
-    }
-
-    /**
-     * 정확도 분석 및 설정
-     */
-    private int analyzeAndSetAccuracy(PracticeSession session, String sttText, Feedback feedback) {
-        try {
-            // 1. 전체 대본을 가져옴(큐카드 기반)
-            if (session.getProject() == null) {
-                log.info("  • 프로젝트 정보 없음 - 정확도 분석 생략");
-                return 100;
-            }
-
-            String fullScript = getFullScriptForSession(session);
-
-            if (fullScript == null || fullScript.isEmpty() || sttText == null || sttText.isEmpty()) {
-                log.warn("  • 대본 또는 STT 텍스트 비어있음 - 정확도 분석 생략");
-                return 100;
-            }
-
-            // 2. 계산은 ScriptAccuracyService에 위임
-            ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = scriptAccuracyService
-                    .analyzeAccuracy(fullScript, sttText);
-
-            if (accuracyResult.isSuccess()) {
-                int score = accuracyResult.getAccuracyScore();
-                feedback.setScriptSimilarity(accuracyResult.getScriptSimilarity());
-
-                // 누락된 키워드를 JSON 배열 형식으로 저장 (공통 헬퍼 사용)
-                feedback.setMissingKeywords(toJsonSafe(accuracyResult.getMissingKeywords()));
-
-                log.info("  • 정확도 점수: {} (유사도: {}, 키워드 매칭: {}/{})",
-                        score,
-                        String.format("%.2f", accuracyResult.getScriptSimilarity()),
-                        accuracyResult.getMatchedKeywordCount(),
-                        accuracyResult.getTotalKeywordCount());
-                return score;
-            } else {
-                log.warn("  • 정확도 분석 실패 - 기본값 100점 적용");
-                return 100;
-            }
-
-        } catch (Exception e) {
-            log.error("  • 정확도 분석 중 오류 발생 - 기본값 100점 적용", e);
-            return 100;
-        }
-    }
-
-    /**
-     * 세션에서 PresentationFile/CueCard를 조회해 전체 대본 문자열을 생성
-     */
-    private String getFullScriptForSession(PracticeSession session) {
-        try {
-            Optional<com.pres.pres_server.domain.PresentationFile> presentationFileOpt = presentationFileRepository
-                    .findByProject(session.getProject());
-
-            if (presentationFileOpt.isEmpty())
-                return "";
-
-            Long fileId = presentationFileOpt.get().getFileId();
-
-            List<CueCard> cueCards = cueCardRepository
-                    .findByPresentationFile_FileIdOrderBySlideNumberAscModeAscSectionNumberAsc(fileId);
-
-            if (cueCards == null || cueCards.isEmpty())
-                return "";
-
-            return cueCards.stream()
-                    .map(CueCard::getContent)
-                    .filter(content -> content != null && !content.trim().isEmpty())
-                    .reduce((a, b) -> a + " " + b)
-                    .orElse("");
-        } catch (Exception e) {
-            log.warn("전체 대본 생성 중 오류: {}", e.getMessage());
-            return "";
-        }
     }
 
     /**
@@ -650,7 +573,7 @@ public class AnalysisResultService {
                     }
                     issuesList.add(speedBuilder.build());
                     if (slideFeedback.getIssueType() == null)
-                        slideFeedback.setIssueType("SPEED");
+                        slideFeedback.setIssueType(IssueType.SPEED);
                     hasIssue = true;
                 }
             }
@@ -715,7 +638,7 @@ public class AnalysisResultService {
                     }
                     issuesList.add(fillerBuilder.build());
                     if (slideFeedback.getIssueType() == null)
-                        slideFeedback.setIssueType("FILLER");
+                        slideFeedback.setIssueType(IssueType.FILLER);
                     hasIssue = true;
                 }
             }
@@ -749,7 +672,7 @@ public class AnalysisResultService {
                     }
                     issuesList.add(silenceBuilder.build());
                     if (slideFeedback.getIssueType() == null)
-                        slideFeedback.setIssueType("SILENCE");
+                        slideFeedback.setIssueType(IssueType.SILENCE);
                     hasIssue = true;
                 }
             }
@@ -829,7 +752,7 @@ public class AnalysisResultService {
                     }
                     issuesList.add(repBuilder.build());
                     if (slideFeedback.getIssueType() == null)
-                        slideFeedback.setIssueType("REPETITION");
+                        slideFeedback.setIssueType(IssueType.REPETITION);
                     hasIssue = true;
                 } else {
                     // 디버깅용: 반복이 감지되었으나 임계값 미달로 처리된 경우 로그
@@ -896,39 +819,14 @@ public class AnalysisResultService {
                         }
                         issuesList.add(accBuilder.build());
                         if (slideFeedback.getIssueType() == null)
-                            slideFeedback.setIssueType("ACCURACY");
+                            slideFeedback.setIssueType(IssueType.ACCURACY);
                         hasIssue = true;
                     }
                 } else {
-                    // 슬라이드별 정확도 결과가 없는 경우, 전체 정확도 결과에서 누락 키워드를
-                    // 슬라이드 텍스트별로 찾아 폴백으로 ACCURACY 이슈를 생성합니다.
-                    try {
-                        ScriptAccuracyService.AccuracyAnalysisResult globalAcc = analysisResult.getAccuracyResult();
-                        if (globalAcc != null && globalAcc.isSuccess()) {
-                            List<String> missingGlobal = globalAcc.getMissingKeywords();
-                            if (missingGlobal != null && !missingGlobal.isEmpty()) {
-                                String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                        ? slideSttTexts.get(i)
-                                        : "";
-                                List<OffsetDto> accOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText,
-                                        missingGlobal, i + 1);
-                                if (accOffsets != null && !accOffsets.isEmpty()) {
-                                    slideFeedback.setErrorCount(accOffsets.size());
-                                    IssueDto accIssue = IssueDto.builder()
-                                            .issueType("ACCURACY")
-                                            .errorCount(slideFeedback.getErrorCount())
-                                            .offsets(accOffsets)
-                                            .build();
-                                    issuesList.add(accIssue);
-                                    if (slideFeedback.getIssueType() == null)
-                                        slideFeedback.setIssueType("ACCURACY");
-                                    hasIssue = true;
-                                }
-                            }
-                        }
-                    } catch (Exception ex) {
-                        log.warn("정확도 폴백 오프셋 수집 중 오류 - slide {}: {}", i + 1, ex.getMessage());
-                    }
+                    // 주의: 이전에는 전역 accuracy 결과(global accuracy)를 사용하여
+                    // 슬라이드별 ACCURACY 이슈를 폴백으로 생성했음.
+                    // 이 동작은 슬라이드별 정확도를 잘못 대표할 수 있으므로 제거합니다.
+                    log.debug("슬라이드 {}에 대해 슬라이드별 정확도 결과 없음 - 전역 accuracy 폴백 사용하지 않음", i + 1);
                 }
             }
 
@@ -952,7 +850,7 @@ public class AnalysisResultService {
                         .collect(Collectors.toSet());
                 // fallback: slideFeedback에 주 이슈가 설정되어 있으면 포함
                 if (detectedTypes.isEmpty() && slideFeedback.getIssueType() != null)
-                    detectedTypes.add(slideFeedback.getIssueType());
+                    detectedTypes.add(slideFeedback.getIssueType().name());
 
                 if (!detectedTypes.isEmpty()) {
                     overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults, silenceResults,

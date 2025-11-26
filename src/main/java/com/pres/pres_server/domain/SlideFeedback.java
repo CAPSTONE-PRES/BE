@@ -1,6 +1,7 @@
 package com.pres.pres_server.domain;
 
 import jakarta.persistence.*;
+import com.pres.pres_server.domain.IssueType;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -30,25 +31,26 @@ public class SlideFeedback {
 
     // 어떤 유형의 이슈인지 (SPEED / FILLER / REPETITION / ACCURACY 등)
     @Column(name = "issue_type", length = 50)
-    private String issueType;
+    @Enumerated(EnumType.STRING)
+    private IssueType issueType;
 
     // -------------------
     // 속도 관련 (issue_type = SPEED 일 때 사용)
     // -------------------
     @Column(name = "spm_user")
-    private Integer spmUser;       // 사용자 SPM
+    private Integer spmUser; // 사용자 SPM
 
     @Column(name = "spm_average")
-    private Integer spmAverage;    // 비교 평균 SPM (290 등)
+    private Integer spmAverage; // 비교 평균 SPM (290 등)
 
     // -------------------
     // 망설임 / 필러 (issue_type = FILLER)
     // -------------------
     @Column(name = "filler_count")
-    private Integer fillerCount;   // 총 필러 개수
+    private Integer fillerCount; // 총 필러 개수
 
     @Column(name = "filler_detail", columnDefinition = "TEXT")
-    private String fillerDetail;   // 예: {"음":1,"뭐지":1}
+    private String fillerDetail; // 예: {"음":1,"뭐지":1}
 
     // ===========공백============
     @Column(name = "silence_count")
@@ -67,16 +69,16 @@ public class SlideFeedback {
     // 반복 어휘 (issue_type = REPETITION)
     // -------------------
     @Column(name = "repeat_count")
-    private Integer repeatCount;   // 총 반복 횟수
+    private Integer repeatCount; // 총 반복 횟수
 
     @Column(name = "repeat_detail", columnDefinition = "TEXT")
-    private String repeatDetail;   // 예: "그 다음에, 그러니까, 약간"
+    private String repeatDetail; // 예: "그 다음에, 그러니까, 약간"
 
     // -------------------
     // 정확도 (issue_type = ACCURACY)
     // -------------------
     @Column(name = "error_count")
-    private Integer errorCount;    // 오류/불일치 부분 개수
+    private Integer errorCount; // 오류/불일치 부분 개수
 
     // -------------------
     // 공통 코멘트
