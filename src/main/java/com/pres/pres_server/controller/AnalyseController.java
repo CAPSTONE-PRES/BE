@@ -9,6 +9,8 @@ import com.pres.pres_server.dto.analyse.AnalysisResponseDto;
 // PracticeFeedbackDto and PracticeSessionService removed from this controller; feedback fetched via separate endpoint
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 import com.pres.pres_server.repository.CueCardRepository;
+import com.pres.pres_server.repository.PresentationFileRepository;
+import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.CueCard;
 
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Tag(name = "Analyse", description = "음성 분석 API")
@@ -36,6 +39,7 @@ public class AnalyseController {
     private final AudioAnalysisService audioAnalysisService;
     private final AnalysisResultService analysisResultService;
     private final CueCardRepository cueCardRepository;
+    private final PresentationFileRepository presentationFileRepository;
     private final ObjectMapper objectMapper;
 
     @Operation(summary = "오디오 분석", description = "오디오 파일 업로드 및 분석 수행" +
@@ -59,12 +63,30 @@ public class AnalyseController {
             List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
 
             // 2. Fetch slideScripts from DB (요청으로 전달된 slideTransitions 길이에 맞춰 반환)
+            // NOTE: fetchSlideScripts expects a presentation fileId, not projectId.
             List<String> slideScripts = null;
             if (projectId != null) {
-                if (transitions != null && !transitions.isEmpty()) {
-                    slideScripts = fetchSlideScripts(projectId, transitions.size());
+                Long fileId = null;
+                try {
+                    Optional<PresentationFile> pfOpt = presentationFileRepository.findByProject_ProjectId(projectId);
+                    if (pfOpt.isPresent()) {
+                        fileId = pfOpt.get().getFileId();
+                    } else {
+                        log.info("  • No presentation file found for projectId={}", projectId);
+                    }
+                } catch (Exception e) {
+                    log.warn("  • Failed to lookup presentation file for projectId={}: {}", projectId, e.getMessage());
+                }
+
+                if (fileId != null) {
+                    if (transitions != null && !transitions.isEmpty()) {
+                        slideScripts = fetchSlideScripts(fileId, transitions.size());
+                    } else {
+                        slideScripts = fetchSlideScripts(fileId);
+                    }
                 } else {
-                    slideScripts = fetchSlideScripts(projectId);
+                    // let AudioAnalysisService perform fallback (it can resolve fileId correctly)
+                    slideScripts = null;
                 }
             }
 
@@ -110,10 +132,21 @@ public class AnalyseController {
             List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
             List<String> slideScripts = null;
             if (projectId != null) {
-                if (transitions != null && !transitions.isEmpty()) {
-                    slideScripts = fetchSlideScripts(projectId, transitions.size());
-                } else {
-                    slideScripts = fetchSlideScripts(projectId);
+                Long fileId = null;
+                try {
+                    Optional<PresentationFile> pfOpt = presentationFileRepository.findByProject_ProjectId(projectId);
+                    if (pfOpt.isPresent()) {
+                        fileId = pfOpt.get().getFileId();
+                    }
+                } catch (Exception e) {
+                    log.warn("  • Failed to lookup presentation file for projectId={}: {}", projectId, e.getMessage());
+                }
+                if (fileId != null) {
+                    if (transitions != null && !transitions.isEmpty()) {
+                        slideScripts = fetchSlideScripts(fileId, transitions.size());
+                    } else {
+                        slideScripts = fetchSlideScripts(fileId);
+                    }
                 }
             }
             int transitionCount = transitions == null ? 0 : transitions.size();
@@ -161,8 +194,18 @@ public class AnalyseController {
             }
             List<String> slideScripts = null;
             if (projectId != null) {
-                // 여기서는 transitions를 이미 기본값으로 채웠으므로 size 사용
-                slideScripts = fetchSlideScripts(projectId, transitions.size());
+                Long fileId = null;
+                try {
+                    Optional<PresentationFile> pfOpt = presentationFileRepository.findByProject_ProjectId(projectId);
+                    if (pfOpt.isPresent()) {
+                        fileId = pfOpt.get().getFileId();
+                    }
+                } catch (Exception e) {
+                    log.warn("  • Failed to lookup presentation file for projectId={}: {}", projectId, e.getMessage());
+                }
+                if (fileId != null) {
+                    slideScripts = fetchSlideScripts(fileId, transitions.size());
+                }
             }
             int transitionCount = transitions == null ? 0 : transitions.size();
             int scriptCount = slideScripts == null ? 0 : slideScripts.size();
