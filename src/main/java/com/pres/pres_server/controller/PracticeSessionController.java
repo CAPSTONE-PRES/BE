@@ -12,6 +12,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -125,7 +128,8 @@ public class PracticeSessionController {
                 }
         }
 
-        @Operation(summary = "질문 단위 QnA 피드백 조회", description = "특정 질문에 대해 제출된 사용자의 답변을 비교하여 피드백을 반환합니다.")
+        @Deprecated
+        @Operation(summary = "질문 단위 QnA 피드백 조회", description = "DEPRECATED")
         @GetMapping("/{sessionId}/qna/{questionId}/feedback")
         public ResponseEntity<QnaComparisonDto> getQuestionFeedback(
                         @PathVariable("sessionId") Long sessionId,
@@ -161,19 +165,24 @@ public class PracticeSessionController {
                 return ResponseEntity.ok(feedback);
         }
 
-        @Operation(summary = "세션의 QnA 비교(피드백) 목록 조회", description = "세션에 저장된 모든 QnA 비교 결과(피드백) 목록을 반환합니다.")
-        @GetMapping("/{sessionId}/qna/feedbacks")
-        public ResponseEntity<java.util.List<com.pres.pres_server.dto.qna.QnaComparisonDto>> getAllQnaFeedbacks(
+        @Operation(summary = "세션의 QnA 비교(피드백) 조회", description = "세션에 저장된 QnA 비교 결과(피드백)를 반환합니다. 세션당 하나의 비교 결과만 존재합니다.")
+        @GetMapping("/{sessionId}/qna/feedback")
+        public ResponseEntity<QnaComparisonDto> getSessionQnaFeedback(
                         @PathVariable("sessionId") Long sessionId) {
                 try {
-                        log.info("▶ 세션의 QnA 피드백 목록 요청 - sessionId: {}", sessionId);
-                        java.util.List<com.pres.pres_server.dto.qna.QnaComparisonDto> list = practiceQnaService
+                        log.info("▶ 세션의 QnA 피드백 요청 - sessionId: {}", sessionId);
+                        List<QnaComparisonDto> list = practiceQnaService
                                         .getAllComparisons(sessionId);
-                        log.info("✅ QnA 피드백 목록 반환 - sessionId: {}, count: {}", sessionId,
-                                        list == null ? 0 : list.size());
-                        return ResponseEntity.ok(list);
+                        if (list == null || list.isEmpty()) {
+                                log.info("ℹ️ 세션에 저장된 QnA 피드백 없음 - sessionId: {}", sessionId);
+                                return ResponseEntity.noContent().build();
+                        }
+                        com.pres.pres_server.dto.qna.QnaComparisonDto dto = list.get(0);
+                        log.info("✅ QnA 피드백 반환 - sessionId: {}, comparisonId: {}", sessionId,
+                                        dto == null ? null : dto.getComparisonId());
+                        return ResponseEntity.ok(dto);
                 } catch (Exception e) {
-                        log.error("QnA 피드백 목록 조회 실패 - sessionId: {}", sessionId, e);
+                        log.error("QnA 피드백 조회 실패 - sessionId: {}", sessionId, e);
                         return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
                                         .body(null);
                 }

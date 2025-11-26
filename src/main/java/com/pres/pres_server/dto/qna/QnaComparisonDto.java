@@ -23,6 +23,6 @@ public class QnaComparisonDto {
     private Float similarity;
     private Float keywordRecall;
     private Float coverage;
-    private String feedback;
+    private List<String> feedback;
     private List<String> missingKeywords;
 }

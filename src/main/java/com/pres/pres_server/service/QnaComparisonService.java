@@ -122,7 +122,7 @@ public class QnaComparisonService {
                 QnaAnswer idealAnswer = comparison.getIdealAnswer();
                 QnaAnswer userAnswer = comparison.getUserAnswer();
 
-                String feedback = generateFeedback(
+                List<String> feedback = generateFeedback(
                                 question.getBody(),
                                 idealAnswer.getBody(),
                                 userAnswer.getBody(),
@@ -167,7 +167,7 @@ public class QnaComparisonService {
                         QnaAnswer ideal = comp.getIdealAnswer();
                         QnaAnswer user = comp.getUserAnswer();
 
-                        String feedback = generateFeedback(
+                        List<String> feedback = generateFeedback(
                                         question.getBody(),
                                         ideal.getBody(),
                                         user.getBody(),
@@ -263,7 +263,7 @@ public class QnaComparisonService {
                 log.info("✅ 비교 결과 저장 완료 - comparisonId: {}", comparison.getComparisonId());
 
                 // 8. AI 피드백 생성
-                String feedback = generateFeedback(
+                List<String> feedback = generateFeedback(
                                 question.getBody(),
                                 idealAnswer.getBody(),
                                 userAnswer.getBody(),
@@ -344,20 +344,22 @@ public class QnaComparisonService {
         }
 
         // 수치 기반 피드백 생성, AI 폴백
-        private String generateFeedback(float similarity, float keywordRecall, float coverage) {
+        private List<String> generateFeedback(float similarity, float keywordRecall, float coverage) {
+                String msg;
                 if (similarity >= 0.8 && keywordRecall >= 0.7) {
-                        return "훌륭합니다! 핵심 내용을 잘 전달했습니다.";
+                        msg = "훌륭합니다! 핵심 내용을 잘 전달했습니다.";
                 } else if (similarity >= 0.6) {
-                        return "주요 내용은 언급했으나 세부 설명이 부족합니다.";
+                        msg = "주요 내용은 언급했으나 세부 설명이 부족합니다.";
                 } else {
-                        return "핵심 내용을 더 구체적으로 설명해보세요.";
+                        msg = "핵심 내용을 더 구체적으로 설명해보세요.";
                 }
+                return java.util.List.of(msg);
         }
 
         /**
          * AI 기반 피드백 생성 시도. 실패하면 수치 기반 폴백을 사용합니다.
          */
-        private String generateFeedback(String question, String idealAnswer, String userAnswer,
+        private List<String> generateFeedback(String question, String idealAnswer, String userAnswer,
                         float similarity, float keywordRecall, float coverage) {
                 try {
                         Map<String, String> aiResult = openAIFeedbackService.generateQnaFeedback(question, idealAnswer,
@@ -390,7 +392,19 @@ public class QnaComparisonService {
                         }
 
                         String out = sb.toString().trim();
-                        return out.isEmpty() ? generateFeedback(similarity, keywordRecall, coverage) : out;
+                        if (out.isEmpty())
+                                return generateFeedback(similarity, keywordRecall, coverage);
+
+                        // Split the AI output into paragraphs (double-newline) to form a list of
+                        // feedback items
+                        String[] parts = out.split("\\n\\n");
+                        java.util.List<String> list = new java.util.ArrayList<>();
+                        for (String p : parts) {
+                                String t = p == null ? null : p.trim();
+                                if (t != null && !t.isEmpty())
+                                        list.add(t);
+                        }
+                        return list.isEmpty() ? generateFeedback(similarity, keywordRecall, coverage) : list;
                 } catch (Exception e) {
                         log.error("OpenAI 피드백 호출 실패, 폴백 사용", e);
                         return generateFeedback(similarity, keywordRecall, coverage);
@@ -454,7 +468,7 @@ public class QnaComparisonService {
                         QnaAnswerComparison comp = existing.get();
                         QnaAnswer ideal = comp.getIdealAnswer();
                         QnaAnswer user = comp.getUserAnswer();
-                        String feedback = generateFeedback(
+                        List<String> feedback = generateFeedback(
                                         question.getBody(),
                                         ideal.getBody(),
                                         user.getBody(),
@@ -510,7 +524,7 @@ public class QnaComparisonService {
 
                 qnaAnswerComparisonRepository.save(comparison);
 
-                String feedback = generateFeedback(
+                List<String> feedback = generateFeedback(
                                 question.getBody(),
                                 idealAnswer.getBody(),
                                 userAnswer.getBody(),
@@ -554,7 +568,7 @@ public class QnaComparisonService {
                         QnaAnswer ideal = comp.getIdealAnswer();
                         QnaAnswer user = comp.getUserAnswer();
 
-                        String feedback = generateFeedback(
+                        List<String> feedback = generateFeedback(
                                         question.getBody(),
                                         ideal.getBody(),
                                         user.getBody(),
