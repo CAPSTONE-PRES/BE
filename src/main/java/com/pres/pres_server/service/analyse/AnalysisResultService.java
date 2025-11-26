@@ -546,6 +546,12 @@ public class AnalysisResultService {
         if (repetitionResults != null) {
             for (RepetitiveTextAnalysisService.SlideRepetition rep : repetitionResults) {
                 repetitionMap.computeIfAbsent(rep.getSlideIndex(), k -> new ArrayList<>()).add(rep);
+                try {
+                    log.debug("반복 결과 매핑: slideIndex={}, pattern={}, count={}", rep.getSlideIndex(), rep.getPattern(),
+                            rep.getCount());
+                } catch (Exception ex) {
+                    log.debug("반복 결과 항목 로깅 실패: {}", ex.getMessage());
+                }
             }
         }
 
@@ -736,18 +742,27 @@ public class AnalysisResultService {
             }
 
             // 4. 반복 어휘 정보
-            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // slideIndex는
-                                                                                                             // 1부터 시작
+            // repetitionMap의 키가 1-based인지 0-based인지 불확실하므로 둘 다 시도합니다.
+            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // 일반적으로
+                                                                                                             // 1-based
+            if (slideRepetitions == null) {
+                // 0-based로 저장된 경우도 있으므로 폴백 시도
+                slideRepetitions = repetitionMap.get(i);
+            }
+
+            if ((slideRepetitions == null || slideRepetitions.isEmpty()) && !repetitionMap.isEmpty()) {
+                // 디버깅 도움을 위한 로그: 전체 키 세트를 출력하면 매핑 불일치를 파악할 수 있습니다.
+                log.debug("슬라이드 {}에 대한 반복 결과 없음 - repetitionMap 키: {}", i + 1, repetitionMap.keySet());
+            }
+
             if (slideRepetitions != null && !slideRepetitions.isEmpty()) {
                 int totalRepeatCount = slideRepetitions.stream()
                         .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
                         .sum();
-
                 // 기존에는 임계값을 3으로 두어 소량 반복은 무시했음. 운영상 반복이 검출되어도
                 // 이슈로 표시되지 않는 사례가 있어 문턱을 낮춰 2 이상이면 이슈로 기록합니다.
                 if (totalRepeatCount >= 2) {
                     slideFeedback.setRepeatCount(totalRepeatCount);
-
                     // 반복 패턴을 Map 형태로 저장 (상위 3개)
                     Map<String, Integer> repeatMapTop = slideRepetitions.stream()
                             .sorted(Comparator.comparingInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
@@ -760,7 +775,6 @@ public class AnalysisResultService {
                     // 기존 DB 필드에는 문자열로도 남겨 둠
                     String repeatDetailStr = String.join(", ", repeatMapTop.keySet());
                     slideFeedback.setRepeatDetail(repeatDetailStr);
-
                     IssueDto.IssueDtoBuilder repBuilder = IssueDto.builder()
                             .issueType("REPETITION")
                             .repeatCount(totalRepeatCount)
@@ -958,6 +972,7 @@ public class AnalysisResultService {
         }
 
         log.info("  • 슬라이드별 피드백 저장 완료");
+
     }
 
     /**
@@ -1124,274 +1139,6 @@ public class AnalysisResultService {
             log.warn("세션의 슬라이드 이슈 불러오기 실패: {}", e.getMessage());
             return Collections.emptyList();
         }
-    }
-
-    @Deprecated
-    public List<List<IssueDto>> buildSlideIssuesFromAnalysis(AudioAnalysisService.AnalysisResult analysisResult) {
-        if (analysisResult == null)
-            return Collections.emptyList();
-
-        AudioAnalysisService.SlideAnalysisResult slideAnalysis = analysisResult.getSlideAnalysis();
-        if (slideAnalysis == null || slideAnalysis.isEmpty())
-            return Collections.emptyList();
-
-        List<FillerService.SlideFillerDto> fillerResults = slideAnalysis.getFillerResults();
-        List<List<SilenceDetectionService.SilenceInterval>> silenceResults = slideAnalysis.getSilenceResults();
-        List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = slideAnalysis.getAccuracyResults();
-        List<AudioAnalysisService.SlideSpmResult> spmResults = slideAnalysis.getSpmResults();
-        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = slideAnalysis.getRepetitionResults();
-        List<String> slideSttTexts = slideAnalysis.getSlideSttTexts();
-
-        int slideCount = fillerResults != null ? fillerResults.size() : 0;
-        List<List<IssueDto>> out = new ArrayList<>();
-        if (slideCount == 0)
-            return out;
-
-        // repetition map
-        Map<Integer, List<RepetitiveTextAnalysisService.SlideRepetition>> repetitionMap = new HashMap<>();
-        if (repetitionResults != null) {
-            for (RepetitiveTextAnalysisService.SlideRepetition rep : repetitionResults) {
-                repetitionMap.computeIfAbsent(rep.getSlideIndex(), k -> new ArrayList<>()).add(rep);
-            }
-        }
-
-        String fullStt = analysisResult.getFullSttText();
-        List<Integer> slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(fullStt, slideSttTexts);
-
-        // global repetition -> patternOffsetMap
-        Map<String, List<OffsetDto>> patternOffsetMap = new HashMap<>();
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult globalRep = analysisResult.getRepetitionResult();
-        if (globalRep != null && globalRep.isSuccess()) {
-            if (globalRep.getNGramPatterns() != null) {
-                for (RepetitiveTextAnalysisService.RepetitivePattern rp : globalRep.getNGramPatterns()) {
-                    List<RepetitiveTextAnalysisService.Offset> offs = rp.getOffsets();
-                    if (offs == null)
-                        continue;
-                    for (RepetitiveTextAnalysisService.Offset o : offs) {
-                        java.util.Optional<OffsetDto> dto = slideSegmentExtractor.convertGlobalOffsetToSlideOffset(o,
-                                slideStartIndices, slideSttTexts);
-                        dto.ifPresent(
-                                d -> patternOffsetMap.computeIfAbsent(rp.getPattern(), k -> new ArrayList<>()).add(d));
-                    }
-                }
-            }
-            if (globalRep.getWordRepetitions() != null) {
-                for (RepetitiveTextAnalysisService.WordRepetition wr : globalRep.getWordRepetitions()) {
-                    List<RepetitiveTextAnalysisService.Offset> offs = wr.getOffsets();
-                    if (offs == null)
-                        continue;
-                    for (RepetitiveTextAnalysisService.Offset o : offs) {
-                        java.util.Optional<OffsetDto> dto = slideSegmentExtractor.convertGlobalOffsetToSlideOffset(o,
-                                slideStartIndices, slideSttTexts);
-                        dto.ifPresent(
-                                d -> patternOffsetMap.computeIfAbsent(wr.getWord(), k -> new ArrayList<>()).add(d));
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < slideCount; i++) {
-            List<IssueDto> issuesList = new ArrayList<>();
-
-            // 1. SPM
-            if (spmResults != null && i < spmResults.size()) {
-                AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
-                int spmVal = spmResult.getSpm();
-                if (!speechSpeedService.isOptimalSpeed(spmVal)) {
-                    IssueDto.IssueDtoBuilder speedBuilder = IssueDto.builder()
-                            .issueType("SPEED")
-                            .spmUser(spmResult.getSpm())
-                            .spmAverage(290);
-                    // try to get pace comment via OpenAI (best-effort)
-                    try {
-                        Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                spmResult.getSpm(), 130.0);
-                        if (p != null && p.containsKey("pace"))
-                            speedBuilder.comment(p.get("pace"));
-                    } catch (Exception e) {
-                        log.warn("속도 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
-                    }
-                    issuesList.add(speedBuilder.build());
-                }
-            }
-
-            // 2. filler
-            if (fillerResults != null && i < fillerResults.size()) {
-                FillerService.SlideFillerDto fillerDto = fillerResults.get(i);
-                int totalFillers = fillerDto.getFillerCounts().values().stream().mapToInt(Integer::intValue).sum();
-                if (totalFillers > 0) {
-                    IssueDto.IssueDtoBuilder fillerBuilder = IssueDto.builder()
-                            .issueType("FILLER")
-                            .fillerCount(totalFillers)
-                            .fillerDetail(fillerDto.getFillerCounts());
-                    try {
-                        List<OffsetDto> fillerOffsets = new ArrayList<>();
-                        try {
-                            List<TextOffset> pre = fillerDto.getOffsets();
-                            if (pre != null && !pre.isEmpty()) {
-                                fillerOffsets = pre.stream()
-                                        .map(o -> OffsetDto.builder().begin(o.getBegin()).end(o.getEnd())
-                                                .slideIndex(o.getSlideIndex()).text(o.getText()).build())
-                                        .collect(Collectors.toList());
-                            }
-                        } catch (Exception ignore) {
-                        }
-                        if (fillerOffsets == null || fillerOffsets.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
-                                    : "";
-                            List<String> fillerWords = new ArrayList<>(fillerDto.getFillerCounts().keySet());
-                            fillerOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, fillerWords, i + 1);
-                        }
-                        if (fillerOffsets != null && !fillerOffsets.isEmpty())
-                            fillerBuilder.offsets(fillerOffsets);
-                    } catch (Exception ex) {
-                        log.warn("필러 오프셋 수집 중 오류 (in-memory) - slide {}: {}", i + 1, ex.getMessage());
-                    }
-                    try {
-                        List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
-                        Map<String, String> r = openAIFeedbackService.generateFillerFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                totalFillers, fillers);
-                        if (r != null && r.containsKey("filler"))
-                            fillerBuilder.comment(r.get("filler"));
-                    } catch (Exception e) {
-                        log.warn("필러 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
-                    }
-                    issuesList.add(fillerBuilder.build());
-                }
-            }
-
-            // 3. silence
-            if (silenceResults != null && i < silenceResults.size()) {
-                List<SilenceDetectionService.SilenceInterval> silences = silenceResults.get(i);
-                if (silsNotEmpty(silences)) {
-                    int silenceCount = silences.size();
-                    IssueDto.IssueDtoBuilder silenceBuilder = IssueDto.builder()
-                            .issueType("SILENCE")
-                            .silenceCount(silenceCount);
-                    try {
-                        Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                silenceCount, silences.stream()
-                                        .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum());
-                        if (h != null && h.containsKey("silence"))
-                            silenceBuilder.comment(h.get("silence"));
-                    } catch (Exception e) {
-                        log.warn("공백 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
-                    }
-                    issuesList.add(silenceBuilder.build());
-                }
-            }
-
-            // 4. repetition
-            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1);
-            if (slideRepetitions != null && !slideRepetitions.isEmpty()) {
-                int totalRepeatCount = slideRepetitions.stream()
-                        .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
-                if (totalRepeatCount >= 1) {
-                    IssueDto.IssueDtoBuilder repBuilder = IssueDto.builder()
-                            .issueType("REPETITION")
-                            .repeatCount(totalRepeatCount);
-                    try {
-                        List<String> patterns = slideRepetitions.stream()
-                                .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
-                        List<OffsetDto> repOffsets = new ArrayList<>();
-                        for (String p : patterns) {
-                            List<OffsetDto> mapped = patternOffsetMap.get(p);
-                            if (mapped != null && !mapped.isEmpty())
-                                repOffsets.addAll(mapped);
-                        }
-                        if (repOffsets.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
-                                    : "";
-                            repOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, patterns, i + 1);
-                        }
-                        if (!repOffsets.isEmpty())
-                            repBuilder.offsets(repOffsets);
-                    } catch (Exception ex) {
-                        log.warn("반복 오프셋 수집 중 오류 (in-memory) - slide {}: {}", i + 1, ex.getMessage());
-                    }
-                    try {
-                        List<String> patterns = slideRepetitions.stream()
-                                .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
-                        Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                totalRepeatCount, patterns);
-                        if (r2 != null && r2.containsKey("repetition"))
-                            repBuilder.comment(r2.get("repetition"));
-                    } catch (Exception e) {
-                        log.warn("반복 관련 OpenAI 코멘트 생성 실패 (in-memory) - slide {}: {}", i + 1, e.getMessage());
-                    }
-                    issuesList.add(repBuilder.build());
-                }
-            }
-
-            // 5. accuracy: use slide-level if present, otherwise fallback to global
-            // missingKeywords
-            if (accuracyResults != null && i < accuracyResults.size()) {
-                ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
-                if (accuracyResult.isSuccess() && accuracyResult.getAccuracyScore() < 80) {
-                    try {
-                        List<OffsetDto> accOffsets = new ArrayList<>();
-                        try {
-                            List<TextOffset> provided = accuracyResult.getOffsets();
-                            if (provided != null && !provided.isEmpty()) {
-                                for (TextOffset o : provided)
-                                    accOffsets.add(OffsetDto.builder().begin(o.getBegin()).end(o.getEnd())
-                                            .slideIndex(o.getSlideIndex() > 0 ? o.getSlideIndex() : (i + 1))
-                                            .text(o.getText()).build());
-                            }
-                        } catch (Exception ignore) {
-                        }
-                        if (accOffsets.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
-                                    : "";
-                            List<String> missing = accuracyResult.getMissingKeywords();
-                            accOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, missing, i + 1);
-                        }
-                        if (!accOffsets.isEmpty()) {
-                            IssueDto acc = IssueDto.builder().issueType("ACCURACY").errorCount(accOffsets.size())
-                                    .offsets(accOffsets).build();
-                            issuesList.add(acc);
-                        }
-                    } catch (Exception ex) {
-                        log.warn("정확도 오프셋 수집 중 오류 (in-memory) - slide {}: {}", i + 1, ex.getMessage());
-                    }
-                }
-            } else {
-                try {
-                    ScriptAccuracyService.AccuracyAnalysisResult globalAcc = analysisResult.getAccuracyResult();
-                    if (globalAcc != null && globalAcc.isSuccess()) {
-                        List<String> missingGlobal = globalAcc.getMissingKeywords();
-                        if (missingGlobal != null && !missingGlobal.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
-                                    : "";
-                            List<OffsetDto> accOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText,
-                                    missingGlobal, i + 1);
-                            if (accOffsets != null && !accOffsets.isEmpty()) {
-                                issuesList.add(IssueDto.builder().issueType("ACCURACY").errorCount(accOffsets.size())
-                                        .offsets(accOffsets).build());
-                            }
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.warn("정확도 폴백 오프셋 수집 중 오류 (in-memory) - slide {}: {}", i + 1, ex.getMessage());
-                }
-            }
-
-            out.add(issuesList);
-        }
-
-        return out;
-    }
-
-    private boolean silsNotEmpty(List<SilenceDetectionService.SilenceInterval> sils) {
-        return sils != null && !sils.isEmpty();
     }
 
     /**

@@ -226,6 +226,8 @@ public class RepetitiveTextAnalysisService {
 
         // 슬라이드별 텍스트 매핑
         Map<Integer, String> slideTextMap = mapTextToSlides(sttText, transitions, segments);
+        // 디버그: 슬라이드별 매핑 결과 키셋 출력(매핑 실패 조사용)
+        log.debug("L2 mapTextToSlides keys: {}", slideTextMap.keySet());
         if (slideTextMap.isEmpty())
             return Collections.emptyList();
 
@@ -263,6 +265,9 @@ public class RepetitiveTextAnalysisService {
                     }
                 }
 
+                // 디버그: 생성되는 SlideRepetition 정보 로그
+                log.debug("Created SlideRepetition: slideNum={}, pattern={}, count={}, occs={}", slideNum, ge.getKey(),
+                        ge.getValue(), occs.size());
                 out.add(SlideRepetition.builder()
                         .pattern(ge.getKey())
                         .slideIndex(slideNum)
