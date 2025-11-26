@@ -167,9 +167,10 @@ public class AudioAnalysisService {
             }
         }
 
+        // 전달된 repetitionResult를 슬라이드 분석에서 재사용하여 중복 호출 방지
         SlideAnalysisResult slideAnalysis = (slideTransitions != null && !slideTransitions.isEmpty())
                 ? performSlideAnalysis(segments, audioFile.getDurationSeconds(), slideTransitions,
-                        slideScriptsToUse)
+                        slideScriptsToUse, repetitionResult)
                 : SlideAnalysisResult.empty();
 
         log.info("[AudioAnalysis] Complete: {} windows, {} slides",
@@ -195,7 +196,8 @@ public class AudioAnalysisService {
             List<WhisperSegment> segments,
             double totalDuration,
             List<SlideTransition> transitions,
-            List<String> slideScripts) {
+            List<String> slideScripts,
+            RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionAnalysis) {
 
         log.info("  - Slide analysis started: {} slides", transitions.size());
 
@@ -235,19 +237,17 @@ public class AudioAnalysisService {
         log.info("    • SPM analysis: {} slides", spmResults.size());
 
         // 5) 반복 어휘 분석 (슬라이드별) - 전체 분석에서 추출
-        // 전체 STT 텍스트로 분석 수행
+        // 전체 STT 텍스트로 분석 수행 (이미 상위에서 전역 분석을 수행했다면 그 결과를 재사용)
         String fullSttText = slideSttTexts.stream()
                 .filter(text -> text != null && !text.trim().isEmpty())
                 .collect(Collectors.joining(" "));
 
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionAnalysis = repetitiveTextAnalysisService
-                .analyzeRepetition(
-                        fullSttText,
-                        transitions,
-                        segments);
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitionAnalysis;
+        if (repAnalysisLocal == null) {
+            repAnalysisLocal = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, transitions, segments);
+        }
 
-        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repetitionAnalysis
-                .getSlideRepetitions();
+        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
         log.info("    • Repetition analysis: {} slides", repetitionResults.size());
 
         return SlideAnalysisResult.builder()
