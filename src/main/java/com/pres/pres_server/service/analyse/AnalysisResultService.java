@@ -510,7 +510,7 @@ public class AnalysisResultService {
                     try {
                         Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                spmResult.getSpm(), 130.0);
+                                spmResult.getSpm(), 290.0);
                         if (p != null && p.containsKey("pace"))
                             speedBuilder.comment(p.get("pace"));
                     } catch (Exception e) {
@@ -947,7 +947,7 @@ public class AnalysisResultService {
                             AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(i);
                             if (spmRes != null) {
                                 double currentWpm = spmRes.getSpm();
-                                double idealWpm = 130.0;
+                                double idealWpm = 290.0;
                                 try {
                                     Map<String, String> p = openAIFeedbackService.generatePaceFeedback(
                                             String.valueOf(i + 1), transcript, currentWpm, idealWpm);
