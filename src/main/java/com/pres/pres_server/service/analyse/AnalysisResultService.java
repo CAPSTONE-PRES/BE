@@ -766,12 +766,13 @@ public class AnalysisResultService {
                 if (accuracyResult.isSuccess()) {
                     // 정확도가 낮은 경우만 이슈로 표시 (80% 미만)
                     if (accuracyResult.getAccuracyScore() < 80) {
-                        slideFeedback.setErrorCount(
-                                accuracyResult.getTotalKeywordCount() - accuracyResult.getMatchedKeywordCount());
+                        // don't persist legacy error_count for ACCURACY (use IssueDto.similarity
+                        // instead)
+                        slideFeedback.setErrorCount(null);
 
                         IssueDto.IssueDtoBuilder accBuilder = IssueDto.builder()
                                 .issueType("ACCURACY")
-                                .errorCount(slideFeedback.getErrorCount());
+                                .similarity(accuracyResult.getScriptSimilarity());
                         try {
                             String expectedKeyPoints = "";
                             Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
@@ -783,40 +784,10 @@ public class AnalysisResultService {
                         } catch (Exception e) {
                             log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
                         }
-                        try {
-                            List<OffsetDto> accOffsets = new ArrayList<>();
-                            // Prefer offsets computed by ScriptAccuracyService if present
-                            try {
-                                List<TextOffset> provided = accuracyResult.getOffsets();
-                                if (provided != null && !provided.isEmpty()) {
-                                    for (TextOffset o : provided) {
-                                        int slideIdx = o.getSlideIndex() > 0 ? o.getSlideIndex() : (i + 1);
-                                        accOffsets.add(OffsetDto.builder()
-                                                .begin(o.getBegin())
-                                                .end(o.getEnd())
-                                                .slideIndex(slideIdx)
-                                                .text(o.getText())
-                                                .build());
-                                    }
-                                }
-                            } catch (Exception ignore) {
-                            }
-
-                            // Fallback: search slide STT text for missing keywords
-                            if (accOffsets.isEmpty()) {
-                                String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                        ? slideSttTexts.get(i)
-                                        : "";
-                                List<String> missing = accuracyResult.getMissingKeywords();
-                                accOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, missing, i + 1);
-                            }
-
-                            if (!accOffsets.isEmpty()) {
-                                accBuilder.offsets(accOffsets);
-                            }
-                        } catch (Exception ex) {
-                            log.warn("정확도 오프셋 수집 중 오류 - slide {}: {}", i + 1, ex.getMessage());
-                        }
+                        // Offsets are intentionally omitted for ACCURACY issues.
+                        // ScriptAccuracyService does not provide reliable offsets and
+                        // we avoid adding slide-local offsets here to keep ACCURACY
+                        // issues focused on similarity only.
                         issuesList.add(accBuilder.build());
                         if (slideFeedback.getIssueType() == null)
                             slideFeedback.setIssueType(IssueType.ACCURACY);
@@ -1229,23 +1200,7 @@ public class AnalysisResultService {
                     IssueDto.IssueDtoBuilder ab = IssueDto.builder().issueType("ACCURACY")
                             .errorCount(acc.getTotalKeywordCount() - acc.getMatchedKeywordCount())
                             .similarity(acc.getScriptSimilarity());
-                    List<OffsetDto> accOffsets = new ArrayList<>();
-                    try {
-                        List<TextOffset> provided = acc.getOffsets();
-                        if (provided != null && !provided.isEmpty()) {
-                            accOffsets = provided.stream()
-                                    .map(o -> OffsetDto.builder().begin(o.getBegin()).end(o.getEnd())
-                                            .slideIndex(o.getSlideIndex()).text(o.getText()).build())
-                                    .collect(Collectors.toList());
-                        }
-                    } catch (Exception ignore) {
-                    }
-                    if (accOffsets.isEmpty()) {
-                        List<String> missing = acc.getMissingKeywords();
-                        accOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, missing, slideNumber);
-                    }
-                    if (!accOffsets.isEmpty())
-                        ab.offsets(accOffsets);
+                    // Offsets intentionally omitted for ACCURACY in DTO build as well.
                     issuesList.add(ab.build());
                 }
             }
