@@ -56,7 +56,7 @@ public class OpenAIEmbeddingService {
             // 2. 코사인 유사도 계산
             double similarity = cosineSimilarity(embedding1, embedding2);
 
-            log.debug("✅ 유사도 계산 완료 - similarity: {:.4f}", similarity);
+            log.debug("✅ 유사도 계산 완료 - similarity: {}", String.format("%.4f", similarity));
             return similarity;
 
         } catch (Exception e) {
