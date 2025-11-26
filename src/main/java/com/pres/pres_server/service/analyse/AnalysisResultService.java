@@ -254,73 +254,9 @@ public class AnalysisResultService {
         // 8. 슬라이드별 피드백 저장
         saveSlideAnalysis(savedFeedback, analysisResult);
 
-        // 9. 전체 요약(Overall) 생성: 슬라이드 피드백의 코멘트들을 모아 커밋 이후에 요약 요청 및 저장
-        try {
-            List<com.pres.pres_server.domain.SlideFeedback> savedSlides = slideFeedbackRepository
-                    .findByFeedbackIdOrderBySlideNumber(savedFeedback.getFeedbackId());
-            StringBuilder allComments = new StringBuilder();
-            for (com.pres.pres_server.domain.SlideFeedback sf : savedSlides) {
-                String issuesJson = sf.getIssues();
-                if (issuesJson == null || issuesJson.isBlank())
-                    continue;
-                try {
-                    java.util.List<IssueDto> issues = objectMapper.readValue(issuesJson, objectMapper.getTypeFactory()
-                            .constructCollectionType(java.util.List.class, IssueDto.class));
-                    for (IssueDto it : issues) {
-                        if (it != null && it.getComment() != null && !it.getComment().isBlank()) {
-                            if (allComments.length() > 0)
-                                allComments.append(" ");
-                            allComments.append(it.getComment().trim());
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.warn("슬라이드 이슈 JSON 파싱 실패(전체요약용) - slideFeedbackId={}: {}", sf.getId(), ex.getMessage());
-                }
-            }
-
-            final String aggregated = allComments.toString();
-            if (!aggregated.isBlank()) {
-                // 트랜잭션이 커밋된 이후에 OpenAI 호출 및 Feedback 업데이트를 수행하도록 등록합니다.
-                final Long fbId = savedFeedback.getFeedbackId();
-                final Long sessionIdVal = session.getSessionId();
-                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                        new org.springframework.transaction.support.TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    String overall = openAIFeedbackService
-                                            .generateOverallFeedback(String.valueOf(sessionIdVal), aggregated);
-                                    if (overall != null && !overall.isBlank()) {
-                                        // 커밋 이후 별도 트랜잭션으로 Feedback 업데이트
-                                        org.springframework.transaction.support.TransactionTemplate tt = new org.springframework.transaction.support.TransactionTemplate(
-                                                transactionManager);
-                                        tt.executeWithoutResult(status -> {
-                                            try {
-                                                java.util.Optional<Feedback> fopt = feedbackRepository.findById(fbId);
-                                                if (fopt.isPresent()) {
-                                                    Feedback f = fopt.get();
-                                                    f.setOverallComment(overall);
-                                                    feedbackRepository.save(f);
-                                                    log.info("  • Overall AI 요약 저장 완료 (afterCommit)");
-                                                } else {
-                                                    log.warn("Feedback not found for overall save: {}", fbId);
-                                                }
-                                            } catch (Exception e) {
-                                                log.warn("Overall 저장 중 오류(트랜잭션) : {}", e.getMessage());
-                                            }
-                                        });
-                                    } else {
-                                        log.warn("  • Overall AI 요약 생성 실패 또는 빈값 (afterCommit)");
-                                    }
-                                } catch (Exception e) {
-                                    log.warn("Overall 요약 생성 중 오류(후처리): {}", e.getMessage());
-                                }
-                            }
-                        });
-            }
-        } catch (Exception e) {
-            log.warn("Overall 요약 생성 등록 중 오류: {}", e.getMessage());
-        }
+        // 9. 전체 요약(Overall)은 프론트에서 필요 시 AI로 생성하여 반환하도록 설계합니다.
+        // 저장하지 않고, DB에는 overallComment를 남기지 않습니다.
+        log.debug("  • Overall short comment generation skipped (no DB persistence)");
 
         return savedFeedback;
     }
