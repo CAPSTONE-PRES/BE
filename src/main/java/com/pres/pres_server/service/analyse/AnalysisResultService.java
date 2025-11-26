@@ -662,28 +662,31 @@ public class AnalysisResultService {
                     int targetSlideIndex = i + 1;
                     for (String pattern : distinctPatterns) {
                         final String p = pattern;
-                        int localizedCount = slideRepetitions.stream().mapToInt(r -> {
-                            try {
-                                // 명시적 슬라이드 인덱스가 있으면 비교
-                                if (r.getSlideIndex() != null) {
-                                    return r.getSlideIndex().intValue() == targetSlideIndex ? r.getCount() : 0;
-                                }
-                                // 슬라이드 인덱스 리스트가 있으면 해당 리스트에서 현재 슬라이드가 몇 번 등장하는지 센다
-                                if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
-                                    return (int) r.getSlideIndices().stream()
-                                            .filter(si -> si != null && si.intValue() == targetSlideIndex).count();
-                                }
-                                // 그 외에는 폴백으로 0
-                                return 0;
-                            } catch (Exception ex) {
-                                return 0;
-                            }
-                        }).sum();
+                        int localizedCount = slideRepetitions.stream()
+                                .filter(r -> Objects.equals(p, r.getPattern()))
+                                .mapToInt(r -> {
+                                    try {
+                                        // 명시적 슬라이드 인덱스가 있으면 비교
+                                        if (r.getSlideIndex() != null) {
+                                            return r.getSlideIndex().intValue() == targetSlideIndex ? r.getCount() : 0;
+                                        }
+                                        // 슬라이드 인덱스 리스트가 있으면 해당 리스트에서 현재 슬라이드가 몇 번 등장하는지 센다
+                                        if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
+                                            return (int) r.getSlideIndices().stream()
+                                                    .filter(si -> si != null && si.intValue() == targetSlideIndex)
+                                                    .count();
+                                        }
+                                        // 그 외에는 폴백으로 0
+                                        return 0;
+                                    } catch (Exception ex) {
+                                        return 0;
+                                    }
+                                }).sum();
 
                         // 폴백: 만약 위에서 아무것도 못 세면 기존 slideRepetitions의 getCount 합계를 사용
                         if (localizedCount == 0) {
                             int fallback = slideRepetitions.stream()
-                                    .filter(r -> p.equals(r.getPattern()))
+                                    .filter(r -> Objects.equals(p, r.getPattern()))
                                     .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
                             localizedCount = fallback;
                         }
@@ -715,8 +718,18 @@ public class AnalysisResultService {
                         List<OffsetDto> repOffsets = new ArrayList<>();
                         for (String p : patterns) {
                             List<OffsetDto> mapped = patternOffsetMap.get(p);
-                            if (mapped != null && !mapped.isEmpty())
-                                repOffsets.addAll(mapped);
+                            if (mapped != null && !mapped.isEmpty()) {
+                                int slideIdx = targetSlideIndex;
+                                for (OffsetDto d : mapped) {
+                                    try {
+                                        if (d != null && d.getSlideIndex() != null
+                                                && d.getSlideIndex().intValue() == slideIdx) {
+                                            repOffsets.add(d);
+                                        }
+                                    } catch (Exception ignore) {
+                                    }
+                                }
+                            }
                         }
                         // 폴백: 글로벌 매핑이 없으면 슬라이드 텍스트에서 substring 기준으로 찾음
                         if (repOffsets.isEmpty()) {
@@ -1179,23 +1192,25 @@ public class AnalysisResultService {
                             .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
                     for (String pattern : distinctPatternsDto) {
                         final String p = pattern;
-                        int localizedCount = slideReps.stream().mapToInt(r -> {
-                            try {
-                                if (r.getSlideIndex() != null) {
-                                    return r.getSlideIndex().intValue() == slideNumber ? r.getCount() : 0;
-                                }
-                                if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
-                                    return (int) r.getSlideIndices().stream()
-                                            .filter(si -> si != null && si.intValue() == slideNumber).count();
-                                }
-                                return 0;
-                            } catch (Exception ex) {
-                                return 0;
-                            }
-                        }).sum();
+                        int localizedCount = slideReps.stream()
+                                .filter(r -> Objects.equals(p, r.getPattern()))
+                                .mapToInt(r -> {
+                                    try {
+                                        if (r.getSlideIndex() != null) {
+                                            return r.getSlideIndex().intValue() == slideNumber ? r.getCount() : 0;
+                                        }
+                                        if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
+                                            return (int) r.getSlideIndices().stream()
+                                                    .filter(si -> si != null && si.intValue() == slideNumber).count();
+                                        }
+                                        return 0;
+                                    } catch (Exception ex) {
+                                        return 0;
+                                    }
+                                }).sum();
                         if (localizedCount == 0) {
                             int fallback = slideReps.stream()
-                                    .filter(r -> p.equals(r.getPattern()))
+                                    .filter(r -> Objects.equals(p, r.getPattern()))
                                     .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
                             localizedCount = fallback;
                         }
@@ -1219,8 +1234,17 @@ public class AnalysisResultService {
                     List<OffsetDto> repOffsets = new ArrayList<>();
                     for (String p : patterns) {
                         List<OffsetDto> mapped = patternOffsetMap.get(p);
-                        if (mapped != null)
-                            repOffsets.addAll(mapped);
+                        if (mapped != null && !mapped.isEmpty()) {
+                            for (OffsetDto d : mapped) {
+                                try {
+                                    if (d != null && d.getSlideIndex() != null
+                                            && d.getSlideIndex().intValue() == slideNumber) {
+                                        repOffsets.add(d);
+                                    }
+                                } catch (Exception ignore) {
+                                }
+                            }
+                        }
                     }
                     if (repOffsets.isEmpty()) {
                         repOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, patterns, slideNumber);
