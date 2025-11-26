@@ -99,8 +99,8 @@ public class ScriptAccuracyService {
         // 5. 의미론적 유사도 계산 (AI 우선, 폴백: Levenshtein)
         double semanticSimilarity = TextAnalysisUtils.calculateSemanticSimilarity(normalizedScript, normalizedStt);
 
-        // 6. 최종 유사도 계산 (키워드 70% + 의미론적 유사도 30%)
-        double finalSimilarity = (keywordMatchRate * 0.7) + (semanticSimilarity * 0.3);
+        // 6. 최종 유사도 계산 (키워드 50% + 의미론적 유사도 50%) - 실험용 조정
+        double finalSimilarity = (keywordMatchRate * 0.5) + (semanticSimilarity * 0.5);
 
         // 7. 점수 계산 (0~100)
         int accuracyScore = (int) Math.round(finalSimilarity * 100);
