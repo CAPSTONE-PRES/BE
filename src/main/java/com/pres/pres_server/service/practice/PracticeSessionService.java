@@ -198,6 +198,15 @@ public class PracticeSessionService {
                         }
                 }
 
+                String lowestIssueLabel = lowestIssueType != null ? switch (lowestIssueType) {
+                        case "SPEED" -> "말하기 속도";
+                        case "FILLER" -> "불필요한 추임새";
+                        case "REPETITION" -> "반복되는 어휘";
+                        case "SILENCE" -> "침묵 사용";
+                        case "ACCURACY" -> "발표 정확도";
+                        default -> "발표 전반";
+                } : "발표 전반";
+
                 String overallFeedback = null;
                 if (lowestIssueType != null) {
                         // Aggregate slide-level comments for the selected issue type
@@ -225,7 +234,7 @@ public class PracticeSessionService {
                         String aggregatedComments = agg.length() > 0 ? agg.toString() : "";
                         try {
                                 overallFeedback = openAIFeedbackService.generateOverallFeedback(
-                                                String.valueOf(sessionId), lowestIssueType,
+                                                String.valueOf(sessionId), lowestIssueLabel,
                                                 aggregatedComments);
                         } catch (Exception e) {
                                 log.warn("전체 AI 피드백 생성 실패 - sessionId={} reason={}", sessionId, e.getMessage());
