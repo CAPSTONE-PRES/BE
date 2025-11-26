@@ -75,7 +75,6 @@ public class OpenAIEmbeddingService {
 
         // 캐시 확인
         if (embeddingCache.containsKey(cacheKey)) {
-            log.debug("  • 캐시 히트: {}", cacheKey.substring(0, Math.min(50, cacheKey.length())));
             return embeddingCache.get(cacheKey);
         }
 
