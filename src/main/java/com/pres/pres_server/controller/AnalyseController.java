@@ -272,7 +272,6 @@ public class AnalyseController {
                     .totalDurationSeconds(result.getTotalDurationSeconds())
                     .history(java.util.Collections.emptyList())
                     .slideFeedbacks(slideFeedbacks)
-                    .aiFeedback(java.util.Collections.emptyMap())
                     .build();
 
             return ResponseEntity.ok(dto);

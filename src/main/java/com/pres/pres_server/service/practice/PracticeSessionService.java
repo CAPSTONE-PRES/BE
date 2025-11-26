@@ -45,7 +45,7 @@ public class PracticeSessionService {
 
         private final com.pres.pres_server.service.file.PresentationImageService presentationImageService;
         private final ObjectMapper objectMapper;
-        private final com.pres.pres_server.service.ai.OpenAIFeedbackService openAIFeedbackService;
+        // OpenAIFeedbackService removed from this service as AI responses are not returned in the DTO
 
         /**
          * 연습 세션 시작
@@ -177,32 +177,7 @@ public class PracticeSessionService {
                                 sessionId);
 
                 // 5. DTO 변환 및 반환 (발표 피드백 + 슬라이드별 피드백 + QnA 결과)
-                // overall AI 피드백: OpenAI로 전반적 코멘트 생성, Fallback: 간단한 문장으로 대체
-                Map<String, String> aiFeedback = new HashMap<>();
-
-                if (feedback.getOverallComment() != null && !feedback.getOverallComment().isBlank()) {
-                        aiFeedback.put("overall", feedback.getOverallComment());
-                } else {
-                        // 전체 코멘트가 DB에 없을 경우: OpenAI에 세션 단위 한줄 요약을 직접 생성하도록 요청합니다.
-                        // 사용자 요구에 따라 슬라이드 이슈들을 단순히 합치는 방식은 사용하지 않습니다.
-                        String overall = null;
-                        try {
-                                String generated = openAIFeedbackService
-                                                .generateOverallFeedback(String.valueOf(sessionId), "");
-                                if (generated != null && !generated.isBlank()) {
-                                        overall = generated.trim();
-                                }
-                        } catch (Exception e) {
-                                log.warn("OpenAI overall summary generation failed - sessionId={} err={}", sessionId,
-                                                e.getMessage());
-                        }
-
-                        if (overall == null || overall.isBlank()) {
-                                // AI 실패 또는 빈 결과인 경우 간단한 기본 문구로 폴백
-                                overall = "좋은 발표였어요! 계속 노력해보세요.";
-                        }
-                        aiFeedback.put("overall", overall);
-                }
+                // AI overall generation removed from DTO flow as 'aiFeedback' was removed.
 
                 return PracticeFeedbackDto.builder()
                                 .sessionId(sessionId)
@@ -219,7 +194,6 @@ public class PracticeSessionService {
                                 // full STT text excluded from session feedback response
                                 .history(history)
                                 // QnA 비교 결과는 제외
-                                .aiFeedback(aiFeedback)
                                 .build();
         }
 

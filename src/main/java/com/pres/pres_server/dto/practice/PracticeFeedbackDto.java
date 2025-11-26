@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @Builder
@@ -29,6 +28,5 @@ public class PracticeFeedbackDto {
     // 슬라이드별 피드백 (이슈가 있는 슬라이드만)
     private List<SlideFeedbackDto> slideFeedbacks;
 
-    // AI 기반 문장별/전반적 피드백 (keys: filler,silence,repetition,accuracy,pace)
-    private Map<String, String> aiFeedback;
+    // (removed) aiFeedback: AI 코멘트는 더 이상 DTO에 포함하지 않음
 }
