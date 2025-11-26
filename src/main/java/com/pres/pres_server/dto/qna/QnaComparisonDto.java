@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * QnA 비교 결과 DTO
@@ -23,6 +24,6 @@ public class QnaComparisonDto {
     private Float similarity;
     private Float keywordRecall;
     private Float coverage;
-    private List<String> feedback;
+    private List<Map<String, String>> feedback;
     private List<String> missingKeywords;
 }

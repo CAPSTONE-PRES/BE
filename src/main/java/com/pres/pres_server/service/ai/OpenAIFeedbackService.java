@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
@@ -70,16 +71,22 @@ public class OpenAIFeedbackService {
     }
 
     // QNA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환
-    public Map<String, String> generateQnaFeedback(String question, String idealAnswer, String userAnswer) {
+    public List<Map<String, String>> generateQnaFeedback(String question, String idealAnswer, String userAnswer) {
         String prompt = buildPrompt(question, idealAnswer, userAnswer);
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", CHAT_MODEL);
+
             List<Map<String, String>> messages = new ArrayList<>();
-            messages.add(Map.of("role", "system", "content", "너는 발표/면접 코칭 전문가야. 피드백은 친절하고 구체적으로 작성해."));
-            messages.add(Map.of("role", "user", "content", prompt));
+            messages.add(Map.of(
+                    "role", "system",
+                    "content", "너는 발표/면접 코칭 전문가야. 피드백은 친절하고 구체적으로 작성해."));
+            messages.add(Map.of(
+                    "role", "user",
+                    "content", prompt));
             requestBody.put("messages", messages);
-            // enforce structured json response for QnA feedback to reduce parsing errors
+
+            // 구조화된 JSON 응답 강제
             requestBody.put("response_format", buildQnaResponseFormat());
             requestBody.put("temperature", 0.3);
             requestBody.put("max_tokens", 1500);
@@ -97,42 +104,49 @@ public class OpenAIFeedbackService {
                         Map.class);
             } catch (org.springframework.web.client.HttpClientErrorException e) {
                 log.error("OpenAI API 클라이언트 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
-                return Map.of("error", "AI 서비스 요청 오류: " + e.getMessage());
+                return List.of(Map.of("error", "AI 서비스 요청 오류: " + e.getMessage()));
             } catch (org.springframework.web.client.HttpServerErrorException e) {
                 log.error("OpenAI API 서버 오류 [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
-                return Map.of("error", "AI 서비스 일시적 오류: " + e.getMessage());
+                return List.of(Map.of("error", "AI 서비스 일시적 오류: " + e.getMessage()));
             } catch (org.springframework.web.client.ResourceAccessException e) {
                 log.error("OpenAI API 연결 오류: {}", e.getMessage());
-                return Map.of("error", "AI 서비스 연결 실패: " + e.getMessage());
+                return List.of(Map.of("error", "AI 서비스 연결 실패: " + e.getMessage()));
             }
+
             @SuppressWarnings("unchecked")
             Map<String, Object> responseBody = (Map<String, Object>) ((response != null) ? response.getBody() : null);
+
             String content;
             try {
                 content = extractContentFromResponse(responseBody);
                 log.debug("OpenAI raw content (QnA): {}", content);
             } catch (Exception ex) {
-                // 파싱 실패 시 원시 응답을 경고로 남겨 디버깅에 활용할 수 있게 합니다.
+                // 파싱 실패 시 원시 응답을 경고로 남겨 디버깅에 활용
                 log.warn("OpenAI raw response (QnA): {}", responseBody);
                 log.error("OpenAI 응답 처리 실패: {}", ex.getMessage());
-                return Map.of("error", "AI 서비스 응답 처리 실패: " + ex.getMessage());
+                return List.of(Map.of("error", "AI 서비스 응답 처리 실패: " + ex.getMessage()));
             }
 
-            // JSON 파싱
+            // JSON 파싱: 루트는 배열
             try {
-                @SuppressWarnings("unchecked")
-                Map<String, String> result = objectMapper.readValue(content, Map.class);
+                List<Map<String, String>> result = objectMapper.readValue(content,
+                        new TypeReference<List<Map<String, String>>>() {
+                        });
                 return result;
             } catch (Exception jsonEx) {
                 log.error("OpenAI 피드백 JSON 파싱 실패", jsonEx);
-                if (content.trim().startsWith("<")) {
-                    return Map.of("error", "AI 피드백 JSON 파싱에 실패했습니다. (HTML 응답)", "raw", content);
+                if (content != null && content.trim().startsWith("<")) {
+                    return List.of(Map.of(
+                            "error", "AI 피드백 JSON 파싱에 실패했습니다. (HTML 응답)",
+                            "raw", content));
                 }
-                return Map.of("error", "AI 피드백 JSON 파싱에 실패했습니다.", "raw", content);
+                return List.of(Map.of(
+                        "error", "AI 피드백 JSON 파싱에 실패했습니다.",
+                        "raw", content));
             }
         } catch (Exception e) {
             log.error("OpenAI 피드백 생성 실패", e);
-            return Map.of("error", "AI 피드백 생성에 실패했습니다.");
+            return List.of(Map.of("error", "AI 피드백 생성에 실패했습니다."));
         }
     }
 
@@ -449,31 +463,48 @@ public class OpenAIFeedbackService {
         return responseFormat;
     }
 
-    // response_format for QnA feedback expecting expression + logic fields
+    // response_format for QnA feedback expecting array of {title, content,
+    // improvement}
     private Map<String, Object> buildQnaResponseFormat() {
-        Map<String, Object> schema = new HashMap<>();
-        schema.put("type", "object");
-        Map<String, Object> properties = new HashMap<>();
-        Map<String, Object> expr = new HashMap<>();
-        expr.put("type", "string");
-        expr.put("description", "표현방식 피드백");
-        Map<String, Object> logic = new HashMap<>();
-        logic.put("type", "string");
-        logic.put("description", "논리적 흐름 피드백");
-        properties.put("expression", expr);
-        properties.put("logic", logic);
-        schema.put("properties", properties);
-        schema.put("required", List.of("expression", "logic"));
-        schema.put("additionalProperties", false);
+        // --- item schema: 단일 피드백 항목 ---
+        Map<String, Object> titleSchema = new HashMap<>();
+        titleSchema.put("type", "string");
+        titleSchema.put("description", "피드백 항목을 명사형으로 요약한 제목");
+
+        Map<String, Object> contentSchema = new HashMap<>();
+        contentSchema.put("type", "string");
+        contentSchema.put("description", "사용자 답변과 모범 답변을 비교해 문제점과 개선 내용을 설명한 본문");
+
+        Map<String, Object> improvementSchema = new HashMap<>();
+        improvementSchema.put("type", "string");
+        improvementSchema.put("description", "개선 효과를 한 줄로 요약한 문장");
+
+        Map<String, Object> itemProperties = new HashMap<>();
+        itemProperties.put("title", titleSchema);
+        itemProperties.put("content", contentSchema);
+        itemProperties.put("improvement", improvementSchema);
+
+        Map<String, Object> itemSchema = new HashMap<>();
+        itemSchema.put("type", "object");
+        itemSchema.put("properties", itemProperties);
+        itemSchema.put("required", List.of("title", "content", "improvement"));
+        itemSchema.put("additionalProperties", false);
+
+        // --- root schema: 배열 ---
+        Map<String, Object> rootSchema = new HashMap<>();
+        rootSchema.put("type", "array");
+        rootSchema.put("items", itemSchema);
 
         Map<String, Object> jsonSchemaContainer = new HashMap<>();
-        jsonSchemaContainer.put("name", "qnaFeedbackSchema");
-        jsonSchemaContainer.put("schema", schema);
+        jsonSchemaContainer.put("name", "QnaFeedbackItems");
+        jsonSchemaContainer.put("schema", rootSchema);
         jsonSchemaContainer.put("strict", true);
 
         Map<String, Object> responseFormat = new HashMap<>();
         responseFormat.put("type", "json_schema");
         responseFormat.put("json_schema", jsonSchemaContainer);
+
         return responseFormat;
     }
+
 }
