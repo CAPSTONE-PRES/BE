@@ -36,6 +36,9 @@ public class ScriptAccuracyService {
         for (int i = 0; i < slideScripts.size(); i++) {
             String script = slideScripts.get(i);
             String stt = slideSttTexts.get(i);
+            int scriptLen = script == null ? 0 : script.length();
+            int sttLen = stt == null ? 0 : stt.length();
+            log.debug("Analyzing slide {} - script length: {}, stt length: {}", i + 1, scriptLen, sttLen);
             AccuracyAnalysisResult result = analyzeAccuracy(script, stt);
             results.add(result);
         }
@@ -50,18 +53,20 @@ public class ScriptAccuracyService {
      * @return 정확도 분석 결과
      */
     public AccuracyAnalysisResult analyzeAccuracy(String scriptContent, String sttText) {
-        log.info("▶ Script accuracy analysis started - Script length: {}, STT length: {}",
-                scriptContent.length(), sttText.length());
+        int scriptLen = scriptContent == null ? 0 : scriptContent.length();
+        int sttLen = sttText == null ? 0 : sttText.length();
 
         if (scriptContent == null || scriptContent.trim().isEmpty()) {
-            log.warn("Script is empty. Cannot perform accuracy analysis.");
+            log.warn("Script is empty (length {}). Cannot perform accuracy analysis.", scriptLen);
             return createEmptyResult();
         }
 
         if (sttText == null || sttText.trim().isEmpty()) {
-            log.warn("STT text is empty. Cannot perform accuracy analysis.");
+            log.warn("STT text is empty (length {}). Cannot perform accuracy analysis.", sttLen);
             return createEmptyResult();
         }
+
+        log.info("▶ Script accuracy analysis started - Script length: {}, STT length: {}", scriptLen, sttLen);
 
         // 1. 텍스트 정규화 (공통 유틸 사용)
         String normalizedScript = TextAnalysisUtils.normalizeText(scriptContent);
@@ -72,7 +77,6 @@ public class ScriptAccuracyService {
         List<String> sttWords = TextAnalysisUtils.tokenizeKomoran(normalizedStt);
 
         // 3. 주요 키워드 추출 (대본에서)
-        final int MIN_KEYWORD_FREQUENCY = 3; // 최소 빈도수 (STT 측 추출에 사용)
         // 기존 scriptKeywords 추출 방식
         // Set<String> scriptKeywords =
         // TextAnalysisUtils.extractKeywordsKomoran(scriptWords, MIN_KEYWORD_FREQUENCY);

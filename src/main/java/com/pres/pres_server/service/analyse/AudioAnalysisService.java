@@ -167,6 +167,19 @@ public class AudioAnalysisService {
             }
         }
 
+        // Debug: print slideScriptsToUse summary to help diagnose empty per-slide
+        // scripts
+        if (slideScriptsToUse == null) {
+            log.debug("    • slideScriptsToUse is null (no per-slide scripts provided)");
+        } else {
+            log.debug("    • slideScriptsToUse size: {}", slideScriptsToUse.size());
+            for (int i = 0; i < slideScriptsToUse.size(); i++) {
+                String s = slideScriptsToUse.get(i);
+                int len = s == null ? 0 : s.length();
+                log.debug("      - slide[{}] script length: {}", i + 1, len);
+            }
+        }
+
         // 전달된 repetitionResult를 슬라이드 분석에서 재사용하여 중복 호출 방지
         SlideAnalysisResult slideAnalysis = (slideTransitions != null && !slideTransitions.isEmpty())
                 ? performSlideAnalysis(segments, audioFile.getDurationSeconds(), slideTransitions,
@@ -227,9 +240,23 @@ public class AudioAnalysisService {
         List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = Collections.emptyList();
 
         if (slideScripts != null && slideScripts.size() == slideSttTexts.size()) {
+            log.debug(
+                    "    • Calling ScriptAccuracyService.analyzeAccuracyBySlides - slideScripts size: {}, slideSttTexts size: {}",
+                    slideScripts.size(), slideSttTexts.size());
+            for (int i = 0; i < slideScripts.size(); i++) {
+                String s = slideScripts.get(i);
+                int slen = s == null ? 0 : s.length();
+                String st = slideSttTexts.get(i);
+                int tlen = st == null ? 0 : st.length();
+                log.debug("      - slide[{}]: script len={}, stt len={}", i + 1, slen, tlen);
+            }
+
             accuracyResults = scriptAccuracyService
                     .analyzeAccuracyBySlides(slideScripts, slideSttTexts);
             log.info("    • Accuracy analysis: {} slides", accuracyResults.size());
+        } else {
+            log.debug("    • Skipping per-slide accuracy: slideScripts==null? {} | sizes match? {}",
+                    slideScripts == null, slideScripts != null && slideScripts.size() == slideSttTexts.size());
         }
 
         // 4) SPM 분석 (슬라이드별)
