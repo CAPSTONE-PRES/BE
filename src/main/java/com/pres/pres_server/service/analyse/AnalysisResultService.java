@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import com.pres.pres_server.dto.practice.IssueDto;
 import com.pres.pres_server.domain.IssueType;
 import com.pres.pres_server.dto.practice.OffsetDto;
+import com.pres.pres_server.dto.practice.SlideFeedbackDto;
 
 /**
  * 분석 결과 저장 서비스
@@ -622,145 +623,120 @@ public class AnalysisResultService {
                 }
             }
 
-            // 4. 반복 어휘 정보
-            // repetitionMap의 키가 1-based인지 0-based인지 불확실하므로 둘 다 시도합니다.
-            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // 일반적으로
-                                                                                                             // 1-based
+            // 4. 반복 어휘 정보 (여기가 핵심 수정 부분)
+            List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // 1-based
             if (slideRepetitions == null) {
-                // 0-based로 저장된 경우도 있으므로 폴백 시도
-                slideRepetitions = repetitionMap.get(i);
+                slideRepetitions = repetitionMap.get(i); // 0-based 폴백
             }
 
             if ((slideRepetitions == null || slideRepetitions.isEmpty()) && !repetitionMap.isEmpty()) {
-                // 디버깅 도움을 위한 로그: 전체 키 세트를 출력하면 매핑 불일치를 파악할 수 있습니다.
                 log.debug("슬라이드 {}에 대한 반복 결과 없음 - repetitionMap 키: {}", i + 1, repetitionMap.keySet());
             }
 
             if (slideRepetitions != null && !slideRepetitions.isEmpty()) {
-                int totalRepeatCount = slideRepetitions.stream()
-                        .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount)
+                int targetSlideIndex = i + 1;
+
+                // 4-1) 패턴별 슬라이드 로컬 카운트 (offset 기반)
+                Map<String, Integer> perPatternCount = new LinkedHashMap<>();
+                List<String> distinctPatterns = slideRepetitions.stream()
+                        .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
+                        .distinct()
+                        .toList();
+
+                for (String pattern : distinctPatterns) {
+                    List<OffsetDto> mapped = patternOffsetMap.get(pattern);
+                    if (mapped == null || mapped.isEmpty()) {
+                        continue;
+                    }
+                    int cnt = (int) mapped.stream()
+                            .filter(d -> d != null
+                                    && d.getSlideIndex() != null
+                                    && d.getSlideIndex() == targetSlideIndex)
+                            .count();
+                    if (cnt > 0) {
+                        perPatternCount.put(pattern, cnt);
+                    }
+                }
+
+                // offset 기준으로 아무것도 못 세면, 기존 SlideRepetition count로 폴백 (전역 느낌이라도 최소 방어)
+                if (perPatternCount.isEmpty()) {
+                    for (RepetitiveTextAnalysisService.SlideRepetition r : slideRepetitions) {
+                        String p = r.getPattern();
+                        perPatternCount.merge(p, r.getCount(), Integer::sum);
+                    }
+                }
+
+                int totalRepeatCount = perPatternCount.values().stream()
+                        .mapToInt(Integer::intValue)
                         .sum();
-                // 기존에는 임계값을 3으로 두어 소량 반복은 무시했음. 운영상 반복이 검출되어도
-                // 이슈로 표시되지 않는 사례가 있어 문턱을 낮춰 2 이상이면 이슈로 기록합니다.
+
                 if (totalRepeatCount >= 2) {
-                    slideFeedback.setRepeatCount(totalRepeatCount);
-                    // 반복 패턴을 Map 형태로 저장 (상위 3개)
-                    // 디버깅 로그: slideRepetitions와 계산된 repeatMapTop을 남겨 어떤 값이 사용되는지 확인
-                    try {
-                        log.debug("슬라이드 {} - slideRepetitions details: {}",
-                                i + 1,
-                                slideRepetitions.stream().map(r -> String.format("{pattern=%s,slideIndex=%s,count=%d}",
-                                        r.getPattern(), r.getSlideIndex(), r.getCount())).toList());
-                    } catch (Exception ignore) {
-                    }
-                    // 간단한 로직: SlideRepetition의 slideIndex/slideIndices 정보를 우선 사용하여
-                    // 해당 슬라이드에 속한 발생 횟수를 계산합니다. patternOffsetMap은 하이라이팅용으로만 사용.
-                    Map<String, Integer> aggregated = new LinkedHashMap<>();
-                    List<String> distinctPatterns = slideRepetitions.stream()
-                            .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
-                            .distinct().toList();
-                    int targetSlideIndex = i + 1;
-                    for (String pattern : distinctPatterns) {
-                        final String p = pattern;
-                        int localizedCount = slideRepetitions.stream()
-                                .filter(r -> Objects.equals(p, r.getPattern()))
-                                .mapToInt(r -> {
-                                    try {
-                                        // 명시적 슬라이드 인덱스가 있으면 비교
-                                        if (r.getSlideIndex() != null) {
-                                            return r.getSlideIndex().intValue() == targetSlideIndex ? r.getCount() : 0;
-                                        }
-                                        // 슬라이드 인덱스 리스트가 있으면 해당 리스트에서 현재 슬라이드가 몇 번 등장하는지 센다
-                                        if (r.getSlideIndices() != null && !r.getSlideIndices().isEmpty()) {
-                                            return (int) r.getSlideIndices().stream()
-                                                    .filter(si -> si != null && si.intValue() == targetSlideIndex)
-                                                    .count();
-                                        }
-                                        // 그 외에는 폴백으로 0
-                                        return 0;
-                                    } catch (Exception ex) {
-                                        return 0;
-                                    }
-                                }).sum();
-
-                        // 폴백: 만약 위에서 아무것도 못 세면 기존 slideRepetitions의 getCount 합계를 사용
-                        if (localizedCount == 0) {
-                            int fallback = slideRepetitions.stream()
-                                    .filter(r -> Objects.equals(p, r.getPattern()))
-                                    .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
-                            localizedCount = fallback;
-                        }
-
-                        aggregated.put(pattern, localizedCount);
-                    }
-
-                    Map<String, Integer> repeatMapTop = aggregated.entrySet().stream()
+                    Map<String, Integer> repeatMapTop = perPatternCount.entrySet().stream()
                             .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
                             .limit(3)
-                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a,
+                            .collect(Collectors.toMap(
+                                    Map.Entry::getKey,
+                                    Map.Entry::getValue,
+                                    (a, b) -> a,
                                     LinkedHashMap::new));
+
                     try {
                         log.debug("슬라이드 {} - computed repeatMapTop: {}", i + 1, repeatMapTop);
                     } catch (Exception ignore) {
                     }
-                    // 기존 DB 필드에는 문자열로도 남겨 둠
+
+                    slideFeedback.setRepeatCount(totalRepeatCount);
                     String repeatDetailStr = String.join(", ", repeatMapTop.keySet());
                     slideFeedback.setRepeatDetail(repeatDetailStr);
+
                     IssueDto.IssueDtoBuilder repBuilder = IssueDto.builder()
                             .issueType("REPETITION")
                             .repeatCount(totalRepeatCount)
                             .repeatDetail(repeatMapTop);
-                    // 반복 패턴에 대한 오프셋 수집
-                    try {
-                        List<String> patterns = slideRepetitions.stream()
-                                .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern)
-                                .distinct().toList();
-                        List<OffsetDto> repOffsets = new ArrayList<>();
-                        for (String p : patterns) {
-                            List<OffsetDto> mapped = patternOffsetMap.get(p);
-                            if (mapped != null && !mapped.isEmpty()) {
-                                int slideIdx = targetSlideIndex;
-                                for (OffsetDto d : mapped) {
-                                    try {
-                                        if (d != null && d.getSlideIndex() != null
-                                                && d.getSlideIndex().intValue() == slideIdx) {
-                                            repOffsets.add(d);
-                                        }
-                                    } catch (Exception ignore) {
-                                    }
-                                }
+
+                    // 4-2) 오프셋 수집
+                    List<OffsetDto> repOffsets = new ArrayList<>();
+                    for (String p : distinctPatterns) {
+                        List<OffsetDto> mapped = patternOffsetMap.get(p);
+                        if (mapped == null || mapped.isEmpty()) {
+                            continue;
+                        }
+                        for (OffsetDto d : mapped) {
+                            if (d != null && d.getSlideIndex() != null
+                                    && d.getSlideIndex() == targetSlideIndex) {
+                                repOffsets.add(d);
                             }
                         }
-                        // 폴백: 글로벌 매핑이 없으면 슬라이드 텍스트에서 substring 기준으로 찾음
-                        if (repOffsets.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
-                                    : "";
-                            repOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, patterns, i + 1);
-                        }
-                        if (!repOffsets.isEmpty()) {
-                            repBuilder.offsets(repOffsets);
-                        }
-                    } catch (Exception ex) {
-                        log.warn("반복 오프셋 수집 중 오류 - slide {}: {}", i + 1, ex.getMessage());
                     }
+                    if (repOffsets.isEmpty()) {
+                        String slideText = (slideSttTexts != null && i < slideSttTexts.size())
+                                ? slideSttTexts.get(i)
+                                : "";
+                        repOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, distinctPatterns,
+                                targetSlideIndex);
+                    }
+                    if (!repOffsets.isEmpty()) {
+                        repBuilder.offsets(repOffsets);
+                    }
+
+                    // 4-3) OpenAI 코멘트
                     try {
-                        List<String> patterns = slideRepetitions.stream()
-                                .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
-                        Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(String.valueOf(i + 1),
+                        Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(
+                                String.valueOf(targetSlideIndex),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                totalRepeatCount, patterns);
+                                totalRepeatCount,
+                                distinctPatterns);
                         if (r2 != null && r2.containsKey("repetition"))
                             repBuilder.comment(r2.get("repetition"));
                     } catch (Exception e) {
-                        log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                        log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", targetSlideIndex, e.getMessage());
                     }
+
                     issuesList.add(repBuilder.build());
                     if (slideFeedback.getIssueType() == null)
                         slideFeedback.setIssueType(IssueType.REPETITION);
                     hasIssue = true;
                 } else {
-                    // 디버깅용: 반복이 감지되었으나 임계값 미달로 처리된 경우 로그
                     log.debug("슬라이드 {} 반복 감지(합계={}) - 임계값 미달로 이슈 미생성", i + 1, totalRepeatCount);
                 }
             }
@@ -1036,10 +1012,12 @@ public class AnalysisResultService {
      * 입력/출력: 입력은 AnalysisResult; 출력은 List<SlideFeedbackDto>.
      * 특징/주의점:
      * buildSlideIssuesFromAnalysis와 매우 유사한 데이터 구성 로직을 포함하지만, 최종 포맷이 DTO임.
+     * test-audio api에서 사용, 무시 가능
      */
-    public List<com.pres.pres_server.dto.practice.SlideFeedbackDto> buildSlideFeedbackDtosFromAnalysis(
+    @Deprecated
+    public List<SlideFeedbackDto> buildSlideFeedbackDtosFromAnalysis(
             AudioAnalysisService.AnalysisResult analysisResult) {
-        List<com.pres.pres_server.dto.practice.SlideFeedbackDto> out = new ArrayList<>();
+        List<SlideFeedbackDto> out = new ArrayList<>();
         if (analysisResult == null)
             return out;
 
