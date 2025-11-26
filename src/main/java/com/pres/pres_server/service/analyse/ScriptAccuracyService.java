@@ -81,7 +81,12 @@ public class ScriptAccuracyService {
         List<String> topScriptKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(scriptWords, TOP_SCRIPT_KEYWORDS);
         // 상위 키워드 목록을 집합으로 변환하여 매칭 계산에 사용
         Set<String> scriptKeywords = new LinkedHashSet<>(topScriptKeywords);
-        Set<String> sttKeywords = TextAnalysisUtils.extractKeywordsKomoran(sttWords, MIN_KEYWORD_FREQUENCY);
+        // STT 측도 상위 N개 키워드를 사용하여 스크립트 측과 추출 방식을 일치시킵니다.
+        List<String> topSttKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(sttWords, TOP_SCRIPT_KEYWORDS);
+        Set<String> sttKeywords = new LinkedHashSet<>(topSttKeywords);
+
+        // 디버그: STT에서 추출된 키워드 로깅
+        log.debug("Top {} STT keywords: {}", TOP_SCRIPT_KEYWORDS, topSttKeywords);
 
         // 디버그: 상위 스크립트 키워드 로깅
         log.debug("Top {} script keywords: {}", TOP_SCRIPT_KEYWORDS, topScriptKeywords);
