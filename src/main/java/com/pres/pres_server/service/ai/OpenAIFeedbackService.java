@@ -82,7 +82,7 @@ public class OpenAIFeedbackService {
             // enforce structured json response for QnA feedback to reduce parsing errors
             requestBody.put("response_format", buildQnaResponseFormat());
             requestBody.put("temperature", 0.3);
-            requestBody.put("max_tokens", 500);
+            requestBody.put("max_tokens", 1500);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -307,7 +307,7 @@ public class OpenAIFeedbackService {
 
     private String buildPrompt(String question, String idealAnswer, String userAnswer) {
         return String.format(
-                "아래는 면접/발표 QnA입니다.\n" +
+                "아래는 발표 QnA입니다.\n" +
                         "질문: %s\n" +
                         "모범 답변: %s\n" +
                         "사용자 답변: %s\n" +

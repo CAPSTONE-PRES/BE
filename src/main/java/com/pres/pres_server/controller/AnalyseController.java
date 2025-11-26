@@ -117,6 +117,7 @@ public class AnalyseController {
         }
     }
 
+    @Deprecated
     @Operation(summary = "오디오 분석 (테스트용)", description = "오디오 파일을 업로드하면 분석 결과를 반환합니다.")
     @PostMapping(value = "/test-audio", consumes = "multipart/form-data")
     public ResponseEntity<AnalysisResponseDto> testAudioAnalysis(
@@ -173,6 +174,7 @@ public class AnalyseController {
         }
     }
 
+    @Deprecated
     @Operation(summary = "오디오 분석 (테스트용, PracticeFeedbackDto 반환)", description = "오디오 파일을 업로드하면 PracticeFeedbackDto 형태로 분석 결과를 반환합니다.")
     @PostMapping(value = "/test-audio-practice", consumes = "multipart/form-data")
     public ResponseEntity<com.pres.pres_server.dto.practice.PracticeFeedbackDto> testAudioPractice(
