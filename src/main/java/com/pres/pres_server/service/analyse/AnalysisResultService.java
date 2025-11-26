@@ -218,8 +218,21 @@ public class AnalysisResultService {
         // 4. 공백 점수 (AudioAnalysisService에서 이미 분석됨)
         int silenceScore = setSilenceInfo(feedback, analysisResult);
 
-        // 5. 정확도 점수 (대본 필요 - 여기서 분석)
-        int accuracyScore = analyzeAndSetAccuracy(session, analysisResult.getFullSttText(), feedback);
+        // 5. 정확도 점수 (대본 필요) - AudioAnalysisService에서 이미 계산된 결과가 있으면 재사용
+        int accuracyScore;
+        if (analysisResult.getAccuracyResult() != null && analysisResult.getAccuracyResult().isSuccess()) {
+            ScriptAccuracyService.AccuracyAnalysisResult globalAcc = analysisResult.getAccuracyResult();
+            accuracyScore = globalAcc.getAccuracyScore();
+            feedback.setScriptSimilarity(globalAcc.getScriptSimilarity());
+            feedback.setMissingKeywords(toJsonSafe(globalAcc.getMissingKeywords()));
+            log.info("  • 정확도 점수(재사용): {} (유사도: {}, 키워드 매칭: {}/{})",
+                    accuracyScore,
+                    String.format("%.2f", globalAcc.getScriptSimilarity()),
+                    globalAcc.getMatchedKeywordCount(),
+                    globalAcc.getTotalKeywordCount());
+        } else {
+            accuracyScore = analyzeAndSetAccuracy(session, analysisResult.getFullSttText(), feedback);
+        }
 
         // 저장용 정확도 필드 설정
         feedback.setAccuracyScore(accuracyScore);
