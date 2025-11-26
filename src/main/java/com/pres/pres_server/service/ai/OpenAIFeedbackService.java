@@ -291,11 +291,20 @@ public class OpenAIFeedbackService {
      * 전체 세션에 대한 요약 피드백 생성
      * 반환: 간결한 텍스트(한두 문장)
      */
-    public String generateOverallFeedback(String sessionId, String aggregatedComments) {
+    public String generateOverallFeedback(String sessionId, String issueType, String aggregatedComments) {
         String system = "너는 발표 코칭 전문가야. 전체 세션에 대한 간결한 한두 문장 요약 피드백을 제공해줘.";
+
         String user = String.format(
-                "세션: %s\n슬라이드별 코멘트(원문): %s\n\n요구: 위 코멘트를 참고해서 전체 연습 세션에 대한 한두 문장짜리 요약 피드백을 자연스러운 한국어 문장으로 반환해줘. 응답은 최대 200토큰의 평문 텍스트로만 제공하고, JSON이 아닌 텍스트만 반환해줘.",
-                sessionId, aggregatedComments == null ? "" : aggregatedComments);
+                "세션 ID: %s\n" +
+                        "가장 낮은 점수 항목: %s\n" +
+                        "관련 슬라이드 코멘트(원문):\n%s\n\n" +
+                        "요구: 가장 낮은 점수 항목(%s)에 대해 위 코멘트를 참고하여 한두 문장짜리 요약 피드백을 자연스러운 한국어 문장으로 작성해줘. " +
+                        "응답은 최대 200토큰의 순수 텍스트로만 반환하고, JSON이 아닌 텍스트만 제공해줘.",
+                sessionId,
+                issueType,
+                aggregatedComments == null ? "" : aggregatedComments,
+                issueType);
+
         try {
             String content = executeChatRequest(system, user);
             return content != null ? content.trim() : null;

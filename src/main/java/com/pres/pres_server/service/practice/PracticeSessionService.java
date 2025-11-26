@@ -45,7 +45,7 @@ public class PracticeSessionService {
 
         private final com.pres.pres_server.service.file.PresentationImageService presentationImageService;
         private final ObjectMapper objectMapper;
-        // OpenAIFeedbackService removed from this service as AI responses are not returned in the DTO
+        private final com.pres.pres_server.service.ai.OpenAIFeedbackService openAIFeedbackService;
 
         /**
          * 연습 세션 시작
@@ -176,8 +176,62 @@ public class PracticeSessionService {
                 List<PracticeHistoryDto> history = feedbackRepository.findHistoryByProjectIdExcludingSession(projectId,
                                 sessionId);
 
-                // 5. DTO 변환 및 반환 (발표 피드백 + 슬라이드별 피드백 + QnA 결과)
-                // AI overall generation removed from DTO flow as 'aiFeedback' was removed.
+                // 4. 전체 피드백 생성 (AI)
+                // Determine lowest scoring issue among the five score fields: SPM(SPEED),
+                // FILLER, REPETITION, SILENCE, ACCURACY
+                String lowestIssueType = null;
+                Integer lowestScore = null;
+                Map<String, Integer> scoreMap = new LinkedHashMap<>();
+                scoreMap.put("SPEED", feedback.getSpmScore());
+                scoreMap.put("FILLER", feedback.getFillerScore());
+                scoreMap.put("REPETITION", feedback.getRepeatScore());
+                scoreMap.put("SILENCE", feedback.getSilenceScore());
+                scoreMap.put("ACCURACY", feedback.getAccuracyScore());
+
+                for (Map.Entry<String, Integer> e : scoreMap.entrySet()) {
+                        Integer v = e.getValue();
+                        if (v == null)
+                                continue;
+                        if (lowestScore == null || v < lowestScore) {
+                                lowestScore = v;
+                                lowestIssueType = e.getKey();
+                        }
+                }
+
+                String overallFeedback = null;
+                if (lowestIssueType != null) {
+                        // Aggregate slide-level comments for the selected issue type
+                        StringBuilder agg = new StringBuilder();
+                        try {
+                                for (SlideFeedbackDto s : slideFeedbacks) {
+                                        if (s == null || s.getIssues() == null)
+                                                continue;
+                                        for (IssueDto it : s.getIssues()) {
+                                                if (it == null || it.getIssueType() == null)
+                                                        continue;
+                                                if (lowestIssueType.equals(it.getIssueType())) {
+                                                        if (it.getComment() != null && !it.getComment().isBlank()) {
+                                                                if (agg.length() > 0)
+                                                                        agg.append("\n");
+                                                                agg.append("Slide ").append(s.getSlideNumber())
+                                                                                .append(": ").append(it.getComment());
+                                                        }
+                                                }
+                                        }
+                                }
+                        } catch (Exception ignore) {
+                        }
+
+                        String aggregatedComments = agg.length() > 0 ? agg.toString() : "";
+                        try {
+                                overallFeedback = openAIFeedbackService.generateOverallFeedback(
+                                                String.valueOf(sessionId), lowestIssueType,
+                                                aggregatedComments);
+                        } catch (Exception e) {
+                                log.warn("전체 AI 피드백 생성 실패 - sessionId={} reason={}", sessionId, e.getMessage());
+                                overallFeedback = null;
+                        }
+                }
 
                 return PracticeFeedbackDto.builder()
                                 .sessionId(sessionId)
@@ -193,6 +247,7 @@ public class PracticeSessionService {
                                 .slideFeedbacks(slideFeedbacks)
                                 // full STT text excluded from session feedback response
                                 .history(history)
+                                .overallFeedback(overallFeedback)
                                 // QnA 비교 결과는 제외
                                 .build();
         }

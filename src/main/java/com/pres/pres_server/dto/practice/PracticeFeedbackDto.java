@@ -28,5 +28,6 @@ public class PracticeFeedbackDto {
     // 슬라이드별 피드백 (이슈가 있는 슬라이드만)
     private List<SlideFeedbackDto> slideFeedbacks;
 
-    // (removed) aiFeedback: AI 코멘트는 더 이상 DTO에 포함하지 않음
+    // aiFeedback: AI 코멘트
+    private String overallFeedback;
 }
