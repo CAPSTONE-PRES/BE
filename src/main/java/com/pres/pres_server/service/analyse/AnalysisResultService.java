@@ -1227,7 +1227,8 @@ public class AnalysisResultService {
                 ScriptAccuracyService.AccuracyAnalysisResult acc = accuracyResults.get(i);
                 if (acc != null && acc.isSuccess() && acc.getAccuracyScore() < 80) {
                     IssueDto.IssueDtoBuilder ab = IssueDto.builder().issueType("ACCURACY")
-                            .errorCount(acc.getTotalKeywordCount() - acc.getMatchedKeywordCount());
+                            .errorCount(acc.getTotalKeywordCount() - acc.getMatchedKeywordCount())
+                            .similarity(acc.getScriptSimilarity());
                     List<OffsetDto> accOffsets = new ArrayList<>();
                     try {
                         List<TextOffset> provided = acc.getOffsets();

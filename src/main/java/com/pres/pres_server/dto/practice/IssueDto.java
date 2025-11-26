@@ -28,5 +28,7 @@ public class IssueDto {
     private String comment;
     // 하이라이트용 오프셋 리스트 (begin/end: 슬라이드 텍스트 기준 인덱스)
     private List<OffsetDto> offsets;
+    // 정확도 유사도 값 (0.0 - 1.0). null이면 제공되지 않음
+    private Double similarity;
 
 }

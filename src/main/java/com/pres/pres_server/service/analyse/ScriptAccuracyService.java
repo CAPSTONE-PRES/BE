@@ -29,11 +29,18 @@ public class ScriptAccuracyService {
      */
     public List<AccuracyAnalysisResult> analyzeAccuracyBySlides(List<String> slideScripts, List<String> slideSttTexts) {
         List<AccuracyAnalysisResult> results = new ArrayList<>();
-        if (slideScripts == null || slideSttTexts == null || slideScripts.size() != slideSttTexts.size()) {
-            log.warn("The number of script/STT pairs per slide does not match. Skipping analysis.");
+        if (slideScripts == null || slideScripts.isEmpty() || slideSttTexts == null || slideSttTexts.isEmpty()) {
+            log.warn("Slide scripts or slide STT texts are null/empty. Skipping per-slide accuracy analysis.");
             return results;
         }
-        for (int i = 0; i < slideScripts.size(); i++) {
+
+        int minLen = Math.min(slideScripts.size(), slideSttTexts.size());
+        if (slideScripts.size() != slideSttTexts.size()) {
+            log.warn("Slide scripts and STT list size mismatch: scripts={}, sttTexts={}. Processing up to min({}).",
+                    slideScripts.size(), slideSttTexts.size(), minLen);
+        }
+
+        for (int i = 0; i < minLen; i++) {
             String script = slideScripts.get(i);
             String stt = slideSttTexts.get(i);
             int scriptLen = script == null ? 0 : script.length();
@@ -42,6 +49,7 @@ public class ScriptAccuracyService {
             AccuracyAnalysisResult result = analyzeAccuracy(script, stt);
             results.add(result);
         }
+
         return results;
     }
 
@@ -118,23 +126,10 @@ public class ScriptAccuracyService {
                 accuracyScore, String.format("%.2f", finalSimilarity), matchedCount, scriptKeywords.size(),
                 TextAnalysisUtils.isAIEnabled() ? "AI enabled" : "AI disabled");
 
-        // compute offsets for the limited missing keywords (to avoid huge offsets
-        // lists)
-        List<TextOffset> offsets = new ArrayList<>();
-        try {
-            String normalizedScriptForOffsets = TextAnalysisUtils.normalizeText(scriptContent);
-            for (String kw : limitedMissingKeywords) {
-                if (kw == null || kw.isBlank())
-                    continue;
-                int idx = normalizedScriptForOffsets.indexOf(kw);
-                while (idx >= 0) {
-                    int end = Math.min(normalizedScriptForOffsets.length(), idx + kw.length());
-                    offsets.add(new TextOffset(idx, end, 0, normalizedScriptForOffsets.substring(idx, end)));
-                    idx = normalizedScriptForOffsets.indexOf(kw, idx + Math.max(1, kw.length()));
-                }
-            }
-        } catch (Exception ignore) {
-        }
+        // Offsets are intentionally omitted from AccuracyAnalysisResult to avoid
+        // slide-global mapping confusion. Downstream code should use per-slide
+        // text search (SlideSegmentExtractor) when offsets are required.
+        List<TextOffset> offsets = Collections.emptyList();
 
         return AccuracyAnalysisResult.builder()
                 .accuracyScore(accuracyScore)

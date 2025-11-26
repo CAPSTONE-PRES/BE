@@ -131,6 +131,18 @@ public class AudioAnalysisService {
 
         ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = analyzeAccuracy(fullSttText, projectId);
 
+        // 명시적 로그: accuracyResult 존재 여부 및 성공 여부를 항상 남겨 문제 원인 파악을 쉽게 함
+        if (accuracyResult == null) {
+            log.warn("  - 분석: accuracyResult is null (expected non-null) - check analyzeAccuracy path");
+        } else if (accuracyResult.isSuccess()) {
+            log.info("  - Accuracy (global) computed - score={}, similarity={}",
+                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()));
+        } else {
+            log.warn("  - Accuracy (global) returned unsuccessful result - score={}, similarity={}, errorMessage={}",
+                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()),
+                    accuracyResult.getErrorMessage());
+        }
+
         // 5. 슬라이드별 분석
         // 슬라이드별 스크립트 리스트가 제공되지 않았거나 길이가 일치하지 않으면
         // 프로젝트의 CueCard를 조회하여 슬라이드별 스크립트를 생성합니다. 이렇게 하면
@@ -236,27 +248,41 @@ public class AudioAnalysisService {
                 .detectSilencesBySlides(slideSegmentsList);
         log.info("    • Silence analysis: {} slides", silenceResults.size());
 
-        // 3) 정확도 분석 (대본이 있을 때만)
+        // 3) 정확도 분석 (대본/슬라이드 STT 리스트가 존재하면 가능한 범위 내에서 계산)
         List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = Collections.emptyList();
 
-        if (slideScripts != null && slideScripts.size() == slideSttTexts.size()) {
-            log.debug(
-                    "    • Calling ScriptAccuracyService.analyzeAccuracyBySlides - slideScripts size: {}, slideSttTexts size: {}",
-                    slideScripts.size(), slideSttTexts.size());
-            for (int i = 0; i < slideScripts.size(); i++) {
-                String s = slideScripts.get(i);
-                int slen = s == null ? 0 : s.length();
-                String st = slideSttTexts.get(i);
-                int tlen = st == null ? 0 : st.length();
-                log.debug("      - slide[{}]: script len={}, stt len={}", i + 1, slen, tlen);
-            }
-
-            accuracyResults = scriptAccuracyService
-                    .analyzeAccuracyBySlides(slideScripts, slideSttTexts);
-            log.info("    • Accuracy analysis: {} slides", accuracyResults.size());
+        boolean haveScriptsAndStt = (slideScripts != null && !slideScripts.isEmpty() && slideSttTexts != null
+                && !slideSttTexts.isEmpty());
+        if (!haveScriptsAndStt) {
+            log.debug("    • Skipping per-slide accuracy: slideScripts==null/empty? {} | slideSttTexts==null/empty? {}",
+                    slideScripts == null || slideScripts.isEmpty(), slideSttTexts == null || slideSttTexts.isEmpty());
         } else {
-            log.debug("    • Skipping per-slide accuracy: slideScripts==null? {} | sizes match? {}",
-                    slideScripts == null, slideScripts != null && slideScripts.size() == slideSttTexts.size());
+            boolean allBlank = slideScripts.stream().allMatch(s -> s == null || s.trim().isEmpty());
+
+            if (allBlank) {
+                log.info("    • 모든 슬라이드에 스크립트가 없어 per-slide 정확도 분석 스킵");
+            } else {
+                log.info(
+                        "    • Calling ScriptAccuracyService.analyzeAccuracyBySlides - slideScripts size: {}, slideSttTexts size: {}",
+                        slideScripts.size(), slideSttTexts.size());
+
+                int sampleLogCount = Math.min(10, Math.min(slideScripts.size(), slideSttTexts.size()));
+                for (int i = 0; i < sampleLogCount; i++) {
+                    String s = i < slideScripts.size() ? slideScripts.get(i) : null;
+                    int slen = (s == null) ? 0 : s.length();
+                    String st = i < slideSttTexts.size() ? slideSttTexts.get(i) : null;
+                    int tlen = (st == null) ? 0 : st.length();
+                    log.debug("      - slide[{}]: script len={}, stt len={}", i + 1, slen, tlen);
+                }
+
+                try {
+                    accuracyResults = scriptAccuracyService.analyzeAccuracyBySlides(slideScripts, slideSttTexts);
+                } catch (Exception e) {
+                    log.warn("    • ScriptAccuracyService.analyzeAccuracyBySlides failed: {}", e.getMessage());
+                    accuracyResults = Collections.emptyList();
+                }
+                log.info("    • Accuracy analysis results: {} slides computed", accuracyResults.size());
+            }
         }
 
         // 4) SPM 분석 (슬라이드별)
@@ -264,14 +290,14 @@ public class AudioAnalysisService {
         log.info("    • SPM analysis: {} slides", spmResults.size());
 
         // 5) 반복 어휘 분석 (슬라이드별) - 전체 분석에서 추출
-        // 전체 STT 텍스트로 분석 수행 (이미 상위에서 전역 분석을 수행했다면 그 결과를 재사용)
         String fullSttText = slideSttTexts.stream()
                 .filter(text -> text != null && !text.trim().isEmpty())
                 .collect(Collectors.joining(" "));
 
         RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitionAnalysis;
         if (repAnalysisLocal == null) {
-            repAnalysisLocal = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, transitions, segments);
+            repAnalysisLocal = repetitiveTextAnalysisService
+                    .analyzeRepetition(fullSttText, transitions, segments);
         }
 
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
