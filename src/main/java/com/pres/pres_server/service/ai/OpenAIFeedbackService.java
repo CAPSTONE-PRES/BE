@@ -490,10 +490,20 @@ public class OpenAIFeedbackService {
         itemSchema.put("required", List.of("title", "content", "improvement"));
         itemSchema.put("additionalProperties", false);
 
-        // --- root schema: 배열 ---
+        // --- items: 배열 스키마 ---
+        Map<String, Object> itemsArraySchema = new HashMap<>();
+        itemsArraySchema.put("type", "array");
+        itemsArraySchema.put("items", itemSchema);
+
+        // --- root schema: object + items 필드 ---
+        Map<String, Object> rootProperties = new HashMap<>();
+        rootProperties.put("items", itemsArraySchema);
+
         Map<String, Object> rootSchema = new HashMap<>();
-        rootSchema.put("type", "array");
-        rootSchema.put("items", itemSchema);
+        rootSchema.put("type", "object");
+        rootSchema.put("properties", rootProperties);
+        rootSchema.put("required", List.of("items"));
+        rootSchema.put("additionalProperties", false);
 
         Map<String, Object> jsonSchemaContainer = new HashMap<>();
         jsonSchemaContainer.put("name", "QnaFeedbackItems");
