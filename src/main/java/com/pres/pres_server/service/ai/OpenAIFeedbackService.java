@@ -70,7 +70,7 @@ public class OpenAIFeedbackService {
         return content;
     }
 
-    // QNA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환
+    // QNA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환// QNA 피드백 생성 (표현방식, 논리 흐름) - JSON 반환
     public List<Map<String, String>> generateQnaFeedback(String question, String idealAnswer, String userAnswer) {
         String prompt = buildPrompt(question, idealAnswer, userAnswer);
         try {
@@ -86,7 +86,7 @@ public class OpenAIFeedbackService {
                     "content", prompt));
             requestBody.put("messages", messages);
 
-            // 구조화된 JSON 응답 강제
+            // 구조화된 JSON 응답 강제 (root: object, 내부 items: array)
             requestBody.put("response_format", buildQnaResponseFormat());
             requestBody.put("temperature", 0.3);
             requestBody.put("max_tokens", 1500);
@@ -127,12 +127,36 @@ public class OpenAIFeedbackService {
                 return List.of(Map.of("error", "AI 서비스 응답 처리 실패: " + ex.getMessage()));
             }
 
-            // JSON 파싱: 루트는 배열
+            // JSON 파싱: 루트는 object, 내부 items가 배열
             try {
-                List<Map<String, String>> result = objectMapper.readValue(content,
+                // 1) 루트 object 파싱
+                Map<String, Object> root = objectMapper.readValue(
+                        content,
+                        new TypeReference<Map<String, Object>>() {
+                        });
+
+                Object rawItems = root.get("items");
+                if (rawItems == null) {
+                    log.warn("QnA 피드백 JSON에 items 필드가 없습니다. content={}", content);
+                    return List.of(Map.of(
+                            "error", "AI 피드백 JSON에 items 필드가 없습니다.",
+                            "raw", content));
+                }
+
+                // 2) items를 List<Map<String,String>>로 변환
+                List<Map<String, String>> result = objectMapper.convertValue(
+                        rawItems,
                         new TypeReference<List<Map<String, String>>>() {
                         });
+
+                if (result == null) {
+                    return List.of(Map.of(
+                            "error", "AI 피드백 JSON items 파싱 결과가 null 입니다.",
+                            "raw", content));
+                }
+
                 return result;
+
             } catch (Exception jsonEx) {
                 log.error("OpenAI 피드백 JSON 파싱 실패", jsonEx);
                 if (content != null && content.trim().startsWith("<")) {
@@ -195,21 +219,25 @@ public class OpenAIFeedbackService {
                           "문장 길이를 줄여 발표용 원고로 더 자연스러워짐"
 
                         출력 형식 (매우 중요):
-                        - 반드시 JSON 배열 형식으로만 출력한다.
+                        - 반드시 JSON 객체(object) 한 개만 출력한다.
+                        - 이 JSON 객체는 반드시 `items` 라는 필드를 가져야 한다.
+                        - `items` 필드는 피드백 항목들의 배열(array)이어야 한다.
                         - JSON 바깥에 어떤 설명도 붙이지 말라. (문장, 주석, 마크다운, 코드블록 모두 금지)
-                        - 각 배열 원소는 아래 3개 필드를 가진다:
+                        - `items` 배열의 각 원소는 아래 3개 필드를 가진다:
                           - title: 명사형 요약 (문자열)
                           - content: 비교 기반 상세 설명 (문자열)
                           - improvement: 한 줄 개선 요약 (문자열)
 
                         출력 JSON 구조 예시 (구조만 참고, 안의 문장은 새로 생성해야 한다):
-                        [
-                          {
-                            "title": "문장 정보량의 과밀도",
-                            "content": "사용자 답변에서는 한 문장 안에 여러 정보를 동시에 담으면서 초점이 흐려졌어요. 이런 방식은 발표에서 청자가 핵심을 놓치기 쉽습니다. 모범 답변은 정보를 여러 문장으로 나누어 단계적으로 전달해, 각 포인트가 더 뚜렷하게 구분돼요.",
-                            "improvement": "정보를 나누어 제시하면서 핵심 포인트가 더 분명해졌어요."
-                          }
-                        ]
+                        {
+                          "items": [
+                            {
+                              "title": "문장 정보량의 과밀도",
+                              "content": "사용자 답변에서는 한 문장 안에 여러 정보를 동시에 담으면서 초점이 흐려졌어요. 이런 방식은 발표에서 청자가 핵심을 놓치기 쉽습니다. 모범 답변은 정보를 여러 문장으로 나누어 단계적으로 전달해, 각 포인트가 더 뚜렷하게 구분돼요.",
+                              "improvement": "정보를 나누어 제시하면서 핵심 포인트가 더 분명해졌어요."
+                            }
+                          ]
+                        }
 
                         중요한 제약:
                         - 위에 나온 예시 문구(제목/문장/개선 요약)는 전부 '참고용 설명'일 뿐이며,
