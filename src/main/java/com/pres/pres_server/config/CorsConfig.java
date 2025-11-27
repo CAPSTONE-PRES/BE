@@ -20,14 +20,12 @@ public class CorsConfig {
                 "http://127.0.0.1:*",
                 "http://192.168.*:*",
                 "https://localhost:*",
-                "https://54-180-25-217.nip.io",
-                "http://54.180.25.217.nip.io",
-                "https://54.180.25.217.nip.io"
-        ));
+                "https://15.164.97.26.nip.io",
+                "https://pres-server.s3.ap-northeast-2.amazonaws.com",
+                "http://15.164.97.26"));
 
         config.setAllowedMethods(Arrays.asList(
-                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
-        ));
+                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
         config.setAllowedHeaders(Arrays.asList("*"));
         config.setExposedHeaders(Arrays.asList("Authorization"));
@@ -35,7 +33,7 @@ public class CorsConfig {
         config.setMaxAge(3600L); // 1시간 캐싱
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);  // 모든 경로에 적용
+        source.registerCorsConfiguration("/**", config); // 모든 경로에 적용
 
         return source;
     }
