@@ -623,7 +623,7 @@ public class AnalysisResultService {
                 }
             }
 
-            // 4. 반복 어휘 정보 (여기가 핵심 수정 부분)
+            // 4. 반복 어휘 정보 (핵심 수정 부분)
             List<RepetitiveTextAnalysisService.SlideRepetition> slideRepetitions = repetitionMap.get(i + 1); // 1-based
             if (slideRepetitions == null) {
                 slideRepetitions = repetitionMap.get(i); // 0-based 폴백
@@ -658,86 +658,84 @@ public class AnalysisResultService {
                     }
                 }
 
-                // offset 기준으로 아무것도 못 세면, 기존 SlideRepetition count로 폴백 (전역 느낌이라도 최소 방어)
-                if (perPatternCount.isEmpty()) {
-                    for (RepetitiveTextAnalysisService.SlideRepetition r : slideRepetitions) {
-                        String p = r.getPattern();
-                        perPatternCount.merge(p, r.getCount(), Integer::sum);
-                    }
-                }
+                if (!perPatternCount.isEmpty()) {
+                    int totalRepeatCount = perPatternCount.values().stream()
+                            .mapToInt(Integer::intValue)
+                            .sum();
 
-                int totalRepeatCount = perPatternCount.values().stream()
-                        .mapToInt(Integer::intValue)
-                        .sum();
+                    if (totalRepeatCount >= 2) {
+                        Map<String, Integer> repeatMapTop = perPatternCount.entrySet().stream()
+                                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
+                                .limit(3)
+                                .collect(Collectors.toMap(
+                                        Map.Entry::getKey,
+                                        Map.Entry::getValue,
+                                        (a, b) -> a,
+                                        LinkedHashMap::new));
 
-                if (totalRepeatCount >= 2) {
-                    Map<String, Integer> repeatMapTop = perPatternCount.entrySet().stream()
-                            .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
-                            .limit(3)
-                            .collect(Collectors.toMap(
-                                    Map.Entry::getKey,
-                                    Map.Entry::getValue,
-                                    (a, b) -> a,
-                                    LinkedHashMap::new));
-
-                    try {
-                        log.debug("슬라이드 {} - computed repeatMapTop: {}", i + 1, repeatMapTop);
-                    } catch (Exception ignore) {
-                    }
-
-                    slideFeedback.setRepeatCount(totalRepeatCount);
-                    String repeatDetailStr = String.join(", ", repeatMapTop.keySet());
-                    slideFeedback.setRepeatDetail(repeatDetailStr);
-
-                    IssueDto.IssueDtoBuilder repBuilder = IssueDto.builder()
-                            .issueType("REPETITION")
-                            .repeatCount(totalRepeatCount)
-                            .repeatDetail(repeatMapTop);
-
-                    // 4-2) 오프셋 수집
-                    List<OffsetDto> repOffsets = new ArrayList<>();
-                    for (String p : distinctPatterns) {
-                        List<OffsetDto> mapped = patternOffsetMap.get(p);
-                        if (mapped == null || mapped.isEmpty()) {
-                            continue;
+                        try {
+                            log.debug("슬라이드 {} - computed repeatMapTop: {}", i + 1, repeatMapTop);
+                        } catch (Exception ignore) {
                         }
-                        for (OffsetDto d : mapped) {
-                            if (d != null && d.getSlideIndex() != null
-                                    && d.getSlideIndex() == targetSlideIndex) {
-                                repOffsets.add(d);
+
+                        slideFeedback.setRepeatCount(totalRepeatCount);
+                        String repeatDetailStr = String.join(", ", repeatMapTop.keySet());
+                        slideFeedback.setRepeatDetail(repeatDetailStr);
+
+                        IssueDto.IssueDtoBuilder repBuilder = IssueDto.builder()
+                                .issueType("REPETITION")
+                                .repeatCount(totalRepeatCount)
+                                .repeatDetail(repeatMapTop);
+
+                        // 4-2) 오프셋 수집 (카운트가 실제로 있는 패턴만 대상으로)
+                        List<OffsetDto> repOffsets = new ArrayList<>();
+                        for (String p : repeatMapTop.keySet()) {
+                            List<OffsetDto> mapped = patternOffsetMap.get(p);
+                            if (mapped == null || mapped.isEmpty()) {
+                                continue;
+                            }
+                            for (OffsetDto d : mapped) {
+                                if (d != null && d.getSlideIndex() != null
+                                        && d.getSlideIndex() == targetSlideIndex) {
+                                    repOffsets.add(d);
+                                }
                             }
                         }
-                    }
-                    if (repOffsets.isEmpty()) {
-                        String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                ? slideSttTexts.get(i)
-                                : "";
-                        repOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, distinctPatterns,
-                                targetSlideIndex);
-                    }
-                    if (!repOffsets.isEmpty()) {
-                        repBuilder.offsets(repOffsets);
-                    }
+                        if (repOffsets.isEmpty()) {
+                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
+                                    ? slideSttTexts.get(i)
+                                    : "";
+                            repOffsets = slideSegmentExtractor.collectOffsetsForSlide(
+                                    slideText,
+                                    new ArrayList<>(repeatMapTop.keySet()),
+                                    targetSlideIndex);
+                        }
+                        if (!repOffsets.isEmpty()) {
+                            repBuilder.offsets(repOffsets);
+                        }
 
-                    // 4-3) OpenAI 코멘트
-                    try {
-                        Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(
-                                String.valueOf(targetSlideIndex),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                totalRepeatCount,
-                                distinctPatterns);
-                        if (r2 != null && r2.containsKey("repetition"))
-                            repBuilder.comment(r2.get("repetition"));
-                    } catch (Exception e) {
-                        log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", targetSlideIndex, e.getMessage());
-                    }
+                        // 4-3) OpenAI 코멘트
+                        try {
+                            Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(
+                                    String.valueOf(targetSlideIndex),
+                                    (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                                    totalRepeatCount,
+                                    new ArrayList<>(repeatMapTop.keySet()));
+                            if (r2 != null && r2.containsKey("repetition"))
+                                repBuilder.comment(r2.get("repetition"));
+                        } catch (Exception e) {
+                            log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", targetSlideIndex, e.getMessage());
+                        }
 
-                    issuesList.add(repBuilder.build());
-                    if (slideFeedback.getIssueType() == null)
-                        slideFeedback.setIssueType(IssueType.REPETITION);
-                    hasIssue = true;
+                        issuesList.add(repBuilder.build());
+                        if (slideFeedback.getIssueType() == null)
+                            slideFeedback.setIssueType(IssueType.REPETITION);
+                        hasIssue = true;
+                    } else {
+                        log.debug("슬라이드 {} 반복 감지(합계={}) - 임계값 미달로 이슈 미생성", i + 1, totalRepeatCount);
+                    }
                 } else {
-                    log.debug("슬라이드 {} 반복 감지(합계={}) - 임계값 미달로 이슈 미생성", i + 1, totalRepeatCount);
+                    log.debug("슬라이드 {}: repetition offsets not resolved, 반복 이슈 스킵", targetSlideIndex);
                 }
             }
 
