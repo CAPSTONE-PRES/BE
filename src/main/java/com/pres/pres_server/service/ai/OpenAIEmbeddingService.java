@@ -91,7 +91,6 @@ public class OpenAIEmbeddingService {
         }
 
         // 캐시 미스 → API 호출
-        log.debug("  • 캐시 미스 → API 호출");
         try {
             float[] embedding = getEmbedding(text);
 

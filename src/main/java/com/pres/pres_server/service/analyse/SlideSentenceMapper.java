@@ -12,6 +12,7 @@ import com.pres.pres_server.service.analyse.dto.WhisperSegment;
 import lombok.Data;
 
 @Deprecated
+// TODO: Using SlideSegmentExtractor instead
 public class SlideSentenceMapper {
 
     /**

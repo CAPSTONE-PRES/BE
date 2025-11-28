@@ -30,13 +30,14 @@ public class FileController {
     private final CueSlideService cueSlideService;
     private final PresentationImageService presentationImageService;
 
+    //TODO: file upload 로직과 image 변환 로직 API 분리
     @Operation(summary = "presentation file 업로드", description = "presentation file을 업로드하고, 파일 ID와 URL을 반환합니다.")
     @PostMapping(value = "/upload", consumes = { "multipart/form-data" })
     public ResponseEntity<FileUploadDto> uploadFile(@RequestPart("file") MultipartFile file,
             @RequestParam("uploaderId") Long uploaderId,
             @RequestParam("projectId") Long projectId) {
         log.info("upload api starts");
-        // 파일 업로드 및 db저장
+        // 파일 업로드, 이미지 변환 및 db저장
         FileUploadDto result = presentationFileService.uploadAndSave(file, uploaderId, projectId);
         // 성공 메세지와 결과 반환
         return ResponseEntity.ok(result);
@@ -143,5 +144,7 @@ public class FileController {
                 .contentType(MediaType.IMAGE_PNG)
                 .body(resource);
     }
+
+    //TODO: 추가 자료 업로드 API 생성 (이미지 생성 x, extract Text만 진행해서 CueCard와 QnA 생성에 도움)
 
 }
