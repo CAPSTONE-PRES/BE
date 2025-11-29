@@ -637,25 +637,36 @@ public class AnalysisResultService {
                 }
             }
 
-            // 4. 반복 어휘 정보 (존재 여부/횟수는 repetitionMap 기준, offset은 patternOffsetMap 사용)
-            // 4. 반복 어휘 정보 - 전역 offset(slideIndex 포함) 기반
-            // NOTE: patternOffsetMap의 slideIndex는 1-based (RepetitiveTextAnalysisService에서
-            // 1부터 시작)
+            // 4. 반복 어휘 정보 - SlideRepetition의 offset 사용 (Level 2 분석 결과)
+            // NOTE: SlideRepetition.slideIndex는 1-based
             int slideIndex1Based = i + 1; // i는 0부터 시작하므로 +1
             Map<String, Integer> perPatternCount = new LinkedHashMap<>();
             List<OffsetDto> repOffsets = new ArrayList<>();
 
-            for (Map.Entry<String, List<OffsetDto>> entry : patternOffsetMap.entrySet()) {
-                String pattern = entry.getKey();
-                List<OffsetDto> allOffsets = entry.getValue();
+            // repetitionMap에서 이 슬라이드의 SlideRepetition 가져오기
+            List<RepetitiveTextAnalysisService.SlideRepetition> slideReps = repetitionMap.get(slideIndex1Based);
+            if (slideReps != null) {
+                for (RepetitiveTextAnalysisService.SlideRepetition sr : slideReps) {
+                    String pattern = sr.getPattern();
+                    List<RepetitiveTextAnalysisService.Offset> offsets = sr.getOffsets();
 
-                List<OffsetDto> offsetsForThisSlide = allOffsets.stream()
-                        .filter(o -> o.getSlideIndex() != null && o.getSlideIndex() == slideIndex1Based)
-                        .toList();
+                    if (offsets != null && !offsets.isEmpty()) {
+                        perPatternCount.put(pattern, offsets.size());
 
-                if (!offsetsForThisSlide.isEmpty()) {
-                    perPatternCount.put(pattern, offsetsForThisSlide.size());
-                    repOffsets.addAll(offsetsForThisSlide);
+                        // Offset → OffsetDto 변환
+                        for (RepetitiveTextAnalysisService.Offset o : offsets) {
+                            OffsetDto dto = OffsetDto.builder()
+                                    .slideIndex(o.getSlideIndex())
+                                    .begin(o.getBegin())
+                                    .end(o.getEnd())
+                                    .text(o.getText())
+                                    .build();
+                            repOffsets.add(dto);
+                        }
+                    } else {
+                        // offset 정보가 없으면 count만 사용
+                        perPatternCount.put(pattern, sr.getCount());
+                    }
                 }
             }
 
