@@ -301,7 +301,14 @@ public class AudioAnalysisService {
         }
 
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
-        log.info("    • Repetition analysis: {} slides", repetitionResults.size());
+        log.info(" [performSlideAnalysis] 반복: {} slides", repetitionResults.size());
+
+        for (RepetitiveTextAnalysisService.SlideRepetition sr : repetitionResults) {
+            log.debug(" [performSlideAnalysis] 반복: - slide[{}]: count={}, patterns={}",
+                    sr.getSlideIndex(),
+                    sr.getCount(),
+                    sr.getPattern());
+        }
 
         return SlideAnalysisResult.builder()
                 .fillerResults(fillerResults)
@@ -437,7 +444,7 @@ public class AudioAnalysisService {
             }
 
             if (result.isSuccess()) {
-                log.info("  - Repetition analysis: score={}, patterns={}",
+                log.info("  [analyzeRepetition] Repetition: score={}, NgramPatterns={}",
                         result.getRepetitionScore(),
                         result.getNGramPatterns().size());
             }

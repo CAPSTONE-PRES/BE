@@ -659,23 +659,21 @@ public class AnalysisResultService {
                             .collect(Collectors.groupingBy(
                                     OffsetDto::getText,
                                     LinkedHashMap::new,
-                                    Collectors.toList()
-                            ));
+                                    Collectors.toList()));
 
-                    //size만 갖고와서 패턴별 등장 획수를 따로 매핑
+                    // size만 갖고와서 패턴별 등장 획수를 따로 매핑
                     Map<String, Integer> perPatternCount = perPatternOffsets.entrySet().stream()
                             .collect(Collectors.toMap(
                                     Map.Entry::getKey,
-                                    e -> e.getValue().size(),   // ← 이 슬라이드에서의 등장 횟수
+                                    e -> e.getValue().size(), // ← 이 슬라이드에서의 등장 횟수
                                     (a, b) -> a,
-                                    LinkedHashMap::new
-                            ));
+                                    LinkedHashMap::new));
 
                     int totalRepeatCount = perPatternCount.values().stream()
                             .mapToInt(Integer::intValue)
                             .sum();
 
-                    log.info("[SLIDE {}] perPatternCount={} totalRepeatCount={}",
+                    log.info("resultService 반복: [SLIDE {}] perPatternCount={} totalRepeatCount={}",
                             slideNumber, perPatternCount, totalRepeatCount);
 
                     // 너무 자잘한 건 버리고 2회 이상일 때만 이슈로
@@ -687,11 +685,10 @@ public class AnalysisResultService {
                                         Map.Entry::getKey,
                                         Map.Entry::getValue,
                                         (a, b) -> a,
-                                        LinkedHashMap::new
-                                ));
+                                        LinkedHashMap::new));
 
                         try {
-                            log.debug("슬라이드 {} - 최종 repeatMapTop: {}", slideNumber, repeatMapTop);
+                            log.info("resultService 슬라이드 {} - 최종 repeatMapTop: {}", slideNumber, repeatMapTop);
                         } catch (Exception ignore) {
                         }
 
@@ -711,8 +708,7 @@ public class AnalysisResultService {
                                     String.valueOf(slideNumber),
                                     (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
                                     totalRepeatCount,
-                                    new ArrayList<>(repeatMapTop.keySet())
-                            );
+                                    new ArrayList<>(repeatMapTop.keySet()));
                             if (r2 != null && r2.containsKey("repetition")) {
                                 repBuilder.comment(r2.get("repetition"));
                             }
@@ -732,104 +728,102 @@ public class AnalysisResultService {
                 }
             }
 
+            // 5. 정확도 정보 (대본이 있을 때만)
+            if (accuracyResults != null && i < accuracyResults.size()) {
+                ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
+                if (accuracyResult.isSuccess()) {
+                    // 정확도가 낮은 경우만 이슈로 표시 (80% 미만)
+                    if (accuracyResult.getAccuracyScore() < 80) {
+                        // don't persist legacy error_count for ACCURACY (use IssueDto.similarity
+                        // instead)
+                        slideFeedback.setErrorCount(null);
 
-                // 5. 정확도 정보 (대본이 있을 때만)
-                if (accuracyResults != null && i < accuracyResults.size()) {
-                    ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
-                    if (accuracyResult.isSuccess()) {
-                        // 정확도가 낮은 경우만 이슈로 표시 (80% 미만)
-                        if (accuracyResult.getAccuracyScore() < 80) {
-                            // don't persist legacy error_count for ACCURACY (use IssueDto.similarity
-                            // instead)
-                            slideFeedback.setErrorCount(null);
-
-                            IssueDto.IssueDtoBuilder accBuilder = IssueDto.builder()
-                                    .issueType("ACCURACY")
-                                    .similarity(accuracyResult.getScriptSimilarity());
-                            try {
-                                String expectedKeyPoints = "";
-                                Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
-                                        String.valueOf(i + 1),
-                                        (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                        expectedKeyPoints);
-                                if (a != null && a.containsKey("accuracy"))
-                                    accBuilder.comment(a.get("accuracy"));
-                            } catch (Exception e) {
-                                log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
-                            }
-                            // Offsets are intentionally omitted for ACCURACY issues.
-                            // ScriptAccuracyService does not provide reliable offsets and
-                            // we avoid adding slide-local offsets here to keep ACCURACY
-                            // issues focused on similarity only.
-                            issuesList.add(accBuilder.build());
-                            if (slideFeedback.getIssueType() == null)
-                                slideFeedback.setIssueType(IssueType.ACCURACY);
-                            hasIssue = true;
+                        IssueDto.IssueDtoBuilder accBuilder = IssueDto.builder()
+                                .issueType("ACCURACY")
+                                .similarity(accuracyResult.getScriptSimilarity());
+                        try {
+                            String expectedKeyPoints = "";
+                            Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
+                                    String.valueOf(i + 1),
+                                    (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                                    expectedKeyPoints);
+                            if (a != null && a.containsKey("accuracy"))
+                                accBuilder.comment(a.get("accuracy"));
+                        } catch (Exception e) {
+                            log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
                         }
-                    } else {
-                        // 주의: 이전에는 전역 accuracy 결과(global accuracy)를 사용하여
-                        // 슬라이드별 ACCURACY 이슈를 폴백으로 생성했음.
-                        // 이 동작은 슬라이드별 정확도를 잘못 대표할 수 있으므로 제거합니다.
-                        log.debug("슬라이드 {}에 대해 슬라이드별 정확도 결과 없음 - 전역 accuracy 폴백 사용하지 않음", i + 1);
+                        // Offsets are intentionally omitted for ACCURACY issues.
+                        // ScriptAccuracyService does not provide reliable offsets and
+                        // we avoid adding slide-local offsets here to keep ACCURACY
+                        // issues focused on similarity only.
+                        issuesList.add(accBuilder.build());
+                        if (slideFeedback.getIssueType() == null)
+                            slideFeedback.setIssueType(IssueType.ACCURACY);
+                        hasIssue = true;
                     }
+                } else {
+                    // 주의: 이전에는 전역 accuracy 결과(global accuracy)를 사용하여
+                    // 슬라이드별 ACCURACY 이슈를 폴백으로 생성했음.
+                    // 이 동작은 슬라이드별 정확도를 잘못 대표할 수 있으므로 제거합니다.
+                    log.debug("슬라이드 {}에 대해 슬라이드별 정확도 결과 없음 - 전역 accuracy 폴백 사용하지 않음", i + 1);
                 }
-
-                // 모든 슬라이드에 대해 SlideFeedback 엔티티를 저장합니다. 이슈가 없더라도
-                // 프론트엔드에서 슬라이드 정보를 렌더링할 수 있도록 빈 이슈 리스트를 저장합니다.
-                // 우선 이슈별 코멘트가 수집되었는지 확인하여 전체 코멘트로 결합
-                String overallComment = issuesList.stream()
-                        .map(IssueDto::getComment)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.joining(" "));
-
-                // 이슈가 있고 전체 코멘트가 수집되지 않았다면 통합 생성기로 폴백(재시도 포함)
-                if (hasIssue && (overallComment == null || overallComment.isBlank())) {
-                    String transcript = (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "";
-                    // 감지된 이슈 타입 집합만 전달하도록 변경: null을 넘기지 않음
-                    // only include issue types that do not yet have a generated comment
-                    java.util.Set<String> detectedTypes = issuesList.stream()
-                            .filter(it -> it != null && (it.getComment() == null || it.getComment().isBlank()))
-                            .map(IssueDto::getIssueType)
-                            .filter(Objects::nonNull)
-                            .collect(Collectors.toSet());
-                    // fallback: slideFeedback에 주 이슈가 설정되어 있으면 포함
-                    if (detectedTypes.isEmpty() && slideFeedback.getIssueType() != null)
-                        detectedTypes.add(slideFeedback.getIssueType().name());
-
-                    if (!detectedTypes.isEmpty()) {
-                        overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults, silenceResults,
-                                accuracyResults, spmResults, repetitionMap);
-                        if (overallComment == null || overallComment.isBlank()) {
-                            log.warn("OpenAI 통합 코멘트가 비어있음(slide={} types={}) - 1회 재시도합니다.", i + 1,
-                                    detectedTypes);
-                            overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults,
-                                    silenceResults, accuracyResults, spmResults, repetitionMap);
-                            if (overallComment == null || overallComment.isBlank()) {
-                                log.warn("재시도 후에도 OpenAI 코멘트가 비어있음(slide={} types={}) - 폴백 메시지를 저장합니다.",
-                                        i + 1, detectedTypes);
-                                overallComment = AI_FALLBACK_COMMENT;
-                            }
-                        }
-                    }
-                }
-                if (overallComment == null || overallComment.isBlank()) {
-                    // 모든 경로에서 코멘트가 없을 경우 폴백 메시지를 저장합니다.
-                    overallComment = AI_FALLBACK_COMMENT;
-                }
-
-                slideFeedback.setComment(overallComment);
-
-                // issuesList를 JSON으로 저장 (빈 리스트인 경우에도 '[]'가 되도록 안전 직렬화 사용)
-                slideFeedback.setIssues(toJsonSafe(issuesList));
-
-                slideFeedbackRepository.save(slideFeedback);
-                log.info("    • 슬라이드 {} 피드백 저장 완료 - issueType: {}", i + 1, slideFeedback.getIssueType());
             }
 
-            log.info("  • 슬라이드별 피드백 저장 완료");
+            // 모든 슬라이드에 대해 SlideFeedback 엔티티를 저장합니다. 이슈가 없더라도
+            // 프론트엔드에서 슬라이드 정보를 렌더링할 수 있도록 빈 이슈 리스트를 저장합니다.
+            // 우선 이슈별 코멘트가 수집되었는지 확인하여 전체 코멘트로 결합
+            String overallComment = issuesList.stream()
+                    .map(IssueDto::getComment)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining(" "));
 
+            // 이슈가 있고 전체 코멘트가 수집되지 않았다면 통합 생성기로 폴백(재시도 포함)
+            if (hasIssue && (overallComment == null || overallComment.isBlank())) {
+                String transcript = (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "";
+                // 감지된 이슈 타입 집합만 전달하도록 변경: null을 넘기지 않음
+                // only include issue types that do not yet have a generated comment
+                java.util.Set<String> detectedTypes = issuesList.stream()
+                        .filter(it -> it != null && (it.getComment() == null || it.getComment().isBlank()))
+                        .map(IssueDto::getIssueType)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                // fallback: slideFeedback에 주 이슈가 설정되어 있으면 포함
+                if (detectedTypes.isEmpty() && slideFeedback.getIssueType() != null)
+                    detectedTypes.add(slideFeedback.getIssueType().name());
+
+                if (!detectedTypes.isEmpty()) {
+                    overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults, silenceResults,
+                            accuracyResults, spmResults, repetitionMap);
+                    if (overallComment == null || overallComment.isBlank()) {
+                        log.warn("OpenAI 통합 코멘트가 비어있음(slide={} types={}) - 1회 재시도합니다.", i + 1,
+                                detectedTypes);
+                        overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults,
+                                silenceResults, accuracyResults, spmResults, repetitionMap);
+                        if (overallComment == null || overallComment.isBlank()) {
+                            log.warn("재시도 후에도 OpenAI 코멘트가 비어있음(slide={} types={}) - 폴백 메시지를 저장합니다.",
+                                    i + 1, detectedTypes);
+                            overallComment = AI_FALLBACK_COMMENT;
+                        }
+                    }
+                }
+            }
+            if (overallComment == null || overallComment.isBlank()) {
+                // 모든 경로에서 코멘트가 없을 경우 폴백 메시지를 저장합니다.
+                overallComment = AI_FALLBACK_COMMENT;
+            }
+
+            slideFeedback.setComment(overallComment);
+
+            // issuesList를 JSON으로 저장 (빈 리스트인 경우에도 '[]'가 되도록 안전 직렬화 사용)
+            slideFeedback.setIssues(toJsonSafe(issuesList));
+
+            slideFeedbackRepository.save(slideFeedback);
+            log.info("    • 슬라이드 {} 피드백 저장 완료 - issueType: {}", i + 1, slideFeedback.getIssueType());
         }
 
+        log.info("  • 슬라이드별 피드백 저장 완료");
+
+    }
 
     /**
      * 주 책임: 슬라이드 단위로 통합(또는 이슈 기반) 코멘트를 생성하기 위해 OpenAI를 호출하고 결과 텍스트(문장)를 반환.
