@@ -63,12 +63,12 @@ public class RepetitiveTextAnalysisService {
 
     // 슬라이드 전환 정보 포함 호출용
     public RepetitionAnalysisResult analyzeRepetition(String sttText, List<SlideTransition> slideTransitions) {
-        return analyzeRepetition(sttText, slideTransitions, null);
+        return analyzeRepetition(sttText, slideTransitions, null, null, null);
     }
 
     // 편의 오버로드: segments 없이 전체 텍스트만 전달하는 호출을 위한 메서드
     public RepetitionAnalysisResult analyzeRepetition(String sttText) {
-        return analyzeRepetition(sttText, null, null);
+        return analyzeRepetition(sttText, null, null, null, null);
     }
 
     // 기존 호환성 유지를 위한 오버로드
@@ -76,7 +76,7 @@ public class RepetitiveTextAnalysisService {
             String sttText,
             List<SlideTransition> slideTransitions,
             List<WhisperSegment> segments) {
-        return analyzeRepetition(sttText, slideTransitions, segments, null);
+        return analyzeRepetition(sttText, slideTransitions, segments, null, null);
     }
 
     /**
@@ -85,13 +85,15 @@ public class RepetitiveTextAnalysisService {
      * @param sttText          STT 전체 텍스트
      * @param slideTransitions 슬라이드 전환 타임스탬프 (optional)
      * @param segments         Whisper 세그먼트 (optional, 정밀 매핑용)
+     * @param slideSttTexts    슬라이드별 STT 텍스트 목록 (optional, L2 분석용)
      * @return 분석 결과
      */
     public RepetitionAnalysisResult analyzeRepetition(
             String sttText,
             List<SlideTransition> slideTransitions,
             List<WhisperSegment> segments,
-            Set<String> presentationKeywords) {
+            Set<String> presentationKeywords,
+            List<String> slideSttTexts) {
 
         log.info("▶ Repetition analysis started - Text: {}chars, Slides: {}, Segments: {}",
                 sttText != null ? sttText.length() : 0,
@@ -111,7 +113,7 @@ public class RepetitiveTextAnalysisService {
         // 슬라이드 전환 정보가 있을 때만 L2 실행
         List<SlideRepetition> slideRepetitions = Collections.emptyList();
         if (slideTransitions != null && !slideTransitions.isEmpty()) {
-            slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments);
+            slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments, slideSttTexts);
         }
 
         List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText);
@@ -217,17 +219,27 @@ public class RepetitiveTextAnalysisService {
     private List<SlideRepetition> analyzeIntraSlideNgramRepetition(
             String sttText,
             List<SlideTransition> transitions,
-            List<WhisperSegment> segments) {
+            List<WhisperSegment> segments,
+            List<String> slideSttTexts) {
 
         if (transitions == null || transitions.isEmpty()) {
             log.info("  • L2: No transitions provided, skipping in-slide analysis");
             return Collections.emptyList();
         }
 
-        // 슬라이드별 텍스트 매핑
-        Map<Integer, String> slideTextMap = mapTextToSlides(sttText, transitions, segments);
-        // 디버그: 슬라이드별 매핑 결과 키셋 출력(매핑 실패 조사용)
-        log.debug("L2 mapTextToSlides keys: {}", slideTextMap.keySet());
+        // slideSttTexts가 제공되면 우선 사용, 없으면 mapTextToSlides 사용
+        Map<Integer, String> slideTextMap;
+        if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
+            slideTextMap = new HashMap<>();
+            for (int i = 0; i < slideSttTexts.size(); i++) {
+                slideTextMap.put(i + 1, slideSttTexts.get(i)); // 1-based index
+            }
+            log.debug("L2 using provided slideSttTexts: {} slides", slideTextMap.size());
+        } else {
+            // 슬라이드별 텍스트 매핑
+            slideTextMap = mapTextToSlides(sttText, transitions, segments);
+            log.debug("L2 mapTextToSlides keys: {}", slideTextMap.keySet());
+        }
         if (slideTextMap.isEmpty())
             return Collections.emptyList();
 

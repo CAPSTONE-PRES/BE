@@ -297,7 +297,7 @@ public class AudioAnalysisService {
         RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitionAnalysis;
         if (repAnalysisLocal == null) {
             repAnalysisLocal = repetitiveTextAnalysisService
-                    .analyzeRepetition(fullSttText, transitions, segments);
+                    .analyzeRepetition(fullSttText, transitions, segments, null, slideSttTexts);
         }
 
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
