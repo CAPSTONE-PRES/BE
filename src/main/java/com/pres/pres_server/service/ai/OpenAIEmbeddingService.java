@@ -45,8 +45,6 @@ public class OpenAIEmbeddingService {
      * @return 코사인 유사도 (0.0 ~ 1.0)
      */
     public double calculateSemanticSimilarity(String text1, String text2) {
-        log.debug("▶ 의미론적 유사도 계산 시작 - text1 길이: {}, text2 길이: {}",
-                text1.length(), text2.length());
 
         try {
             // 1. 임베딩 벡터 생성 (캐시 활용)
@@ -178,8 +176,6 @@ public class OpenAIEmbeddingService {
             for (int i = 0; i < embeddingList.size(); i++) {
                 embedding[i] = embeddingList.get(i).floatValue();
             }
-
-            log.debug("  • API 호출 성공 - 벡터 차원: {}", embedding.length);
             return embedding;
 
         } catch (Exception e) {
