@@ -181,9 +181,9 @@ public class ScriptAccuracyService {
          */
         public static AccuracyAnalysisResult defaultResult(String errorMessage) {
             return AccuracyAnalysisResult.builder()
-                    .accuracyScore(100) // 기본값: 만점 (불이익 없음)
-                    .scriptSimilarity(1.0)
-                    .keywordMatchRate(1.0)
+                    .accuracyScore(0) // 기본값: 0점 (불이익 없음)
+                    .scriptSimilarity(0)
+                    .keywordMatchRate(0)
                     .matchedKeywordCount(0)
                     .totalKeywordCount(0)
                     .missingKeywords(new ArrayList<>())

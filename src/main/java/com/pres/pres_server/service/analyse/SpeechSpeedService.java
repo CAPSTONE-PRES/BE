@@ -49,6 +49,7 @@ public class SpeechSpeedService {
     static {
         // SPM 값에 따른 점수 매핑 초기화
         // 낮은 SPM부터 높은 SPM 순서로 정의
+        //TODO: 음성 입력 값이 없을 경우 0점 반환하도록 수정
         SPM_SCORE_MAP.put(0, MIN_SCORE); // 0~240: 너무 느림
         SPM_SCORE_MAP.put(240, 60); // 240~270: 느림
         SPM_SCORE_MAP.put(270, 75); // 270~300: 약간 느림
