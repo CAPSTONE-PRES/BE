@@ -234,11 +234,20 @@ public class RepetitiveTextAnalysisService {
             for (int i = 0; i < slideSttTexts.size(); i++) {
                 slideTextMap.put(i + 1, slideSttTexts.get(i)); // 1-based index
             }
-            log.debug("L2 using provided slideSttTexts: {} slides", slideTextMap.size());
+            log.info("L2 using provided slideSttTexts: {} slides", slideTextMap.size());
+            // 각 슬라이드 텍스트 샘플 출력
+            for (Map.Entry<Integer, String> entry : slideTextMap.entrySet()) {
+                String preview = entry.getValue();
+                if (preview != null && preview.length() > 50) {
+                    preview = preview.substring(0, 50) + "...";
+                }
+                log.info("  - Slide {}: {} chars, preview: '{}'", entry.getKey(),
+                        entry.getValue() != null ? entry.getValue().length() : 0, preview);
+            }
         } else {
             // 슬라이드별 텍스트 매핑
             slideTextMap = mapTextToSlides(sttText, transitions, segments);
-            log.debug("L2 mapTextToSlides keys: {}", slideTextMap.keySet());
+            log.info("L2 mapTextToSlides keys: {}", slideTextMap.keySet());
         }
         if (slideTextMap.isEmpty())
             return Collections.emptyList();
@@ -278,7 +287,7 @@ public class RepetitiveTextAnalysisService {
                 }
 
                 // 디버그: 생성되는 SlideRepetition 정보 로그
-                log.debug("Created SlideRepetition: slideNum={}, pattern={}, count={}, occs={}", slideNum, ge.getKey(),
+                log.info("Created SlideRepetition: slideNum={}, pattern='{}', count={}, occs={}", slideNum, ge.getKey(),
                         ge.getValue(), occs.size());
                 out.add(SlideRepetition.builder()
                         .pattern(ge.getKey())

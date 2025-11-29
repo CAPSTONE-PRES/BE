@@ -289,16 +289,14 @@ public class AudioAnalysisService {
         List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals);
         log.info("    • SPM analysis: {} slides", spmResults.size());
 
-        // 5) 반복 어휘 분석 (슬라이드별) - 전체 분석에서 추출
+        // 5) 반복 어휘 분석 (슬라이드별) - slideSttTexts를 사용하여 정확한 슬라이드 매핑 수행
         String fullSttText = slideSttTexts.stream()
                 .filter(text -> text != null && !text.trim().isEmpty())
                 .collect(Collectors.joining(" "));
 
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitionAnalysis;
-        if (repAnalysisLocal == null) {
-            repAnalysisLocal = repetitiveTextAnalysisService
-                    .analyzeRepetition(fullSttText, transitions, segments, null, slideSttTexts);
-        }
+        // slideSttTexts를 사용하여 항상 재분석 (정확한 슬라이드 매핑 보장)
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitiveTextAnalysisService
+                .analyzeRepetition(fullSttText, transitions, segments, null, slideSttTexts);
 
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
         log.info(" [performSlideAnalysis] 반복: {} slides", repetitionResults.size());
