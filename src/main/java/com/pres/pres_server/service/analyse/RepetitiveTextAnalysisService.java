@@ -94,6 +94,21 @@ public class RepetitiveTextAnalysisService {
             List<WhisperSegment> segments,
             Set<String> presentationKeywords,
             List<String> slideSttTexts) {
+        // 기존 호출 호환성 유지: slideScripts를 제공하지 않은 경우 null 전달
+        return analyzeRepetition(sttText, slideTransitions, segments, null, presentationKeywords, slideSttTexts);
+    }
+
+    /**
+     * 확장된 analyzeRepetition: 대본(slideScripts)을 함께 전달하면
+     * 내부에서 대본 기반으로 presentationKeywords를 추출하여 사용합니다.
+     */
+    public RepetitionAnalysisResult analyzeRepetition(
+            String sttText,
+            List<SlideTransition> slideTransitions,
+            List<WhisperSegment> segments,
+            List<String> slideScripts,
+            Set<String> presentationKeywords,
+            List<String> slideSttTexts) {
 
         log.info("▶ Repetition analysis started - Text: {}chars, Slides: {}, Segments: {}",
                 sttText != null ? sttText.length() : 0,
@@ -101,8 +116,8 @@ public class RepetitiveTextAnalysisService {
                 segments != null ? segments.size() : 0);
 
         // 전처리 (segments 기반 매핑 포함)
-        // presentationKeywords는 외부에서 주입
-        PreprocessResult pre = preprocessStt(sttText, segments, presentationKeywords);
+        // presentationKeywords는 외부에서 주입되거나, slideScripts로부터 추출됨
+        PreprocessResult pre = preprocessStt(sttText, segments, presentationKeywords, slideScripts);
         if (!pre.isValid()) {
             return RepetitionAnalysisResult.failed("STT 전처리 실패: 분석할 문장이 없습니다.");
         }
@@ -135,9 +150,9 @@ public class RepetitiveTextAnalysisService {
                 .nGramPatterns(ngramRepetitions)
                 .similarSentencePairs(sentenceSimilarities)
                 .totalSentences(pre.sentences.size())
+                .presentationKeywords(pre.presentationKeywords)
                 .success(true)
                 .build();
-
     }
 
     // ========== Level 1: 단어 반복(Word Repetition) ==========
@@ -613,7 +628,7 @@ public class RepetitiveTextAnalysisService {
     // ========== 헬퍼 메서드 ==========
 
     private PreprocessResult preprocessStt(String sttText, List<WhisperSegment> segments,
-            Set<String> presentationKeywords) {
+            Set<String> presentationKeywords, List<String> slideScripts) {
         if (sttText == null || sttText.trim().isEmpty()) {
             log.warn("STT text is empty");
             return new PreprocessResult(null, Collections.emptyList(), Collections.emptySet());
@@ -648,11 +663,39 @@ public class RepetitiveTextAnalysisService {
             return new PreprocessResult(normalized, Collections.emptyList(), Collections.emptySet());
         }
 
-        // ⭐ 외부에서 받은 키워드 사용 (없으면 빈 Set)
-        Set<String> keywords = (presentationKeywords != null)
-                ? presentationKeywords
-                : Collections.emptySet();
-        log.info("  • Using presentation keywords: {}", keywords);
+        // 외부에서 받은 키워드 사용 우선
+        Set<String> keywords;
+        if (presentationKeywords != null && !presentationKeywords.isEmpty()) {
+            keywords = presentationKeywords;
+            log.info("  • Using provided presentation keywords: {}", keywords);
+        } else if (slideScripts != null && !slideScripts.isEmpty()) {
+            // slideScripts가 주어지면 대본 기반으로 top-N 키워드 추출
+            int topN = 10; // ScriptAccuracyService.TOP_SCRIPT_KEYWORDS와 동일한 값
+            List<String> allWords = new ArrayList<>();
+            for (String s : slideScripts) {
+                if (s == null)
+                    continue;
+                String norm = TextAnalysisUtils.normalizeText(s);
+                List<String> toks = TextAnalysisUtils.tokenizeKomoran(norm);
+                if (toks != null && !toks.isEmpty())
+                    allWords.addAll(toks);
+            }
+            List<String> topKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(allWords, topN);
+            keywords = new LinkedHashSet<>(topKeywords);
+            log.info("  • Derived presentation keywords from slideScripts (top {}): {}", topN, keywords);
+        } else {
+            // fallback: STT 기반에서 상위 N개 키워드를 추출
+            int topN = 10; // ScriptAccuracyService.TOP_SCRIPT_KEYWORDS와 동일한 값
+            List<String> allWords = new ArrayList<>();
+            for (String s : normalizedSentences) {
+                List<String> toks = TextAnalysisUtils.tokenizeKomoran(s);
+                if (toks != null && !toks.isEmpty())
+                    allWords.addAll(toks);
+            }
+            List<String> topKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(allWords, topN);
+            keywords = new LinkedHashSet<>(topKeywords);
+            log.info("  • Derived presentation keywords (fallback from STT top {}): {}", topN, keywords);
+        }
 
         return new PreprocessResult(normalized, normalizedSentences, keywords);
     }

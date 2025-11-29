@@ -294,9 +294,20 @@ public class AudioAnalysisService {
                 .filter(text -> text != null && !text.trim().isEmpty())
                 .collect(Collectors.joining(" "));
 
+        // 대본 기반 키워드 추출은 ScriptAccuracyService의 공용 메서드를 재사용하여
+        // ScriptAccuracy와 Repetition이 동일한 키워드를 사용하도록 중앙화합니다.
+        Set<String> presentationKeywords = Collections.emptySet();
+        try {
+            presentationKeywords = scriptAccuracyService.extractTopKeywordsFromSlideScripts(slideScripts);
+            log.info("    • Derived presentation keywords from scripts (centralized): {}", presentationKeywords);
+        } catch (Exception e) {
+            log.warn("    • Failed to derive presentation keywords from scripts: {}", e.getMessage());
+            presentationKeywords = Collections.emptySet();
+        }
+
         // slideSttTexts를 사용하여 항상 재분석 (정확한 슬라이드 매핑 보장)
         RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitiveTextAnalysisService
-                .analyzeRepetition(fullSttText, transitions, segments, null, slideSttTexts);
+                .analyzeRepetition(fullSttText, transitions, segments, presentationKeywords, slideSttTexts);
 
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
         log.info(" [performSlideAnalysis] 반복: {} slides", repetitionResults.size());

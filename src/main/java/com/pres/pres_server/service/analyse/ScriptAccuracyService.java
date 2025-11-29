@@ -85,10 +85,6 @@ public class ScriptAccuracyService {
         List<String> sttWords = TextAnalysisUtils.tokenizeKomoran(normalizedStt);
 
         // 3. 주요 키워드 추출 (대본에서)
-        // 기존 scriptKeywords 추출 방식
-        // Set<String> scriptKeywords =
-        // TextAnalysisUtils.extractKeywordsKomoran(scriptWords, MIN_KEYWORD_FREQUENCY);
-
         // 스크립트 측은 상위 N개 키워드만 사용하여 점수 안정화 (짧은 문서 대비)
         List<String> topScriptKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(scriptWords, TOP_SCRIPT_KEYWORDS);
         // 상위 키워드 목록을 집합으로 변환하여 매칭 계산에 사용
@@ -141,6 +137,31 @@ public class ScriptAccuracyService {
                 .offsets(offsets)
                 .success(true)
                 .build();
+    }
+
+    /**
+     * 슬라이드별 대본에서 상위 N개 키워드를 추출하여 반환합니다.
+     * 다른 서비스들이 스크립트 기반 키워드 생성을 재사용하도록 공개합니다.
+     *
+     * @param slideScripts 슬라이드별 대본
+     * @return 순서가 유지된 키워드 집합 (top N)
+     */
+    public Set<String> extractTopKeywordsFromSlideScripts(List<String> slideScripts) {
+        if (slideScripts == null || slideScripts.isEmpty())
+            return Collections.emptySet();
+
+        List<String> allWords = new ArrayList<>();
+        for (String s : slideScripts) {
+            if (s == null || s.isBlank())
+                continue;
+            String norm = TextAnalysisUtils.normalizeText(s);
+            List<String> toks = TextAnalysisUtils.tokenizeKomoran(norm);
+            if (toks != null && !toks.isEmpty())
+                allWords.addAll(toks);
+        }
+
+        List<String> topKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(allWords, TOP_SCRIPT_KEYWORDS);
+        return new LinkedHashSet<>(topKeywords);
     }
 
     /**
