@@ -274,6 +274,7 @@ public class RepetitiveTextAnalysisService {
                         .slideIndices(List.of(slideNum))
                         .scope("INTRA_SLIDE")
                         .count(ge.getValue().intValue())
+                        .offsets(occs) // offset 정보 포함
                         .build());
             }
         }
@@ -755,6 +756,9 @@ public class RepetitiveTextAnalysisService {
 
         @Schema(description = "패턴 반복 횟수", example = "3")
         private final int count;
+
+        @Schema(description = "패턴의 발생 위치 목록 (하이라이트용)")
+        private final List<Offset> offsets;
     }
 
     @Getter
