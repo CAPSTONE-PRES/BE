@@ -173,8 +173,10 @@ public class PracticeSessionService {
                 // 3b. 슬라이드별 피드백 조회 및 변환
                 List<SlideFeedbackDto> slideFeedbacks = getSlideFeedbacks(feedback.getFeedbackId(), slideToImageUrl);
 
-                List<PracticeHistoryDto> history = feedbackRepository.findHistoryByProjectIdExcludingSession(projectId,
-                                sessionId);
+                // Query DB for most recent 3 history entries (DB-side limit & ordering)
+                org.springframework.data.domain.Pageable top3 = org.springframework.data.domain.PageRequest.of(0, 3);
+                List<PracticeHistoryDto> history = feedbackRepository.findHistoryByProjectIdExcludingSession(
+                                projectId, sessionId, top3);
 
                 // 4. 전체 피드백 생성 (AI)
                 // Determine lowest scoring issue among the five score fields: SPM(SPEED),
