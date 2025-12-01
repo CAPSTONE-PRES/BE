@@ -36,26 +36,11 @@ public class QnaAnswerComparison {
     @Column(name = "sim_cosine")
     private Float simCosine;
 
-    @Column(name = "bert_score_f1")
-    private Float bertScoreF1;
-
-    @Column(name = "rouge_l")
-    private Float rougeL;
-
     @Column(name = "keyword_recall")
     private Float keywordRecall;
 
     @Column(name = "coverage")
     private Float coverage;
-
-    @Column(name = "hallucination_risk")
-    private Float hallucinationRisk;
-
-    @Column(name = "grammar_score")
-    private Float grammarScore;
-
-    @Column(name = "structure_score")
-    private Float structureScore;
 
     @Column(name = "timestamp", columnDefinition = "json")
     private String timestamp;
