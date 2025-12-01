@@ -674,7 +674,7 @@ public class RepetitiveTextAnalysisService {
 
                 double jaccard = TextAnalysisUtils.jaccardSimilarity(
                         pre.tokenSets.get(i), pre.tokenSets.get(j));
-                if (jaccard < SIMILAR_SENTENCES_JACCARD_THRESHOLD)
+                if (jaccard < SIMILARITY_THRESHOLD)
                     continue;
 
                 double similarity = TextAnalysisUtils.calculateSemanticSimilarity(s1, s2);
@@ -734,10 +734,7 @@ public class RepetitiveTextAnalysisService {
 
         // 외부에서 받은 키워드 사용 우선
         Set<String> keywords;
-        if (presentationKeywords != null && !presentationKeywords.isEmpty()) {
-            keywords = presentationKeywords;
-            log.info("  • Using provided presentation keywords: {}", keywords);
-        } else if (slideScripts != null && !slideScripts.isEmpty()) {
+        if (slideScripts != null && !slideScripts.isEmpty()) {
             // slideScripts가 주어지면 대본 기반으로 top-N 키워드 추출
             int topN = 10; // ScriptAccuracyService.TOP_SCRIPT_KEYWORDS와 동일한 값
             List<String> allWords = new ArrayList<>();
@@ -753,17 +750,9 @@ public class RepetitiveTextAnalysisService {
             keywords = new LinkedHashSet<>(topKeywords);
             log.info("  • Derived presentation keywords from slideScripts (top {}): {}", topN, keywords);
         } else {
-            // fallback: STT 기반에서 상위 N개 키워드를 추출
-            int topN = 10; // ScriptAccuracyService.TOP_SCRIPT_KEYWORDS와 동일한 값
-            List<String> allWords = new ArrayList<>();
-            for (String s : normalizedSentences) {
-                List<String> toks = TextAnalysisUtils.tokenizeKomoran(s);
-                if (toks != null && !toks.isEmpty())
-                    allWords.addAll(toks);
-            }
-            List<String> topKeywords = TextAnalysisUtils.extractTopKeywordsKomoran(allWords, topN);
-            keywords = new LinkedHashSet<>(topKeywords);
-            log.info("  • Derived presentation keywords (fallback from STT top {}): {}", topN, keywords);
+            keywords = Collections.emptySet();
+            log.warn(
+                    "  • No slideScripts provided: presentation keywords set to empty. Provide slideScripts to derive presentation keywords.");
         }
 
         return new PreprocessResult(normalized, normalizedSentences, keywords);

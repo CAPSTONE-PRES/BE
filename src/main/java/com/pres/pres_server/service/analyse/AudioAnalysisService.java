@@ -60,9 +60,48 @@ public class AudioAnalysisService {
         log.info("[AudioAnalysis] Started: file='{}', size={}, projectId={}",
                 audioFile.getOriginalFilename(), audioFile.getSize(), projectId);
 
+        // Defensive check: if uploaded audio is too small, skip heavy processing and
+        // return empty result
+        /*
+         * final long MIN_AUDIO_BYTES = 2048L; // 2KB threshold
+         * if (audioFile == null || audioFile.getSize() <= MIN_AUDIO_BYTES) {
+         * log.
+         * info("[AudioAnalysis] Audio appears empty/too small ({} bytes) - skipping analysis"
+         * ,
+         * audioFile == null ? 0 : audioFile.getSize());
+         * return AnalysisResult.builder()
+         * .windows(Collections.emptyList())
+         * .totalDurationSeconds(0.0)
+         * .fullSttText("")
+         * .slideAnalysis(SlideAnalysisResult.empty())
+         * .build();
+         * }
+         */
+
         AudioFile convertedAudio = null;
         try {
             convertedAudio = audioProcessingService.convertToWav(audioFile);
+
+            /*
+             * // Additional defensive check: if converted audio duration is very short
+             * // (e.g., user uploaded silence or an extremely short clip), skip heavy
+             * // analysis (STT/OpenAI) and return an empty result. This avoids cases
+             * // where Whisper produces spurious text for silence.
+             * final double MIN_AUDIO_SECONDS = 3.0; // 3 seconds threshold (tune as needed)
+             * if (convertedAudio.getDurationSeconds() <= MIN_AUDIO_SECONDS) {
+             * log.
+             * info("[AudioAnalysis] Converted audio duration {}s <= {}s - skipping heavy analysis"
+             * ,
+             * convertedAudio.getDurationSeconds(), MIN_AUDIO_SECONDS);
+             * return AnalysisResult.builder()
+             * .windows(Collections.emptyList())
+             * .totalDurationSeconds(convertedAudio.getDurationSeconds())
+             * .fullSttText("")
+             * .slideAnalysis(SlideAnalysisResult.empty())
+             * .build();
+             * }
+             */
+
             return performAnalysis(convertedAudio, projectId, slideTransitions, slideScripts);
         } finally {
             if (convertedAudio != null) {
@@ -78,8 +117,25 @@ public class AudioAnalysisService {
             String filePath,
             Long projectId,
             List<SlideTransition> slideTransitions) throws Exception {
-
         log.info("[AudioAnalysis] Started: filePath='{}', projectId={}", filePath, projectId);
+
+        // Defensive check for file-based path: if file size is too small, skip analysis
+        try {
+            java.io.File f = new java.io.File(filePath);
+            if (!f.exists() || f.length() <= 2048L) {
+                log.info(
+                        "[AudioAnalysis] Audio file appears missing or too small (path={}, size={}) - skipping analysis",
+                        filePath, f.exists() ? f.length() : 0);
+                return AnalysisResult.builder()
+                        .windows(Collections.emptyList())
+                        .totalDurationSeconds(0.0)
+                        .fullSttText("")
+                        .slideAnalysis(SlideAnalysisResult.empty())
+                        .build();
+            }
+        } catch (Exception ignore) {
+            // if any check fails, proceed with normal flow and let downstream handle errors
+        }
 
         AudioFile convertedAudio = null;
         try {
@@ -123,30 +179,9 @@ public class AudioAnalysisService {
         log.info("  - Full STT text: {} chars", fullSttText.length());
 
         // 4. 전체 기반 분석
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analyzeRepetition(fullSttText,
-                segments, slideTransitions);
 
-        SilenceDetectionService.SilenceStatistics silenceStats = silenceDetectionService.calculateStatistics(
-                silenceDetectionService.detectSilences(segments));
-
-        ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = analyzeAccuracy(fullSttText, projectId);
-
-        // 명시적 로그: accuracyResult 존재 여부 및 성공 여부를 항상 남겨 문제 원인 파악을 쉽게 함
-        if (accuracyResult == null) {
-            log.warn("  - 분석: accuracyResult is null (expected non-null) - check analyzeAccuracy path");
-        } else if (accuracyResult.isSuccess()) {
-            log.info("  - Accuracy (global) computed - score={}, similarity={}",
-                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()));
-        } else {
-            log.warn("  - Accuracy (global) returned unsuccessful result - score={}, similarity={}, errorMessage={}",
-                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()),
-                    accuracyResult.getErrorMessage());
-        }
-
-        // 5. 슬라이드별 분석
-        // 슬라이드별 스크립트 리스트가 제공되지 않았거나 길이가 일치하지 않으면
-        // 프로젝트의 CueCard를 조회하여 슬라이드별 스크립트를 생성합니다. 이렇게 하면
-        // 슬라이드별 비교를 항상 시도하도록 보장할 수 있습니다.
+        // Prepare slideScriptsToUse early so repetition analysis can use script-derived
+        // keywords.
         List<String> slideScriptsToUse = slideScripts;
         if ((slideScriptsToUse == null
                 || (slideTransitions != null && slideScriptsToUse.size() != slideTransitions.size()))
@@ -178,6 +213,29 @@ public class AudioAnalysisService {
                 log.warn("슬라이드별 스크립트 생성 중 오류: {}", e.getMessage());
             }
         }
+
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analyzeRepetition(fullSttText,
+                segments, slideTransitions, slideScriptsToUse);
+
+        SilenceDetectionService.SilenceStatistics silenceStats = silenceDetectionService.calculateStatistics(
+                silenceDetectionService.detectSilences(segments));
+
+        ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = analyzeAccuracy(fullSttText, projectId);
+
+        // 명시적 로그: accuracyResult 존재 여부 및 성공 여부를 항상 남겨 문제 원인 파악을 쉽게 함
+        if (accuracyResult == null) {
+            log.warn("  - 분석: accuracyResult is null (expected non-null) - check analyzeAccuracy path");
+        } else if (accuracyResult.isSuccess()) {
+            log.info("  - Accuracy (global) computed - score={}, similarity={}",
+                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()));
+        } else {
+            log.warn("  - Accuracy (global) returned unsuccessful result - score={}, similarity={}, errorMessage={}",
+                    accuracyResult.getAccuracyScore(), String.format("%.2f", accuracyResult.getScriptSimilarity()),
+                    accuracyResult.getErrorMessage());
+        }
+
+        // 5. 슬라이드별 분석
+        // slideScriptsToUse는 앞에서 이미 준비되어 있음
 
         // Debug: print slideScriptsToUse summary to help diagnose empty per-slide
         // scripts
@@ -434,7 +492,8 @@ public class AudioAnalysisService {
     private RepetitiveTextAnalysisService.RepetitionAnalysisResult analyzeRepetition(
             String fullSttText,
             List<WhisperSegment> segments,
-            List<SlideTransition> slideTransitions) {
+            List<SlideTransition> slideTransitions,
+            List<String> slideScripts) {
 
         if (fullSttText == null || fullSttText.trim().isEmpty()) {
             log.warn("  - No STT text, skipping repetition analysis");
@@ -446,10 +505,15 @@ public class AudioAnalysisService {
             RepetitiveTextAnalysisService.RepetitionAnalysisResult result;
 
             if (segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
+                // Pass slideScripts down to repetitive analysis so presentationKeywords can be
+                // extracted from scripts
                 result = repetitiveTextAnalysisService.analyzeRepetition(
-                        fullSttText, slideTransitions, segments);
+                        fullSttText, slideTransitions, segments, slideScripts, null, null);
             } else {
-                result = repetitiveTextAnalysisService.analyzeRepetition(fullSttText);
+                // No slide timing info: still pass slideScripts (may be used for keyword
+                // derivation)
+                result = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, null, null, slideScripts, null,
+                        null);
             }
 
             if (result.isSuccess()) {

@@ -674,33 +674,34 @@ public class AnalysisResultService {
             // 필요 시 L2 기반 로직을 복원하면 됩니다.
             // ---------------------------
             /*
-            // repetitionMap에서 이 슬라이드의 SlideRepetition 가져오기
-            List<RepetitiveTextAnalysisService.SlideRepetition> slideReps = repetitionMap.get(slideIndex1Based);
-            if (slideReps != null) {
-                for (RepetitiveTextAnalysisService.SlideRepetition sr : slideReps) {
-                    String pattern = sr.getPattern();
-                    List<RepetitiveTextAnalysisService.Offset> offsets = sr.getOffsets();
-
-                    if (offsets != null && !offsets.isEmpty()) {
-                        perPatternCount.put(pattern, offsets.size());
-
-                        // Offset → OffsetDto 변환
-                        for (RepetitiveTextAnalysisService.Offset o : offsets) {
-                            OffsetDto dto = OffsetDto.builder()
-                                    .slideIndex(o.getSlideIndex())
-                                    .begin(o.getBegin())
-                                    .end(o.getEnd())
-                                    .text(o.getText())
-                                    .build();
-                            repOffsets.add(dto);
-                        }
-                    } else {
-                        // offset 정보가 없으면 count만 사용
-                        perPatternCount.put(pattern, sr.getCount());
-                    }
-                }
-            }
-            */
+             * // repetitionMap에서 이 슬라이드의 SlideRepetition 가져오기
+             * List<RepetitiveTextAnalysisService.SlideRepetition> slideReps =
+             * repetitionMap.get(slideIndex1Based);
+             * if (slideReps != null) {
+             * for (RepetitiveTextAnalysisService.SlideRepetition sr : slideReps) {
+             * String pattern = sr.getPattern();
+             * List<RepetitiveTextAnalysisService.Offset> offsets = sr.getOffsets();
+             * 
+             * if (offsets != null && !offsets.isEmpty()) {
+             * perPatternCount.put(pattern, offsets.size());
+             * 
+             * // Offset → OffsetDto 변환
+             * for (RepetitiveTextAnalysisService.Offset o : offsets) {
+             * OffsetDto dto = OffsetDto.builder()
+             * .slideIndex(o.getSlideIndex())
+             * .begin(o.getBegin())
+             * .end(o.getEnd())
+             * .text(o.getText())
+             * .build();
+             * repOffsets.add(dto);
+             * }
+             * } else {
+             * // offset 정보가 없으면 count만 사용
+             * perPatternCount.put(pattern, sr.getCount());
+             * }
+             * }
+             * }
+             */
 
             // L1 precomputed slidePatternCounts/Offsets에서 슬라이드별 패턴 카운트 및 오프셋 추가
             Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern.getOrDefault(slideIndex1Based,
