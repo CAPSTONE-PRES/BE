@@ -214,8 +214,24 @@ public class AudioAnalysisService {
             }
         }
 
+        // Compute slideSttTexts early (if possible) so L1 offsets can include
+        // slideIndex
+        List<String> slideSttTextsForRepetition = null;
+        if (segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
+            try {
+                List<SlideInterval> repIntervals = slideSegmentExtractor
+                        .createSlideIntervals(slideTransitions, audioFile.getDurationSeconds());
+                slideSttTextsForRepetition = slideSegmentExtractor.extractSlideSttTexts(segments, repIntervals);
+                log.debug("    • slideSttTextsForRepetition size: {}",
+                        slideSttTextsForRepetition == null ? 0 : slideSttTextsForRepetition.size());
+            } catch (Exception e) {
+                log.warn("    • Failed to compute slideSttTexts for repetition prepass: {}", e.getMessage());
+                slideSttTextsForRepetition = null;
+            }
+        }
+
         RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analyzeRepetition(fullSttText,
-                segments, slideTransitions, slideScriptsToUse);
+                segments, slideTransitions, slideScriptsToUse, slideSttTextsForRepetition);
 
         SilenceDetectionService.SilenceStatistics silenceStats = silenceDetectionService.calculateStatistics(
                 silenceDetectionService.detectSilences(segments));
@@ -493,7 +509,8 @@ public class AudioAnalysisService {
             String fullSttText,
             List<WhisperSegment> segments,
             List<SlideTransition> slideTransitions,
-            List<String> slideScripts) {
+            List<String> slideScripts,
+            List<String> slideSttTexts) {
 
         if (fullSttText == null || fullSttText.trim().isEmpty()) {
             log.warn("  - No STT text, skipping repetition analysis");
@@ -505,15 +522,15 @@ public class AudioAnalysisService {
             RepetitiveTextAnalysisService.RepetitionAnalysisResult result;
 
             if (segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
-                // Pass slideScripts down to repetitive analysis so presentationKeywords can be
-                // extracted from scripts
+                // Pass slideScripts and slideSttTexts down so presentationKeywords can be
+                // extracted and offsets can be slide-mapped for L1/L2 analyses
                 result = repetitiveTextAnalysisService.analyzeRepetition(
-                        fullSttText, slideTransitions, segments, slideScripts, null, null);
+                        fullSttText, slideTransitions, segments, slideScripts, null, slideSttTexts);
             } else {
                 // No slide timing info: still pass slideScripts (may be used for keyword
-                // derivation)
+                // derivation). slideSttTexts may be null here.
                 result = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, null, null, slideScripts, null,
-                        null);
+                        slideSttTexts);
             }
 
             if (result.isSuccess()) {

@@ -127,7 +127,8 @@ public class RepetitiveTextAnalysisService {
         }
 
         // 단어 반복 분석 실행 (원문 기준 위치 정보 포함)
-        List<WordRepetition> wordRepetitions = analyzeWordRepetition(pre, sttText, slideSttTexts);
+        List<WordRepetition> wordRepetitions = analyzeWordRepetition(pre, sttText, slideTransitions, segments,
+                slideSttTexts);
 
         // 슬라이드 전환 정보가 있을 때만 L2 실행
         List<SlideRepetition> slideRepetitions = Collections.emptyList();
@@ -135,7 +136,8 @@ public class RepetitiveTextAnalysisService {
             slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments, slideSttTexts);
         }
 
-        List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText, sttText, slideSttTexts);
+        List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText, sttText, slideTransitions,
+                segments, slideSttTexts);
 
         List<RepetitiveSentencePair> sentenceSimilarities = analyzeSentenceSimilarity(
                 sttText, pre.sentences, pre.presentationKeywords, slideTransitions, segments);
@@ -147,7 +149,7 @@ public class RepetitiveTextAnalysisService {
                 score, wordRepetitions.size(), slideRepetitions.size(), ngramRepetitions.size(),
                 sentenceSimilarities.size());
 
-        return RepetitionAnalysisResult.builder()
+        RepetitionAnalysisResult result = RepetitionAnalysisResult.builder()
                 .repetitionScore(score)
                 .wordRepetitions(wordRepetitions)
                 .slideRepetitions(slideRepetitions)
@@ -157,11 +159,46 @@ public class RepetitiveTextAnalysisService {
                 .presentationKeywords(pre.presentationKeywords)
                 .success(true)
                 .build();
+
+        try {
+            int l1OffsetsWithSlide = 0;
+            if (result.getWordRepetitions() != null) {
+                for (WordRepetition wr : result.getWordRepetitions()) {
+                    if (wr.getOffsets() != null) {
+                        for (Offset o : wr.getOffsets()) {
+                            if (o != null && o.getSlideIndex() != null)
+                                l1OffsetsWithSlide++;
+                        }
+                    }
+                }
+            }
+
+            int l3OffsetsWithSlide = 0;
+            if (result.getNGramPatterns() != null) {
+                for (RepetitivePattern rp : result.getNGramPatterns()) {
+                    if (rp.getOffsets() != null) {
+                        for (Offset o : rp.getOffsets()) {
+                            if (o != null && o.getSlideIndex() != null)
+                                l3OffsetsWithSlide++;
+                        }
+                    }
+                }
+            }
+
+            log.info("  • L1 offsets with slideIndex: {}, L3 offsets with slideIndex: {}", l1OffsetsWithSlide,
+                    l3OffsetsWithSlide);
+        } catch (Exception ex) {
+            log.debug("Failed to compute offset slideIndex summary: {}", ex.getMessage());
+        }
+
+        return result;
     }
 
     // ========== Level 1: 단어 반복(Word Repetition) ==========
 
     private List<WordRepetition> analyzeWordRepetition(PreprocessResult pre, String sttText,
+            List<SlideTransition> slideTransitions,
+            List<WhisperSegment> segments,
             List<String> slideSttTexts) {
         // 토큰화(문장 기준)로 빈도 집계
         List<String> tokens = new ArrayList<>();
@@ -177,6 +214,29 @@ public class RepetitiveTextAnalysisService {
 
         // normalize token list -> map of norm -> list of Offsets
         Map<String, List<Offset>> OffsetsMap = new HashMap<>();
+        // If slideSttTexts not provided but slideTransitions+segments are available,
+        // attempt to map segments->slides to build slideSttTexts for L1 offset mapping.
+        if ((slideSttTexts == null || slideSttTexts.isEmpty()) && segments != null
+                && slideTransitions != null && !slideTransitions.isEmpty()) {
+            try {
+                Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
+                if (mapped != null && !mapped.isEmpty()) {
+                    // build list ordered by slide number 1..N (fill missing with empty)
+                    int max = mapped.keySet().stream().max(Integer::compareTo).orElse(0);
+                    List<String> list = new ArrayList<>(Collections.nCopies(max, ""));
+                    for (Map.Entry<Integer, String> me : mapped.entrySet()) {
+                        int idx = me.getKey() - 1;
+                        if (idx >= 0 && idx < list.size())
+                            list.set(idx, me.getValue());
+                    }
+                    slideSttTexts = list;
+                    log.debug("Computed slideSttTexts from segments/transitions: size={}", slideSttTexts.size());
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to compute slideSttTexts from segments: {}", ex.getMessage());
+            }
+        }
+
         // compute slide start indices if slideSttTexts provided
         List<Integer> slideStartIndices = null;
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
@@ -473,6 +533,8 @@ public class RepetitiveTextAnalysisService {
     // ========== Level 3: N-gram 반복 ==========
 
     private List<RepetitivePattern> analyzeNgramRepetition(String normalizedText, String sttText,
+            List<SlideTransition> slideTransitions,
+            List<WhisperSegment> segments,
             List<String> slideSttTexts) {
         // 2-gram과 3-gram 모두 생성
         List<String> ngrams2 = TextAnalysisUtils.komoranMeaningfulNGrams(normalizedText, 2);
@@ -522,6 +584,30 @@ public class RepetitiveTextAnalysisService {
         // 추가: 원문 스팬 수집을 위해 KomoranAnalyzer의 NormToken 사용 (원문 sttText 기준)
         List<KomoranAnalyzer.NormToken> normTokensForOffsets = KomoranAnalyzer
                 .tokenizeForRepeatWithSpans(sttText == null ? normalizedText : sttText);
+
+        // If slideSttTexts not provided but slideTransitions+segments available, try to
+        // compute
+        if ((slideSttTexts == null || slideSttTexts.isEmpty()) && segments != null
+                && slideTransitions != null && !slideTransitions.isEmpty()) {
+            try {
+                Map<Integer, String> mapped = mapTextToSlides(sttText == null ? normalizedText : sttText,
+                        slideTransitions, segments);
+                if (mapped != null && !mapped.isEmpty()) {
+                    int max = mapped.keySet().stream().max(Integer::compareTo).orElse(0);
+                    List<String> list = new ArrayList<>(Collections.nCopies(max, ""));
+                    for (Map.Entry<Integer, String> me : mapped.entrySet()) {
+                        int idx = me.getKey() - 1;
+                        if (idx >= 0 && idx < list.size())
+                            list.set(idx, me.getValue());
+                    }
+                    slideSttTexts = list;
+                    log.debug("Computed slideSttTexts for ngram mapping from segments/transitions: size={}",
+                            slideSttTexts.size());
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to compute slideSttTexts for ngram mapping: {}", ex.getMessage());
+            }
+        }
 
         // compute slideStartIndices if slideSttTexts provided
         List<Integer> slideStartIndices = null;

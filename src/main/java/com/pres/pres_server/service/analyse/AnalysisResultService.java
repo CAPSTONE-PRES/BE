@@ -662,68 +662,89 @@ public class AnalysisResultService {
                 }
             }
 
-            // 4. 반복 어휘 정보 - L1(단어 반복) 결과만 사용 (슬라이드별 집계)
+            // 4. 반복 어휘 정보 - L2(SlideRepetition) 우선으로 채우고 L1 오프셋을 중복 없이 보완
             int slideIndex1Based = i + 1; // i는 0부터 시작하므로 +1
             Map<String, Integer> perPatternCount = new LinkedHashMap<>();
             List<OffsetDto> repOffsets = new ArrayList<>();
 
-            // ---------------------------
-            // NOTE: 원래는 L2(SlideRepetition) 기반으로 perPatternCount를 채우도록 되어 있었습니다.
-            // 요청에 따라 L2 기반 블록은 임시로 주석 처리하고, 대신 전역 패턴(map: patternOffsetMap)
-            // 을 사용해 L1(전역 단어/패턴 오프셋) 기준으로 슬라이드별 perPatternCount를 채웁니다.
-            // 필요 시 L2 기반 로직을 복원하면 됩니다.
-            // ---------------------------
-            /*
-             * // repetitionMap에서 이 슬라이드의 SlideRepetition 가져오기
-             * List<RepetitiveTextAnalysisService.SlideRepetition> slideReps =
-             * repetitionMap.get(slideIndex1Based);
-             * if (slideReps != null) {
-             * for (RepetitiveTextAnalysisService.SlideRepetition sr : slideReps) {
-             * String pattern = sr.getPattern();
-             * List<RepetitiveTextAnalysisService.Offset> offsets = sr.getOffsets();
-             * 
-             * if (offsets != null && !offsets.isEmpty()) {
-             * perPatternCount.put(pattern, offsets.size());
-             * 
-             * // Offset → OffsetDto 변환
-             * for (RepetitiveTextAnalysisService.Offset o : offsets) {
-             * OffsetDto dto = OffsetDto.builder()
-             * .slideIndex(o.getSlideIndex())
-             * .begin(o.getBegin())
-             * .end(o.getEnd())
-             * .text(o.getText())
-             * .build();
-             * repOffsets.add(dto);
-             * }
-             * } else {
-             * // offset 정보가 없으면 count만 사용
-             * perPatternCount.put(pattern, sr.getCount());
-             * }
-             * }
-             * }
-             */
+            // 우선: repetitionMap(L2)에서 이 슬라이드의 SlideRepetition을 사용
+            List<RepetitiveTextAnalysisService.SlideRepetition> slideReps = repetitionMap.get(slideIndex1Based);
+            // 중복 오프셋 방지를 위한 서명 집합
+            Set<String> seenOffsetSignatures = new HashSet<>();
 
-            // L1 precomputed slidePatternCounts/Offsets에서 슬라이드별 패턴 카운트 및 오프셋 추가
-            Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern.getOrDefault(slideIndex1Based,
-                    Collections.emptyMap());
+            if (slideReps != null && !slideReps.isEmpty()) {
+                for (RepetitiveTextAnalysisService.SlideRepetition sr : slideReps) {
+                    if (sr == null)
+                        continue;
+                    String pattern = sr.getPattern();
+                    List<RepetitiveTextAnalysisService.Offset> offsets = sr.getOffsets();
+
+                    if (offsets != null && !offsets.isEmpty()) {
+                        perPatternCount.merge(pattern, offsets.size(), Integer::sum);
+                        for (RepetitiveTextAnalysisService.Offset o : offsets) {
+                            if (o == null)
+                                continue;
+                            OffsetDto dto = OffsetDto.builder()
+                                    .slideIndex(o.getSlideIndex())
+                                    .begin(o.getBegin())
+                                    .end(o.getEnd())
+                                    .text(o.getText())
+                                    .build();
+                            String sig = (dto.getSlideIndex() == null ? "-" : dto.getSlideIndex().toString()) + ":"
+                                    + dto.getBegin() + ":" + dto.getEnd() + ":"
+                                    + (dto.getText() == null ? "" : dto.getText());
+                            seenOffsetSignatures.add(sig);
+                            repOffsets.add(dto);
+                        }
+                    } else {
+                        // offsets 정보가 없으면 제공된 count를 반영
+                        perPatternCount.merge(pattern, sr.getCount(), Integer::sum);
+                    }
+                }
+                log.info("  • perPatternCount populated from L2 SlideRepetition for slide {}: {}", slideIndex1Based,
+                        perPatternCount);
+            }
+
+            // L1(precomputed patternOffsetMap)을 이용해 L2에 없는 오프셋만 보완
+            Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern.getOrDefault(
+                    slideIndex1Based, Collections.emptyMap());
             if (patternsForSlide != null && !patternsForSlide.isEmpty()) {
                 for (Map.Entry<String, List<OffsetDto>> e : patternsForSlide.entrySet()) {
                     String pattern = e.getKey();
                     List<OffsetDto> offs = e.getValue();
                     if (offs == null || offs.isEmpty())
                         continue;
-                    perPatternCount.put(pattern, offs.size());
+
+                    int added = 0;
                     for (OffsetDto off : offs) {
+                        if (off == null)
+                            continue;
+                        String sig = (off.getSlideIndex() == null ? "-" : off.getSlideIndex().toString()) + ":"
+                                + off.getBegin() + ":" + off.getEnd() + ":"
+                                + (off.getText() == null ? "" : off.getText());
+                        if (seenOffsetSignatures.contains(sig))
+                            continue; // 이미 L2에서 수집된 오프셋이면 건너뜀
+                        seenOffsetSignatures.add(sig);
                         repOffsets.add(OffsetDto.builder()
                                 .slideIndex(off.getSlideIndex())
                                 .begin(off.getBegin())
                                 .end(off.getEnd())
                                 .text(off.getText())
                                 .build());
+                        added++;
+                    }
+
+                    if (added > 0) {
+                        perPatternCount.merge(pattern, added, Integer::sum);
+                    } else {
+                        // 만약 패턴 자체가 아직 존재하지 않으면, 보유한 오프셋 수를 기본값으로 사용
+                        if (!perPatternCount.containsKey(pattern)) {
+                            perPatternCount.put(pattern, offs.size());
+                        }
                     }
                 }
-                log.info("  • perPatternCount populated from precomputed L1 results for slide {}: {}", slideIndex1Based,
-                        perPatternCount);
+                log.info("  • perPatternCount augmented from precomputed L1 results for slide {}: {}",
+                        slideIndex1Based, perPatternCount);
             }
 
             int totalRepeatCount = repOffsets.size();
