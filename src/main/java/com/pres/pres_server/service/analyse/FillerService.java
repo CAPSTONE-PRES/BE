@@ -104,32 +104,36 @@ public class FillerService {
             Map<String, Integer> counts = countFillersByRegex(text);
 
             // compute offsets per filler word using same normalization logic
+            // Offsets should be reported against the ORIGINAL slide text (STT),
+            // not against the normalized text. Build patterns that match word
+            // boundaries in the original text and find positions on the original
+            // string so begin/end refer to slideText indices.
             List<TextOffset> offsets = new ArrayList<>();
             if (text != null && !text.isBlank()) {
-                String normalized = TextAnalysisUtils.normalizeText(text);
-                for (Map.Entry<String, Pattern> entry : FILLER_PATTERNS.entrySet()) {
-                    String fillerWord = entry.getKey();
-                    Pattern pattern = entry.getValue();
-                    Matcher matcher = pattern.matcher(normalized);
-                    while (matcher.find()) {
-                        int b = -1, e = -1;
-                        try {
-                            // group 2 contains the filler token (pattern defined as (prefix)(word))
-                            b = matcher.start(2);
-                            e = matcher.end(2);
-                        } catch (Exception ex) {
-                            b = matcher.start();
-                            e = matcher.end();
-                        }
-                        if (b >= 0 && e >= b) {
-                            String excerpt = "";
-                            try {
-                                excerpt = normalized.substring(b, e);
-                            } catch (Exception ex) {
-                                excerpt = fillerWord;
+                // iterate filler words (keys of FILLER_PATTERNS map)
+                for (String fillerWord : FILLER_PATTERNS.keySet()) {
+                    try {
+                        // match filler as standalone token in original text; allow
+                        // punctuation/whitespace boundaries by asserting that
+                        // surrounding chars are not letters/digits.
+                        String regex = "(?<![\\p{L}0-9])(" + Pattern.quote(fillerWord) + ")(?![\\p{L}0-9])";
+                        Pattern p = Pattern.compile(regex, Pattern.UNICODE_CHARACTER_CLASS);
+                        Matcher matcher = p.matcher(text);
+                        while (matcher.find()) {
+                            int b = matcher.start(1);
+                            int e = matcher.end(1);
+                            if (b >= 0 && e >= b) {
+                                String excerpt = "";
+                                try {
+                                    excerpt = text.substring(b, Math.min(e, text.length()));
+                                } catch (Exception ex) {
+                                    excerpt = fillerWord;
+                                }
+                                offsets.add(new TextOffset(b, e, i + 1, excerpt));
                             }
-                            offsets.add(new TextOffset(b, e, i + 1, excerpt));
                         }
+                    } catch (Exception ex) {
+                        log.debug("필러 오프셋 추출 중 예외(슬라이드={}, 단어={}): {}", i + 1, fillerWord, ex.getMessage());
                     }
                 }
             }
@@ -156,19 +160,24 @@ public class FillerService {
 
         Map<String, Integer> fillerCounts = new HashMap<>();
 
-        // 1) 텍스트 정규화 (TextAnalysisUtils 사용으로 일관성 유지)
-        String normalized = TextAnalysisUtils.normalizeText(text);
-        log.debug("    ▶ 정규화된 텍스트: \"{}\"", normalized);
-
-        // 2) 모든 필러 패턴 검사 (Map 기반 루프 방식)
-        for (Map.Entry<String, Pattern> entry : FILLER_PATTERNS.entrySet()) {
-            String fillerWord = entry.getKey();
-            Pattern pattern = entry.getValue();
-
-            Matcher matcher = pattern.matcher(normalized);
-            while (matcher.find()) {
-                fillerCounts.merge(fillerWord, 1, Integer::sum);
-                log.debug("    → \"{}\" 발견 (위치: {})", fillerWord, matcher.start());
+        // 1) 원문 텍스트 기반 검사 — offsets 생성에 사용한 규칙과 동일하게 처리합니다.
+        // (이전에는 정규화된 텍스트를 사용했으나, 이제 카운트도 원문 기준으로 하여
+        // offsets와 항상 일치하도록 합니다.)
+        for (String fillerWord : FILLER_PATTERNS.keySet()) {
+            try {
+                String regex = "(?<![\\p{L}0-9])(" + Pattern.quote(fillerWord) + ")(?![\\p{L}0-9])";
+                Pattern p = Pattern.compile(regex, Pattern.UNICODE_CHARACTER_CLASS);
+                Matcher matcher = p.matcher(text);
+                int cnt = 0;
+                while (matcher.find()) {
+                    cnt++;
+                    log.debug("    → \"{}\" 발견 (위치: {})", fillerWord, matcher.start(1));
+                }
+                if (cnt > 0) {
+                    fillerCounts.put(fillerWord, cnt);
+                }
+            } catch (Exception ex) {
+                log.debug("필러 카운트 검사 중 예외(단어={}): {}", fillerWord, ex.getMessage());
             }
         }
 
