@@ -2,6 +2,7 @@ package com.pres.pres_server.service.analyse;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,7 +17,10 @@ import com.pres.pres_server.service.analyse.utils.KomoranAnalyzer;
 //반복 어휘 분석 서비스
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class RepetitiveTextAnalysisService {
+
+    private final com.pres.pres_server.service.analyse.utils.SlideSegmentExtractor slideSegmentExtractor;
 
     @Getter
     @Builder
@@ -123,7 +127,7 @@ public class RepetitiveTextAnalysisService {
         }
 
         // 단어 반복 분석 실행 (원문 기준 위치 정보 포함)
-        List<WordRepetition> wordRepetitions = analyzeWordRepetition(pre, sttText);
+        List<WordRepetition> wordRepetitions = analyzeWordRepetition(pre, sttText, slideSttTexts);
 
         // 슬라이드 전환 정보가 있을 때만 L2 실행
         List<SlideRepetition> slideRepetitions = Collections.emptyList();
@@ -131,7 +135,7 @@ public class RepetitiveTextAnalysisService {
             slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments, slideSttTexts);
         }
 
-        List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText);
+        List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText, sttText, slideSttTexts);
 
         List<RepetitiveSentencePair> sentenceSimilarities = analyzeSentenceSimilarity(
                 sttText, pre.sentences, pre.presentationKeywords, slideTransitions, segments);
@@ -157,7 +161,8 @@ public class RepetitiveTextAnalysisService {
 
     // ========== Level 1: 단어 반복(Word Repetition) ==========
 
-    private List<WordRepetition> analyzeWordRepetition(PreprocessResult pre, String sttText) {
+    private List<WordRepetition> analyzeWordRepetition(PreprocessResult pre, String sttText,
+            List<String> slideSttTexts) {
         // 토큰화(문장 기준)로 빈도 집계
         List<String> tokens = new ArrayList<>();
         for (String sentence : pre.sentences) {
@@ -172,10 +177,38 @@ public class RepetitiveTextAnalysisService {
 
         // normalize token list -> map of norm -> list of Offsets
         Map<String, List<Offset>> OffsetsMap = new HashMap<>();
+        // compute slide start indices if slideSttTexts provided
+        List<Integer> slideStartIndices = null;
+        if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
+            try {
+                slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(sttText, slideSttTexts);
+            } catch (Exception ex) {
+                log.debug("Failed to compute slide start indices: {}", ex.getMessage());
+                slideStartIndices = null;
+            }
+        }
+
         for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
+            Integer mappedSlide = null;
+            if (slideStartIndices != null && slideSttTexts != null) {
+                // find slide containing nt.begin
+                for (int si = 0; si < slideStartIndices.size(); si++) {
+                    Integer start = slideStartIndices.get(si);
+                    if (start == null || start < 0)
+                        continue;
+                    String slideText = slideSttTexts.get(si);
+                    int slideLen = slideText != null ? slideText.length() : 0;
+                    int slideEndGlobal = start + slideLen;
+                    if (nt.begin >= start && nt.begin < slideEndGlobal) {
+                        mappedSlide = si + 1; // 1-based
+                        break;
+                    }
+                }
+            }
             OffsetsMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
                     .add(Offset.builder().begin(nt.begin).end(nt.end)
-                            .text(sttText.substring(nt.begin, Math.min(nt.end, sttText.length()))).slideIndex(null)
+                            .text(sttText.substring(nt.begin, Math.min(nt.end, sttText.length())))
+                            .slideIndex(mappedSlide)
                             .build());
         }
 
@@ -439,7 +472,8 @@ public class RepetitiveTextAnalysisService {
 
     // ========== Level 3: N-gram 반복 ==========
 
-    private List<RepetitivePattern> analyzeNgramRepetition(String normalizedText) {
+    private List<RepetitivePattern> analyzeNgramRepetition(String normalizedText, String sttText,
+            List<String> slideSttTexts) {
         // 2-gram과 3-gram 모두 생성
         List<String> ngrams2 = TextAnalysisUtils.komoranMeaningfulNGrams(normalizedText, 2);
         List<String> ngrams3 = TextAnalysisUtils.komoranMeaningfulNGrams(normalizedText, 3);
@@ -485,18 +519,31 @@ public class RepetitiveTextAnalysisService {
         List<String> norms = TextAnalysisUtils.tokenizeKomoranNorms(normalizedText);
         Set<String> keywords = TextAnalysisUtils.extractKeywordsKomoran(norms, MIN_KEYWORD_FREQUENCY);
 
-        // 추가: 원문 스팬 수집을 위해 KomoranAnalyzer의 NormToken 사용
-        List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(normalizedText);
+        // 추가: 원문 스팬 수집을 위해 KomoranAnalyzer의 NormToken 사용 (원문 sttText 기준)
+        List<KomoranAnalyzer.NormToken> normTokensForOffsets = KomoranAnalyzer
+                .tokenizeForRepeatWithSpans(sttText == null ? normalizedText : sttText);
+
+        // compute slideStartIndices if slideSttTexts provided
+        List<Integer> slideStartIndices = null;
+        if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
+            try {
+                slideStartIndices = slideSegmentExtractor
+                        .computeSlideStartOffsets(sttText == null ? normalizedText : sttText, slideSttTexts);
+            } catch (Exception ex) {
+                log.debug("Failed to compute slide start indices for ngram mapping: {}", ex.getMessage());
+                slideStartIndices = null;
+            }
+        }
 
         // ngram -> Offsets mapping
         Map<String, List<Offset>> ngramOffsets = new HashMap<>();
 
-        // collect n-gram Offsets (2~3)
+        // collect n-gram Offsets (2~3) using sttText-based norm tokens
         for (int n = 2; n <= 3; n++) {
-            if (normTokens.size() < n)
+            if (normTokensForOffsets.size() < n)
                 continue;
-            for (int i = 0; i <= normTokens.size() - n; i++) {
-                List<KomoranAnalyzer.NormToken> window = normTokens.subList(i, i + n);
+            for (int i = 0; i <= normTokensForOffsets.size() - n; i++) {
+                List<KomoranAnalyzer.NormToken> window = normTokensForOffsets.subList(i, i + n);
                 String key = window.stream().map(t -> t.norm).collect(Collectors.joining(" "));
 
                 // skip self-dup for 2-gram
@@ -508,13 +555,35 @@ public class RepetitiveTextAnalysisService {
 
                 int begin = window.get(0).begin;
                 int end = window.get(window.size() - 1).end;
-                String text = normalizedText.substring(Math.max(0, begin), Math.min(normalizedText.length(), end));
+                String textExcerpt = "";
+                try {
+                    String base = sttText == null ? normalizedText : sttText;
+                    textExcerpt = base.substring(Math.max(0, begin), Math.min(base.length(), end));
+                } catch (Exception ex) {
+                    textExcerpt = key;
+                }
+
+                Integer mappedSlide = null;
+                if (slideStartIndices != null && slideSttTexts != null) {
+                    for (int si = 0; si < slideStartIndices.size(); si++) {
+                        Integer start = slideStartIndices.get(si);
+                        if (start == null || start < 0)
+                            continue;
+                        String slideText = slideSttTexts.get(si);
+                        int slideLen = slideText != null ? slideText.length() : 0;
+                        int slideEndGlobal = start + slideLen;
+                        if (begin >= start && begin < slideEndGlobal) {
+                            mappedSlide = si + 1;
+                            break;
+                        }
+                    }
+                }
 
                 Offset occ = Offset.builder()
                         .begin(begin)
                         .end(end)
-                        .slideIndex(null)
-                        .text(text)
+                        .slideIndex(mappedSlide)
+                        .text(textExcerpt)
                         .build();
 
                 ngramOffsets.computeIfAbsent(key, k -> new ArrayList<>()).add(occ);

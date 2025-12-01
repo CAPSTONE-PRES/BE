@@ -491,6 +491,31 @@ public class AnalysisResultService {
         log.info("  • repetition(word/ngram) patterns collected: {}, keys={}",
                 patternOffsetMap.size(), patternOffsetMap.keySet());
 
+        // --- Precompute slide->(pattern->offsets) and slide->(pattern->count) maps
+        // from patternOffsetMap
+        Map<Integer, Map<String, List<OffsetDto>>> slidePatternOffsetsByPattern = new HashMap<>();
+        Map<Integer, Map<String, Integer>> slidePatternCounts = new HashMap<>();
+        if (patternOffsetMap != null && !patternOffsetMap.isEmpty()) {
+            for (Map.Entry<String, List<OffsetDto>> e : patternOffsetMap.entrySet()) {
+                String pattern = e.getKey();
+                List<OffsetDto> offs = e.getValue();
+                if (offs == null)
+                    continue;
+                for (OffsetDto off : offs) {
+                    if (off == null || off.getSlideIndex() == null)
+                        continue;
+                    Integer sIdx = off.getSlideIndex();
+                    slidePatternOffsetsByPattern
+                            .computeIfAbsent(sIdx, k -> new HashMap<>())
+                            .computeIfAbsent(pattern, k -> new ArrayList<>()).add(off);
+                    slidePatternCounts
+                            .computeIfAbsent(sIdx, k -> new LinkedHashMap<>())
+                            .merge(pattern, 1, Integer::sum);
+                }
+            }
+        }
+        log.info("  • slidePatternCounts prepared for slides: {}", slidePatternCounts.keySet());
+
         for (int i = 0; i < slideCount; i++) {
             SlideFeedback slideFeedback = new SlideFeedback();
             slideFeedback.setFeedback(feedback);
@@ -637,12 +662,18 @@ public class AnalysisResultService {
                 }
             }
 
-            // 4. 반복 어휘 정보 - SlideRepetition의 offset 사용 (Level 2 분석 결과)
-            // NOTE: SlideRepetition.slideIndex는 1-based
+            // 4. 반복 어휘 정보 - L1(단어 반복) 결과만 사용 (슬라이드별 집계)
             int slideIndex1Based = i + 1; // i는 0부터 시작하므로 +1
             Map<String, Integer> perPatternCount = new LinkedHashMap<>();
             List<OffsetDto> repOffsets = new ArrayList<>();
 
+            // ---------------------------
+            // NOTE: 원래는 L2(SlideRepetition) 기반으로 perPatternCount를 채우도록 되어 있었습니다.
+            // 요청에 따라 L2 기반 블록은 임시로 주석 처리하고, 대신 전역 패턴(map: patternOffsetMap)
+            // 을 사용해 L1(전역 단어/패턴 오프셋) 기준으로 슬라이드별 perPatternCount를 채웁니다.
+            // 필요 시 L2 기반 로직을 복원하면 됩니다.
+            // ---------------------------
+            /*
             // repetitionMap에서 이 슬라이드의 SlideRepetition 가져오기
             List<RepetitiveTextAnalysisService.SlideRepetition> slideReps = repetitionMap.get(slideIndex1Based);
             if (slideReps != null) {
@@ -669,6 +700,30 @@ public class AnalysisResultService {
                     }
                 }
             }
+            */
+
+            // L1 precomputed slidePatternCounts/Offsets에서 슬라이드별 패턴 카운트 및 오프셋 추가
+            Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern.getOrDefault(slideIndex1Based,
+                    Collections.emptyMap());
+            if (patternsForSlide != null && !patternsForSlide.isEmpty()) {
+                for (Map.Entry<String, List<OffsetDto>> e : patternsForSlide.entrySet()) {
+                    String pattern = e.getKey();
+                    List<OffsetDto> offs = e.getValue();
+                    if (offs == null || offs.isEmpty())
+                        continue;
+                    perPatternCount.put(pattern, offs.size());
+                    for (OffsetDto off : offs) {
+                        repOffsets.add(OffsetDto.builder()
+                                .slideIndex(off.getSlideIndex())
+                                .begin(off.getBegin())
+                                .end(off.getEnd())
+                                .text(off.getText())
+                                .build());
+                    }
+                }
+                log.info("  • perPatternCount populated from precomputed L1 results for slide {}: {}", slideIndex1Based,
+                        perPatternCount);
+            }
 
             int totalRepeatCount = repOffsets.size();
             log.debug("[Slide {}] repetition offsets = {}, patterns = {}", slideIndex1Based, totalRepeatCount,
@@ -684,6 +739,7 @@ public class AnalysisResultService {
                                 (a, b) -> a,
                                 LinkedHashMap::new));
 
+                // db 저장용
                 String repeatDetailStr = repeatMapTop.entrySet().stream()
                         .map(e -> e.getKey() + "(" + e.getValue() + "회)")
                         .collect(Collectors.joining(", "));
