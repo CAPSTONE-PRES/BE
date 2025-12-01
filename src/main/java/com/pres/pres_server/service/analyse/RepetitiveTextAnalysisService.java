@@ -248,6 +248,37 @@ public class RepetitiveTextAnalysisService {
             }
         }
 
+        // Fallback: if we couldn't compute slideStartIndices but have
+        // segments+transitions
+        // attempt to build slideSttTexts from segments and recompute start indices.
+        if ((slideStartIndices == null || slideStartIndices.isEmpty())
+                && (slideSttTexts == null || slideSttTexts.isEmpty())
+                && segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
+            try {
+                Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
+                if (mapped != null && !mapped.isEmpty()) {
+                    int max = mapped.keySet().stream().max(Integer::compareTo).orElse(0);
+                    List<String> list = new ArrayList<>(Collections.nCopies(max, ""));
+                    for (Map.Entry<Integer, String> me : mapped.entrySet()) {
+                        int idx = me.getKey() - 1;
+                        if (idx >= 0 && idx < list.size())
+                            list.set(idx, me.getValue());
+                    }
+                    slideSttTexts = list;
+                    try {
+                        slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(sttText, slideSttTexts);
+                        log.debug("Fallback computed slideSttTexts and slideStartIndices: slides={}, startIndices={}",
+                                slideSttTexts.size(), slideStartIndices != null ? slideStartIndices.size() : 0);
+                    } catch (Exception ex) {
+                        log.debug("Fallback compute slide start indices failed: {}", ex.getMessage());
+                        slideStartIndices = null;
+                    }
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to compute slideSttTexts from segments in fallback: {}", ex.getMessage());
+            }
+        }
+
         for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
             Integer mappedSlide = null;
             if (slideStartIndices != null && slideSttTexts != null) {
@@ -552,7 +583,7 @@ public class RepetitiveTextAnalysisService {
             freq2.put(ng, freq2.getOrDefault(ng, 0L) + 1);
         }
 
-        // ⭐ 개선된 중복 제거: 2-gram이 3-gram의 prefix일 때, 3-gram 빈도가 2-gram 빈도 이상이면 2-gram 숨김
+        // 개선된 중복 제거: 2-gram이 3-gram의 prefix일 때, 3-gram 빈도가 2-gram 빈도 이상이면 2-gram 숨김
         Set<String> hide2 = new HashSet<>();
         for (Map.Entry<String, Long> entry : freq2.entrySet()) {
             String g2 = entry.getKey();

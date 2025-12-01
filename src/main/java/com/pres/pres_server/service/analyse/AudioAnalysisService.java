@@ -401,6 +401,7 @@ public class AudioAnalysisService {
                 .repetitionResults(repetitionResults)
                 .slideSttTexts(slideSttTexts)
                 .intervals(intervals)
+                .slideRepetitionAnalysis(repAnalysisLocal) // 슬라이드별 분석 결과 포함 (L1/L3 with slideIndex)
                 .build();
     }
 
@@ -692,6 +693,9 @@ public class AudioAnalysisService {
 
         @lombok.Builder.Default
         private final List<SlideSegmentExtractor.SlideInterval> intervals = Collections.emptyList();
+
+        // 슬라이드별 분석의 전체 반복 분석 결과 (L1/L3 포함, slideIndex 매핑 완료된 상태)
+        private final RepetitiveTextAnalysisService.RepetitionAnalysisResult slideRepetitionAnalysis;
 
         public static SlideAnalysisResult empty() {
             return SlideAnalysisResult.builder().build();
