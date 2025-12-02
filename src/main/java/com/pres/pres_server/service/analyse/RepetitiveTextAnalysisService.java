@@ -133,7 +133,8 @@ public class RepetitiveTextAnalysisService {
         // 슬라이드 전환 정보가 있을 때만 L2 실행
         List<SlideRepetition> slideRepetitions = Collections.emptyList();
         if (slideTransitions != null && !slideTransitions.isEmpty()) {
-            slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments, slideSttTexts);
+            slideRepetitions = analyzeIntraSlideNgramRepetition(sttText, slideTransitions, segments, slideSttTexts,
+                    pre.presentationKeywords);
         }
 
         List<RepetitivePattern> ngramRepetitions = analyzeNgramRepetition(pre.normalizedText, sttText, slideTransitions,
@@ -359,7 +360,8 @@ public class RepetitiveTextAnalysisService {
             String sttText,
             List<SlideTransition> transitions,
             List<WhisperSegment> segments,
-            List<String> slideSttTexts) {
+            List<String> slideSttTexts,
+            Set<String> presentationKeywords) {
 
         if (transitions == null || transitions.isEmpty()) {
             log.info("  • L2: No transitions provided, skipping in-slide analysis");
@@ -392,6 +394,11 @@ public class RepetitiveTextAnalysisService {
             return Collections.emptyList();
 
         List<SlideRepetition> out = new ArrayList<>();
+        Set<String> keywords = (presentationKeywords != null) ? presentationKeywords : Collections.emptySet();
+
+        // 필터링 카운터
+        int filteredByKeywords = 0;
+        int filteredByFillers = 0;
 
         for (Map.Entry<Integer, String> e : slideTextMap.entrySet()) {
             int slideNum = e.getKey();
@@ -403,6 +410,7 @@ public class RepetitiveTextAnalysisService {
             List<String> grams = KomoranAnalyzer.komoranMeaningfulNGrams(slideText, 2);
             if (grams.isEmpty())
                 continue;
+            List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
 
             Map<String, Long> freq = grams.stream()
                     .collect(Collectors.groupingBy(g -> g, Collectors.counting()));
@@ -411,12 +419,33 @@ public class RepetitiveTextAnalysisService {
                 if (ge.getValue() < MIN_NGRAM_REPETITION)
                     continue;
 
+                // 🎯 필터링: 2-gram의 두 단어 추출
+                String[] words = ge.getKey().split("\\s+");
+                if (words.length != 2)
+                    continue;
+
+                String word1 = words[0];
+                String word2 = words[1];
+
+                // 필터 1: 두 단어 모두 presentation keywords면 제외
+                if (keywords.contains(word1) && keywords.contains(word2)) {
+                    filteredByKeywords++;
+                    continue;
+                }
+
+                // 필터 2: 하나라도 filler word면 제외
+                if (FILLER_WORDS.contains(word1) || FILLER_WORDS.contains(word2)) {
+                    filteredByFillers++;
+                    continue;
+                }
+
                 // collect Offsets spans for this slide
                 List<Offset> occs = new ArrayList<>();
-                List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
+
                 for (int i = 0; i <= normTokens.size() - 2; i++) {
                     List<KomoranAnalyzer.NormToken> window = normTokens.subList(i, i + 2);
                     String key = window.stream().map(t -> t.norm).collect(Collectors.joining(" "));
+
                     if (key.equals(ge.getKey())) {
                         int begin = window.get(0).begin;
                         int end = window.get(1).end;
@@ -441,6 +470,12 @@ public class RepetitiveTextAnalysisService {
 
         // 많이 나온 순으로 전체 정렬
         out.sort(Comparator.comparingInt(SlideRepetition::getCount).reversed());
+
+        // 필터링 통계 로그
+        log.info("  • L2 filtering stats - Excluded by keywords: {}, Excluded by fillers: {}",
+                filteredByKeywords, filteredByFillers);
+        log.info("  • L2 final results: {} patterns", out.size());
+
         return out;
     }
 
