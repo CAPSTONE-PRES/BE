@@ -839,8 +839,8 @@ public class AnalysisResultService {
             if (accuracyResults != null && i < accuracyResults.size()) {
                 ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
                 if (accuracyResult.isSuccess()) {
-                    // 정확도가 낮은 경우만 이슈로 표시 (80% 미만)
-                    if (accuracyResult.getAccuracyScore() < 80) {
+                    // 정확도가 낮은 경우만 이슈로 표시 (scriptSimilarity 0.3 미만)
+                    if (accuracyResult.getScriptSimilarity() <= 0.30) {
                         // don't persist legacy error_count for ACCURACY (use IssueDto.similarity
                         // instead)
                         slideFeedback.setErrorCount(null);
