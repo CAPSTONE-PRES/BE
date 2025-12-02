@@ -393,7 +393,14 @@ public class AudioAnalysisService {
                     sr.getPattern());
         }
 
-        return SlideAnalysisResult.builder()
+        log.info("DEBUG [AudioAnalysisService]: repAnalysisLocal is null? {}", (repAnalysisLocal == null));
+        if (repAnalysisLocal != null) {
+            log.info("DEBUG [AudioAnalysisService]: repAnalysisLocal L1 size={}, isSuccess={}",
+                    repAnalysisLocal.getWordRepetitions() != null ? repAnalysisLocal.getWordRepetitions().size() : 0,
+                    repAnalysisLocal.isSuccess());
+        }
+
+        SlideAnalysisResult result = SlideAnalysisResult.builder()
                 .fillerResults(fillerResults)
                 .silenceResults(silenceResults)
                 .accuracyResults(accuracyResults)
@@ -403,6 +410,11 @@ public class AudioAnalysisService {
                 .intervals(intervals)
                 .slideRepetitionAnalysis(repAnalysisLocal) // 슬라이드별 분석 결과 포함 (L1/L3 with slideIndex)
                 .build();
+
+        log.info("DEBUG [AudioAnalysisService]: Built SlideAnalysisResult - slideRepetitionAnalysis is null? {}",
+                (result.getSlideRepetitionAnalysis() == null));
+
+        return result;
     }
 
     /**
