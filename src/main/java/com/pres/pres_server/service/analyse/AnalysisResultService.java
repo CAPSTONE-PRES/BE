@@ -439,6 +439,12 @@ public class AnalysisResultService {
         // 전역 분석 결과 대신 슬라이드별 분석의 RepetitionAnalysisResult를 사용 (L1 offsets에 slideIndex
         // 포함됨)
         RepetitiveTextAnalysisService.RepetitionAnalysisResult slideRep = slideAnalysis.getSlideRepetitionAnalysis();
+        log.info("DEBUG: slideRep is null? {}", (slideRep == null));
+        if (slideRep != null) {
+            log.info("DEBUG: slideRep.isSuccess()={}, L1 size={}", 
+                slideRep.isSuccess(), 
+                slideRep.getWordRepetitions() != null ? slideRep.getWordRepetitions().size() : 0);
+        }
         Map<String, List<OffsetDto>> patternOffsetMap = new HashMap<>();
 
         if (slideRep != null && slideRep.isSuccess()) {
