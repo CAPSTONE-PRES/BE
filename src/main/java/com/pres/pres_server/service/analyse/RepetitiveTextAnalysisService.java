@@ -201,173 +201,97 @@ public class RepetitiveTextAnalysisService {
             List<SlideTransition> slideTransitions,
             List<WhisperSegment> segments,
             List<String> slideSttTexts) {
-        // 토큰화(문장 기준)로 빈도 집계
-        List<String> tokens = new ArrayList<>();
-        for (String sentence : pre.sentences) {
-            tokens.addAll(TextAnalysisUtils.tokenizeKomoranNorms(sentence));
-        }
-        Map<String, Long> wordFreq = tokens.stream()
-                .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
-
-        // KomoranAnalyzer로 원문 기준 위치(Offsets) 추출
-        List<com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken> normTokens = com.pres.pres_server.service.analyse.utils.KomoranAnalyzer
-                .tokenizeForRepeatWithSpans(sttText);
-
-        // normalize token list -> map of norm -> list of Offsets
-        Map<String, List<Offset>> OffsetsMap = new HashMap<>();
-        // If slideSttTexts not provided but slideTransitions+segments are available,
-        // attempt to map segments->slides to build slideSttTexts for L1 offset mapping.
-        if ((slideSttTexts == null || slideSttTexts.isEmpty()) && segments != null
-                && slideTransitions != null && !slideTransitions.isEmpty()) {
-            try {
-                Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
-                if (mapped != null && !mapped.isEmpty()) {
-                    // build list ordered by slide number 1..N (fill missing with empty)
-                    int max = mapped.keySet().stream().max(Integer::compareTo).orElse(0);
-                    List<String> list = new ArrayList<>(Collections.nCopies(max, ""));
-                    for (Map.Entry<Integer, String> me : mapped.entrySet()) {
-                        int idx = me.getKey() - 1;
-                        if (idx >= 0 && idx < list.size())
-                            list.set(idx, me.getValue());
-                    }
-                    slideSttTexts = list;
-                    log.debug("Computed slideSttTexts from segments/transitions: size={}", slideSttTexts.size());
-                }
-            } catch (Exception ex) {
-                log.debug("Failed to compute slideSttTexts from segments: {}", ex.getMessage());
-            }
-        }
-
-        // compute slide start indices if slideSttTexts provided
-        List<Integer> slideStartIndices = null;
+        // slideTextMap 준비: 제공된 slideSttTexts 우선, 없으면 mapTextToSlides 사용
+        Map<Integer, String> slideTextMap = new HashMap<>();
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
-            try {
-                slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(sttText, slideSttTexts);
-                log.info("  • Computed slideStartIndices: {} indices for {} slides",
-                        slideStartIndices != null ? slideStartIndices.size() : 0, slideSttTexts.size());
-                if (slideStartIndices != null && !slideStartIndices.isEmpty()) {
-                    log.debug("    slideStartIndices sample: {}",
-                            slideStartIndices.subList(0, Math.min(3, slideStartIndices.size())));
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to compute slide start indices: {}", ex.getMessage());
-                slideStartIndices = null;
+            for (int i = 0; i < slideSttTexts.size(); i++) {
+                slideTextMap.put(i + 1, slideSttTexts.get(i));
             }
+            log.debug("  • Using provided slideSttTexts: {} slides", slideTextMap.size());
         } else {
-            log.info("  • slideSttTexts not provided or empty (size={}), slideIndex mapping will use fallback",
-                    slideSttTexts != null ? slideSttTexts.size() : 0);
-        }
-
-        // Fallback
-        if ((slideStartIndices == null || slideStartIndices.isEmpty())
-                && segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
             try {
                 Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
                 if (mapped != null && !mapped.isEmpty()) {
-                    int max = mapped.keySet().stream().max(Integer::compareTo).orElse(0);
-                    List<String> list = new ArrayList<>(Collections.nCopies(max, ""));
-                    for (Map.Entry<Integer, String> me : mapped.entrySet()) {
-                        int idx = me.getKey() - 1;
-                        if (idx >= 0 && idx < list.size())
-                            list.set(idx, me.getValue());
-                    }
-                    slideSttTexts = list;
-                    try {
-                        slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(sttText, slideSttTexts);
-                        log.debug("Fallback computed slideSttTexts and slideStartIndices: slides={}, startIndices={}",
-                                slideSttTexts.size(), slideStartIndices != null ? slideStartIndices.size() : 0);
-                    } catch (Exception ex) {
-                        log.debug("Fallback compute slide start indices failed: {}", ex.getMessage());
-                        slideStartIndices = null;
-                    }
+                    slideTextMap.putAll(mapped);
+                    log.debug("  • Computed slideTextMap from segments/transitions: {} slides", slideTextMap.size());
                 }
             } catch (Exception ex) {
-                log.debug("Failed to compute slideSttTexts from segments in fallback: {}", ex.getMessage());
+                log.warn("  • mapTextToSlides failed: {}", ex.getMessage());
             }
         }
 
-        int mappedCount = 0;
-        int unmappedCount = 0;
-        for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
-            Integer mappedSlide = null;
-            if (slideStartIndices != null && slideSttTexts != null) {
-                // find slide containing nt.begin
-                for (int si = 0; si < slideStartIndices.size(); si++) {
-                    Integer start = slideStartIndices.get(si);
-                    if (start == null || start < 0)
-                        continue;
-                    String slideText = slideSttTexts.get(si);
-                    int slideLen = slideText != null ? slideText.length() : 0;
-                    int slideEndGlobal = start + slideLen;
-                    if (nt.begin >= start && nt.begin < slideEndGlobal) {
-                        mappedSlide = si + 1; // 1-based
-                        mappedCount++;
-                        break;
-                    }
-                }
-                if (mappedSlide == null) {
-                    unmappedCount++;
-                }
-            } else {
-                unmappedCount++;
-            }
-            OffsetsMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
-                    .add(Offset.builder().begin(nt.begin).end(nt.end)
-                            .text(sttText.substring(nt.begin, Math.min(nt.end, sttText.length())))
-                            .slideIndex(mappedSlide)
-                            .build());
+        if (slideTextMap.isEmpty()) {
+            log.info("  • slideTextMap empty — cannot perform slide-local L1 mapping. Returning empty list.");
+            return Collections.emptyList();
         }
-        log.info("  • L1 slideIndex mapping - Mapped: {}, Unmapped: {}, Total tokens: {}",
-                mappedCount, unmappedCount, normTokens.size());
 
-        // Debug logging
-        log.info("  • Total tokens: {}, Unique tokens: {}", tokens.size(), wordFreq.size());
-        log.info("  • Presentation keywords: {}", pre.presentationKeywords);
+        // 전역 단어 빈도(슬라이드들 합)
+        Map<String, Long> wordFreq = new HashMap<>();
+        Map<String, List<Offset>> OffsetsMap = new HashMap<>();
+
+        // 각 슬라이드별로 Komoran 토큰화 수행하여 슬라이드-로컬 offsets 생성
+        for (Map.Entry<Integer, String> se : slideTextMap.entrySet()) {
+            Integer slideIndex = se.getKey();
+            String slideText = se.getValue() != null ? se.getValue() : "";
+            if (slideText.isBlank())
+                continue;
+
+            List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
+            for (KomoranAnalyzer.NormToken nt : normTokens) {
+                String norm = nt.norm;
+                // 전역 빈도 집계
+                wordFreq.put(norm, wordFreq.getOrDefault(norm, 0L) + 1L);
+
+                int begin = nt.begin;
+                int end = nt.end;
+                String snippet = "";
+                try {
+                    snippet = slideText.substring(Math.max(0, begin), Math.min(slideText.length(), end));
+                } catch (Exception ex) {
+                    snippet = "";
+                }
+
+                OffsetsMap.computeIfAbsent(norm, k -> new ArrayList<>())
+                        .add(Offset.builder().begin(begin).end(end).slideIndex(slideIndex).text(snippet).build());
+            }
+        }
+
+        // Debug 로그
+        log.info("  • Slides processed for L1: {}", slideTextMap.size());
+        log.info("  • Unique tokens (L1): {}", wordFreq.size());
         log.info("  • Top 10 frequent words: {}",
-                wordFreq.entrySet().stream()
-                        .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
-                        .limit(10)
-                        .collect(Collectors.toList()));
+                wordFreq.entrySet().stream().sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                        .limit(10).collect(Collectors.toList()));
 
-        // 키워드로 제외된 반복 단어들 추출
+        // 키워드/필러 필터링 통계
         List<String> excludedByKeywords = wordFreq.entrySet().stream()
                 .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
                 .filter(e -> pre.presentationKeywords.contains(e.getKey()))
                 .filter(e -> !FILLER_WORDS.contains(e.getKey()))
                 .map(e -> e.getKey() + "(" + e.getValue() + "회)")
-                .sorted()
-                .collect(Collectors.toList());
+                .sorted().collect(Collectors.toList());
 
-        // 필러 워드로 제외된 반복 단어들 추출 (중복 점수 차감 방지)
         List<String> excludedByFillers = wordFreq.entrySet().stream()
                 .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
                 .filter(e -> FILLER_WORDS.contains(e.getKey()))
                 .map(e -> e.getKey() + "(" + e.getValue() + "회)")
-                .sorted()
-                .collect(Collectors.toList());
+                .sorted().collect(Collectors.toList());
 
         List<WordRepetition> result = wordFreq.entrySet().stream()
                 .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
                 .filter(e -> !pre.presentationKeywords.contains(e.getKey()))
-                .filter(e -> !FILLER_WORDS.contains(e.getKey())) // 중복 점수 차감 방지
-                .map(e -> {
-                    List<Offset> occ = OffsetsMap.getOrDefault(e.getKey(), Collections.emptyList());
-                    return WordRepetition.builder()
-                            .word(e.getKey())
-                            .count(e.getValue().intValue())
-                            .Offsets(occ)
-                            .build();
-                })
+                .filter(e -> !FILLER_WORDS.contains(e.getKey()))
+                .map(e -> WordRepetition.builder().word(e.getKey()).count(e.getValue().intValue())
+                        .Offsets(OffsetsMap.getOrDefault(e.getKey(), Collections.emptyList())).build())
                 .sorted(Comparator.comparingInt(WordRepetition::getCount).reversed())
                 .collect(Collectors.toList());
 
-        log.info("  • Word repetitions found: {}", result);
-        if (!excludedByKeywords.isEmpty()) {
+        log.info("  • Word repetitions found (L1): {}", result.size());
+        if (!excludedByKeywords.isEmpty())
             log.info("  • Excluded by keywords: {}", excludedByKeywords);
-        }
-        if (!excludedByFillers.isEmpty()) {
+        if (!excludedByFillers.isEmpty())
             log.info("  • Excluded by fillers (avoid double penalty): {}", excludedByFillers);
-        }
+
         return result;
     }
 
