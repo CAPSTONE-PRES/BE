@@ -230,8 +230,19 @@ public class AudioAnalysisService {
             }
         }
 
+        // Derive presentation keywords from slide scripts so global repetition analysis
+        // uses the same keyword set as per-slide analysis.
+        Set<String> derivedPresentationKeywords = Collections.emptySet();
+        try {
+            derivedPresentationKeywords = scriptAccuracyService.extractTopKeywordsFromSlideScripts(slideScriptsToUse);
+            log.info("    • Derived presentation keywords for global analysis: {}", derivedPresentationKeywords);
+        } catch (Exception e) {
+            log.warn("    • Failed to derive presentation keywords for global analysis: {}", e.getMessage());
+            derivedPresentationKeywords = Collections.emptySet();
+        }
+
         RepetitiveTextAnalysisService.RepetitionAnalysisResult repetitionResult = analyzeRepetition(fullSttText,
-                segments, slideTransitions, slideScriptsToUse, slideSttTextsForRepetition);
+                segments, slideTransitions, slideScriptsToUse, derivedPresentationKeywords, slideSttTextsForRepetition);
 
         SilenceDetectionService.SilenceStatistics silenceStats = silenceDetectionService.calculateStatistics(
                 silenceDetectionService.detectSilences(segments));
@@ -328,79 +339,28 @@ public class AudioAnalysisService {
         boolean haveScriptsAndStt = (slideScripts != null && !slideScripts.isEmpty() && slideSttTexts != null
                 && !slideSttTexts.isEmpty());
         if (!haveScriptsAndStt) {
-            log.debug("    • Skipping per-slide accuracy: slideScripts==null/empty? {} | slideSttTexts==null/empty? {}",
-                    slideScripts == null || slideScripts.isEmpty(), slideSttTexts == null || slideSttTexts.isEmpty());
+            log.warn("    • Accuracy analysis skipped: missing scripts or STT texts");
         } else {
-            boolean allBlank = slideScripts.stream().allMatch(s -> s == null || s.trim().isEmpty());
-
-            if (allBlank) {
-                log.info("    • 모든 슬라이드에 스크립트가 없어 per-slide 정확도 분석 스킵");
-            } else {
-                log.info(
-                        "    • Calling ScriptAccuracyService.analyzeAccuracyBySlides - slideScripts size: {}, slideSttTexts size: {}",
-                        slideScripts.size(), slideSttTexts.size());
-
-                int sampleLogCount = Math.min(10, Math.min(slideScripts.size(), slideSttTexts.size()));
-                for (int i = 0; i < sampleLogCount; i++) {
-                    String s = i < slideScripts.size() ? slideScripts.get(i) : null;
-                    int slen = (s == null) ? 0 : s.length();
-                    String st = i < slideSttTexts.size() ? slideSttTexts.get(i) : null;
-                    int tlen = (st == null) ? 0 : st.length();
-                    log.debug("      - slide[{}]: script len={}, stt len={}", i + 1, slen, tlen);
-                }
-
-                try {
-                    accuracyResults = scriptAccuracyService.analyzeAccuracyBySlides(slideScripts, slideSttTexts);
-                } catch (Exception e) {
-                    log.warn("    • ScriptAccuracyService.analyzeAccuracyBySlides failed: {}", e.getMessage());
-                    accuracyResults = Collections.emptyList();
-                }
-                log.info("    • Accuracy analysis results: {} slides computed", accuracyResults.size());
-            }
+            accuracyResults = scriptAccuracyService.analyzeAccuracyBySlides(slideScripts, slideSttTexts);
+            log.info("    • Accuracy analysis: {} slides", accuracyResults.size());
         }
 
         // 4) SPM 분석 (슬라이드별)
         List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals);
         log.info("    • SPM analysis: {} slides", spmResults.size());
 
-        // 5) 반복 어휘 분석 (슬라이드별) - slideSttTexts를 사용하여 정확한 슬라이드 매핑 수행
-        String fullSttText = slideSttTexts.stream()
-                .filter(text -> text != null && !text.trim().isEmpty())
-                .collect(Collectors.joining(" "));
+        // 5) 반복 어휘 분석 (슬라이드별) - 이미 performAnalysis에서 계산된 값 재사용
+        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = Collections.emptyList();
+        RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitionAnalysis;
 
-        // 대본 기반 키워드 추출은 ScriptAccuracyService의 공용 메서드를 재사용하여
-        // ScriptAccuracy와 Repetition이 동일한 키워드를 사용하도록 중앙화합니다.
-        Set<String> presentationKeywords = Collections.emptySet();
-        try {
-            presentationKeywords = scriptAccuracyService.extractTopKeywordsFromSlideScripts(slideScripts);
-            log.info("    • Derived presentation keywords from scripts (centralized): {}", presentationKeywords);
-        } catch (Exception e) {
-            log.warn("    • Failed to derive presentation keywords from scripts: {}", e.getMessage());
-            presentationKeywords = Collections.emptySet();
+        if (repAnalysisLocal != null && repAnalysisLocal.isSuccess()
+                && repAnalysisLocal.getSlideRepetitions() != null) {
+            repetitionResults = repAnalysisLocal.getSlideRepetitions();
         }
 
-        // slideSttTexts를 사용하여 항상 재분석 (정확한 슬라이드 매핑 보장)
-        RepetitiveTextAnalysisService.RepetitionAnalysisResult repAnalysisLocal = repetitiveTextAnalysisService
-                .analyzeRepetition(fullSttText, transitions, segments, presentationKeywords, slideSttTexts);
-
-        List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = repAnalysisLocal.getSlideRepetitions();
         log.info(" [performSlideAnalysis] 반복: {} slides", repetitionResults.size());
 
-        for (RepetitiveTextAnalysisService.SlideRepetition sr : repetitionResults) {
-            log.debug(" [performSlideAnalysis] 반복: - slide[{}]: count={}, patterns={}",
-                    sr.getSlideIndex(),
-                    sr.getCount(),
-                    sr.getPattern());
-        }
-
-        log.info("DEBUG [AudioAnalysisService]: repAnalysisLocal is null? {}", (repAnalysisLocal == null));
-        if (repAnalysisLocal != null) {
-            log.info("DEBUG [AudioAnalysisService]: repAnalysisLocal L1 size={}, isSuccess={}",
-                    repAnalysisLocal.getWordRepetitions() != null ? repAnalysisLocal.getWordRepetitions().size() : 0,
-                    repAnalysisLocal.isSuccess());
-        }
-
-        SlideAnalysisResult result = SlideAnalysisResult.builder()
+        return SlideAnalysisResult.builder()
                 .fillerResults(fillerResults)
                 .silenceResults(silenceResults)
                 .accuracyResults(accuracyResults)
@@ -408,13 +368,8 @@ public class AudioAnalysisService {
                 .repetitionResults(repetitionResults)
                 .slideSttTexts(slideSttTexts)
                 .intervals(intervals)
-                .slideRepetitionAnalysis(repAnalysisLocal) // 슬라이드별 분석 결과 포함 (L1/L3 with slideIndex)
+                .slideRepetitionAnalysis(repAnalysisLocal)
                 .build();
-
-        log.info("DEBUG [AudioAnalysisService]: Built SlideAnalysisResult - slideRepetitionAnalysis is null? {}",
-                (result.getSlideRepetitionAnalysis() == null));
-
-        return result;
     }
 
     /**
@@ -523,6 +478,7 @@ public class AudioAnalysisService {
             List<WhisperSegment> segments,
             List<SlideTransition> slideTransitions,
             List<String> slideScripts,
+            Set<String> presentationKeywords,
             List<String> slideSttTexts) {
 
         if (fullSttText == null || fullSttText.trim().isEmpty()) {
@@ -535,14 +491,15 @@ public class AudioAnalysisService {
             RepetitiveTextAnalysisService.RepetitionAnalysisResult result;
 
             if (segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
-                // Pass slideScripts and slideSttTexts down so presentationKeywords can be
-                // extracted and offsets can be slide-mapped for L1/L2 analyses
+                // Pass slideScripts, presentationKeywords and slideSttTexts down so keywords
+                // and offsets are applied consistently for L1/L2 analyses
                 result = repetitiveTextAnalysisService.analyzeRepetition(
-                        fullSttText, slideTransitions, segments, slideScripts, null, slideSttTexts);
+                        fullSttText, slideTransitions, segments, slideScripts, presentationKeywords, slideSttTexts);
             } else {
-                // No slide timing info: still pass slideScripts (may be used for keyword
-                // derivation). slideSttTexts may be null here.
-                result = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, null, null, slideScripts, null,
+                // No slide timing info: still pass slideScripts and presentationKeywords
+                // (may be used for keyword derivation). slideSttTexts may be null here.
+                result = repetitiveTextAnalysisService.analyzeRepetition(fullSttText, null, null, slideScripts,
+                        presentationKeywords,
                         slideSttTexts);
             }
 
