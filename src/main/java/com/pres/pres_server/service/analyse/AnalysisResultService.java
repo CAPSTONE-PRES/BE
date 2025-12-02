@@ -441,26 +441,37 @@ public class AnalysisResultService {
         RepetitiveTextAnalysisService.RepetitionAnalysisResult slideRep = slideAnalysis.getSlideRepetitionAnalysis();
         log.info("DEBUG: slideRep is null? {}", (slideRep == null));
         if (slideRep != null) {
-            log.info("DEBUG: slideRep.isSuccess()={}, L1 size={}", 
-                slideRep.isSuccess(), 
-                slideRep.getWordRepetitions() != null ? slideRep.getWordRepetitions().size() : 0);
+            log.info("DEBUG: slideRep.isSuccess()={}, L1 size={}",
+                    slideRep.isSuccess(),
+                    slideRep.getWordRepetitions() != null ? slideRep.getWordRepetitions().size() : 0);
         }
         Map<String, List<OffsetDto>> patternOffsetMap = new HashMap<>();
 
         if (slideRep != null && slideRep.isSuccess()) {
             // 1) L1: 단어 반복(wordRepetitions) - presentation keywords 필터링 완료된 상태
             if (slideRep.getWordRepetitions() != null) {
+                int totalOffsets = 0;
+                int mappedOffsets = 0;
+                int unmappedOffsets = 0;
+
                 for (RepetitiveTextAnalysisService.WordRepetition wr : slideRep.getWordRepetitions()) {
                     if (wr == null || wr.getOffsets() == null)
                         continue;
                     String word = wr.getWord();
+                    log.debug("  • Processing L1 word: '{}', offsets count: {}", word, wr.getOffsets().size());
+
                     for (RepetitiveTextAnalysisService.Offset o : wr.getOffsets()) {
+                        totalOffsets++;
                         if (o == null)
                             continue;
                         Integer sIdx = o.getSlideIndex();
-                        if (sIdx == null)
+                        if (sIdx == null) {
+                            unmappedOffsets++;
+                            log.debug("    - Offset [{}:{}] has null slideIndex, skipping", o.getBegin(), o.getEnd());
                             continue; // 슬라이드 매핑 안 된 건 버림
+                        }
 
+                        mappedOffsets++;
                         OffsetDto dto = OffsetDto.builder()
                                 .slideIndex(sIdx)
                                 .begin(o.getBegin())
@@ -470,6 +481,8 @@ public class AnalysisResultService {
                         patternOffsetMap.computeIfAbsent(word, k -> new ArrayList<>()).add(dto);
                     }
                 }
+                log.info("  • L1 offset mapping stats - Total: {}, Mapped: {}, Unmapped (filtered): {}", 
+                    totalOffsets, mappedOffsets, unmappedOffsets);
             }
 
             // 2) L3: N-gram 반복(nGramPatterns) - 참고용으로 수집 (프론트에서는 L1 사용)
@@ -495,6 +508,8 @@ public class AnalysisResultService {
                     }
                 }
             }
+        } else {
+            log.warn("  • slideRep is null or not successful, cannot collect L1 patterns");
         }
         log.info("  • L1 repetition (word) patterns collected from slide analysis: {}, keys={}",
                 patternOffsetMap.size(), patternOffsetMap.keySet());

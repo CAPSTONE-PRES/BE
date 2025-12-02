@@ -243,17 +243,23 @@ public class RepetitiveTextAnalysisService {
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
             try {
                 slideStartIndices = slideSegmentExtractor.computeSlideStartOffsets(sttText, slideSttTexts);
+                log.info("  • Computed slideStartIndices: {} indices for {} slides",
+                        slideStartIndices != null ? slideStartIndices.size() : 0, slideSttTexts.size());
+                if (slideStartIndices != null && !slideStartIndices.isEmpty()) {
+                    log.debug("    slideStartIndices sample: {}",
+                            slideStartIndices.subList(0, Math.min(3, slideStartIndices.size())));
+                }
             } catch (Exception ex) {
-                log.debug("Failed to compute slide start indices: {}", ex.getMessage());
+                log.warn("Failed to compute slide start indices: {}", ex.getMessage());
                 slideStartIndices = null;
             }
+        } else {
+            log.info("  • slideSttTexts not provided or empty (size={}), slideIndex mapping will use fallback",
+                    slideSttTexts != null ? slideSttTexts.size() : 0);
         }
 
-        // Fallback: if we couldn't compute slideStartIndices but have
-        // segments+transitions
-        // attempt to build slideSttTexts from segments and recompute start indices.
+        // Fallback
         if ((slideStartIndices == null || slideStartIndices.isEmpty())
-                && (slideSttTexts == null || slideSttTexts.isEmpty())
                 && segments != null && slideTransitions != null && !slideTransitions.isEmpty()) {
             try {
                 Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
@@ -280,6 +286,8 @@ public class RepetitiveTextAnalysisService {
             }
         }
 
+        int mappedCount = 0;
+        int unmappedCount = 0;
         for (com.pres.pres_server.service.analyse.utils.KomoranAnalyzer.NormToken nt : normTokens) {
             Integer mappedSlide = null;
             if (slideStartIndices != null && slideSttTexts != null) {
@@ -293,9 +301,15 @@ public class RepetitiveTextAnalysisService {
                     int slideEndGlobal = start + slideLen;
                     if (nt.begin >= start && nt.begin < slideEndGlobal) {
                         mappedSlide = si + 1; // 1-based
+                        mappedCount++;
                         break;
                     }
                 }
+                if (mappedSlide == null) {
+                    unmappedCount++;
+                }
+            } else {
+                unmappedCount++;
             }
             OffsetsMap.computeIfAbsent(nt.norm, k -> new ArrayList<>())
                     .add(Offset.builder().begin(nt.begin).end(nt.end)
@@ -303,6 +317,8 @@ public class RepetitiveTextAnalysisService {
                             .slideIndex(mappedSlide)
                             .build());
         }
+        log.info("  • L1 slideIndex mapping - Mapped: {}, Unmapped: {}, Total tokens: {}",
+                mappedCount, unmappedCount, normTokens.size());
 
         // Debug logging
         log.info("  • Total tokens: {}, Unique tokens: {}", tokens.size(), wordFreq.size());
