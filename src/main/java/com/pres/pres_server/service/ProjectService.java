@@ -5,6 +5,7 @@ import com.pres.pres_server.dto.Projects.*;
 import com.pres.pres_server.repository.*;
 import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +27,6 @@ public class ProjectService {
         private final WorkspaceRepository workspaceRepository;
         private final UserRepository userRepository;
         private final VisitLogService visitLogService;
-        private final PresentationFileRepository presentationFileRepository;
 
         public List<ProjectCalenderListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회

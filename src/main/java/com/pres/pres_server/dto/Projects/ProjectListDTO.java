@@ -27,9 +27,8 @@ public class ProjectListDTO {
 
         if (project.getFiles() != null && !project.getFiles().isEmpty()) {
             PresentationFile firstFile = project.getFiles().get(0);
-            if (firstFile.getImages() != null && !firstFile.getImages().isEmpty()) {
-                thumbnailUrl = firstFile.getImages().get(0).getUrl();
-            }
+            // 규칙 기반 URL 매핑
+            thumbnailUrl = "https://d53mjm0l7jtco.cloudfront.net/" + firstFile.getFileId() + "/page/1/image";
         }
 
         return ProjectListDTO.builder()
