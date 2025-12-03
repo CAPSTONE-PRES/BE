@@ -30,6 +30,18 @@ public class WorkspaceService {
     private final VisitLogRepository visitLogRepository;
     private final ProjectRepository projectRepository;
 
+
+    private String buildProfileUrl(User user) {
+        String baseCdnUrl = "https://d53mjm0l7jtco.cloudfront.net";
+        String defaultProfile = "default-profiles/user1.svg";
+
+        if (user.getProfileImageKey() != null && !user.getProfileImageKey().isEmpty()) {
+            return baseCdnUrl + "/" + user.getProfileImageKey();
+        } else {
+            return baseCdnUrl + "/" + defaultProfile;
+        }
+    }
+
     @Transactional
     public Long createWorkspace(WorkspaceRequest request, User ownerUser) {
         WorkSpace workspace = new WorkSpace();
@@ -175,7 +187,7 @@ public class WorkspaceService {
         dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         // dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         dto.setWorkspaceOwnerName(workspace.getOwnerUserId().getUsername());
-        dto.setWorkspaceOwnerProfileUrl(workspace.getOwnerUserId().getProfileImageUrl());
+        dto.setWorkspaceOwnerProfileUrl(buildProfileUrl(workspace.getOwnerUserId()));
 
         // classtime1~3 -> 리스트 변환 (String)
         List<String> timeList = new ArrayList<>();
@@ -195,7 +207,8 @@ public class WorkspaceService {
                         member.getUser().getId(),
                         member.getUser().getEmail(),
                         member.getUser().getUsername(),
-                        member.getUser().getProfileImageUrl()))
+                        buildProfileUrl(member.getUser())  // S3 key -> CloudFront URL 변환
+                ))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
 
