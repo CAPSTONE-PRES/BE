@@ -30,7 +30,8 @@ public class CommentResponseDTO {
                 .commentId(comment.getCommentId())
                 .authorUserId(comment.getAuthorUser().getId())
                 .authorName(comment.getAuthorUser().getUsername())
-                .authorProfileImageUrl(comment.getAuthorUser().getProfileImageUrl())
+                .authorProfileImageUrl(comment.getAuthorUser().getProfileImageKey() != null ?
+                        buildS3Url(comment.getAuthorUser().getProfileImageKey()) : null)
                 .content(comment.getContent())
                 .location(comment.getLocation())
                 .editable(comment.getAuthorUser().getId().equals(currentUser.getId()))
@@ -41,5 +42,9 @@ public class CommentResponseDTO {
                                 .collect(Collectors.toList())
                         : new ArrayList<>())
                 .build();
+    }
+
+    private static String buildS3Url(String key) {
+        return "https://your-bucket-name.s3.amazonaws.com/" + key;
     }
 }
