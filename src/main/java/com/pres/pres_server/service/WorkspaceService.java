@@ -277,6 +277,7 @@ public class WorkspaceService {
                     dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
                     dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
 
+
                     List<String> timeList = new ArrayList<>();
                     if (ws.getClasstime1() != null) timeList.add(ws.getClasstime1());
                     if (ws.getClasstime2() != null) timeList.add(ws.getClasstime2());
