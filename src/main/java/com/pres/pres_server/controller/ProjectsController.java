@@ -117,7 +117,7 @@ public class ProjectsController {
 
     @Operation(summary = "프로젝트 검색", description = "이름에 해당 키워드를 갖고 있는 프로젝트를 반환합니다.")
     @GetMapping("/projects/search")
-    public List<ProjectCalenderListDTO> searchProjects(
+    public List<ProjectSearchListDTO> searchProjects(
             @AuthenticationPrincipal User user,
             @RequestParam("title") String title) {
         return projectService.searchProjectsByTitle(user.getId(), title);

@@ -73,27 +73,35 @@ public class ProjectService {
         }
 
 
-        public List<ProjectCalenderListDTO> searchProjectsByTitle(Long userId, String title) {
-                // 1. 사용자가 속한 workspace 조회
+        public List<ProjectSearchListDTO> searchProjectsByTitle(Long userId, String title) {
+                // workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
-                                .map(tm -> tm.getWorkspace().getWorkspaceId())
-                                .toList();
+                        .map(tm -> tm.getWorkspace().getWorkspaceId())
+                        .toList();
 
-                // 2. workspace에 속한 프로젝트 조회
+                // workspace에 속한 프로젝트 조회
                 List<Project> projects = projectRepository
-                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                        .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
 
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
-                                .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase())) // 제목 포함 검색
-                                .map(p -> new ProjectCalenderListDTO(
-                                                p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                                                p.getProjectId(),
-                                                p.getTitle(),
-                                                p.getWorkspaceId().getWorkspaceName()))
-                                .toList();
+                        .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase()))
+                        .map(p -> {
+                                String thumbnailUrl = p.getFiles() != null && !p.getFiles().isEmpty()
+                                        ? p.getFiles().get(0).getFileUrl()  // 첫 번째 파일 URL
+                                        : null;
+                                return new ProjectSearchListDTO(
+                                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                        p.getProjectId(),
+                                        p.getTitle(),
+                                        p.getWorkspaceId().getWorkspaceName(),
+                                        thumbnailUrl
+                                );
+                        })
+                        .toList();
         }
+
 
         /*public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
 
@@ -218,19 +226,40 @@ public class ProjectService {
         }
 
         // 프로젝트 삭제 서비스
+//        @Transactional
+//        public void deleteProject(Long projectId, User user) {
+//                Project project = projectRepository.findById(projectId)
+//                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+//
+//                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
+//                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
+//                        && !project.getPresenter().getId().equals(user.getId())) {
+//                        throw new RuntimeException("권한이 없습니다.");
+//                }
+//
+//                projectRepository.delete(project);
+//        }
         @Transactional
         public void deleteProject(Long projectId, User user) {
                 Project project = projectRepository.findById(projectId)
                         .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
 
-                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
-                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
-                        && !project.getPresenter().getId().equals(user.getId())) {
+                // 삭제 권한 : 워크스페이스의 소유자 또는 발표자만 삭제 가능
+                boolean isOwner = project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId());
+                boolean isPresenter = project.getPresenter() != null
+                        && project.getPresenter().getId().equals(user.getId());
+
+                if (!isOwner && !isPresenter) {
                         throw new RuntimeException("권한이 없습니다.");
                 }
 
+                // VisitLog 수동 삭제
+                visitLogRepository.deleteByProject(project);
+
+                // 프로젝트 삭제
                 projectRepository.delete(project);
         }
+
 
         // 특정 프로젝트 정보 반환
         public ProjectInfoDTO getProjectInfo(User user, Long projectId) {
