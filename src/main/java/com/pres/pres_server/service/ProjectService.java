@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -325,5 +326,50 @@ public class ProjectService {
 
                 return projects;
         }
+
+        // 켈린더 Dday 가장 가까운 발표 표기 서비스
+        public ProjectCalenderDdayListDTO getNextProject(Long userId) {
+                // 1. 사용자가 속한 workspace 조회
+                List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
+                List<Long> workspaceIds = members.stream()
+                        .map(tm -> tm.getWorkspace().getWorkspaceId())
+                        .toList();
+
+                // 2. workspace에 속한 프로젝트 조회
+                List<Project> projects = projectRepository
+                        .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+
+                // 3. 현재 이후 날짜 필터
+                LocalDate now = LocalDate.now();
+                Optional<Project> nextProjectOpt = projects.stream()
+                        .filter(p -> p.getDueDate() != null)
+                        .filter(p -> p.getDueDate().isAfter(now)) // 현재 이후 날짜만
+                        .min(Comparator.comparing(Project::getDueDate)); // 가장 빠른 날짜
+
+                if (nextProjectOpt.isEmpty()) {
+                        return null; // 또는 Optional 반환 가능
+                }
+
+                Project nextProject = nextProjectOpt.get();
+
+                // 4. 첫 번째 파일 첫 번째 이미지 썸네일 생성 (Base URL 활용)
+                String thumbnail = null;
+                List<PresentationFile> files = nextProject.getFiles();
+                if (!files.isEmpty()) {
+                        Long fileId = files.get(0).getFileId();
+                        thumbnail = "/baseUrl/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                }
+
+                // 5. DTO 생성
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                return new ProjectCalenderDdayListDTO(
+                        nextProject.getDueDate().format(formatter),
+                        nextProject.getProjectId(),
+                        nextProject.getTitle(),
+                        nextProject.getWorkspaceId().getWorkspaceName(),
+                        thumbnail
+                );
+        }
+
 
 }

@@ -86,6 +86,18 @@ public class ProjectsController {
         return projectService.getProjectsByUserId(user.getId());
     }
 
+    @GetMapping("/projects/next")
+    @Operation(summary = "가장 가까운 발표 하나 반환", description = "현재 시간 이후의 가장 가까운 발표 반환")
+    public ResponseEntity<ProjectCalenderDdayListDTO> getNextProject(@AuthenticationPrincipal User user) {
+        ProjectCalenderDdayListDTO dto = projectService.getNextProject(user.getId());
+
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "예정된 발표가 없습니다.");
+        }
+
+        return ResponseEntity.ok(dto);
+    }
+
     @Operation(summary = "특정 날짜에 해당하는 프로젝트 반환", description = "특정 날짜에 해당하는 프로젝트 정보를 반환, 달력에 사용")
     @GetMapping("/projects/list/date")
     public List<ProjectCalenderListDTO> getMyProjectsByDate(
