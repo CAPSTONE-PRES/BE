@@ -239,11 +239,11 @@ public class AnalysisResultService {
 
         // 6. 총점 계산 (SPM 20% + Filler 15% + Repeat 15% + Silence 15% + Accuracy 35%)
         int totalScore = (int) Math.round(
-                avgSpmScore * 0.2 +
-                        fillerScore * 0.15 +
-                        repeatScore * 0.15 +
-                        silenceScore * 0.15 +
-                        accuracyScore * 0.35);
+                avgSpmScore * 0.20 +
+                        fillerScore * 0.20 +
+                        repeatScore * 0.20 +
+                        silenceScore * 0.20 +
+                        accuracyScore * 0.20);
         feedback.setTotalScore(totalScore);
 
         // 7. 등급 계산
@@ -481,8 +481,8 @@ public class AnalysisResultService {
                         patternOffsetMap.computeIfAbsent(word, k -> new ArrayList<>()).add(dto);
                     }
                 }
-                log.info("  • L1 offset mapping stats - Total: {}, Mapped: {}, Unmapped (filtered): {}", 
-                    totalOffsets, mappedOffsets, unmappedOffsets);
+                log.info("  • L1 offset mapping stats - Total: {}, Mapped: {}, Unmapped (filtered): {}",
+                        totalOffsets, mappedOffsets, unmappedOffsets);
             }
 
             // 2) L3: N-gram 반복(nGramPatterns) - 참고용으로 수집 (프론트에서는 L1 사용)
@@ -854,8 +854,8 @@ public class AnalysisResultService {
             if (accuracyResults != null && i < accuracyResults.size()) {
                 ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
                 if (accuracyResult.isSuccess()) {
-                    // 정확도가 낮은 경우만 이슈로 표시 (scriptSimilarity 0.3 미만)
-                    if (accuracyResult.getScriptSimilarity() <= 0.30) {
+                    // 정확도가 낮은 경우만 이슈로 표시 (scriptSimilarity 0.50 미만)
+                    if (accuracyResult.getScriptSimilarity() < 0.50) {
                         // don't persist legacy error_count for ACCURACY (use IssueDto.similarity
                         // instead)
                         slideFeedback.setErrorCount(null);
