@@ -114,7 +114,7 @@ public class GenerateQnaService {
      * Controller에서는 이 메서드만 호출하면 됨
      */
     public QnaGenerateResponseDto generateAndSaveQnaWithResponse(Long fileId) {
-        
+
         String fullText = extractTextService.getFullTextByFileId(fileId);
         var savedQuestions = generateAndSaveQna(fullText, fileId);
         QnaListDto qnaListDto = getSavedQnaAsDto(fileId);
@@ -175,7 +175,6 @@ public class GenerateQnaService {
         }
 
         try {
-
             // Jackson ObjectMapper를 사용한 JSON 파싱
             // (공유 빈으로 주입되어 JsonReadFeature는 AppConfig에서 설정됨)
 
@@ -194,8 +193,6 @@ public class GenerateQnaService {
                         .replace("\\t", "\t") // 이스케이프된 탭
                         .replace("\\/", "/") // 이스케이프된 슬래시
                         .replace("\\\\", "\\"); // 이스케이프된 백슬래시 (마지막에 처리)
-
-                log.debug("정리된 JSON:\n{}", cleanedResponse);
             }
 
             JsonNode rootNode = objectMapper.readTree(cleanedResponse);
@@ -223,8 +220,6 @@ public class GenerateQnaService {
                         continue;
                     }
 
-                    log.debug("Q{} 저장 시작", index);
-
                     // 질문 저장
                     QnaQuestion question = new QnaQuestion();
                     question.setPresentationFile(presentationFile);
@@ -237,17 +232,7 @@ public class GenerateQnaService {
                     question.setCreated_at(LocalDateTime.now());
                     question.setUpdated_at(LocalDateTime.now());
 
-                    // 질문 엔티티 유효성 검사 로그
-                    log.debug("질문 엔티티 생성 완료 - presentationFile ID: {}, body length: {}",
-                            presentationFile.getFileId(), questionText.trim().length());
-
                     QnaQuestion savedQuestion = qnaQuestionRepository.save(question);
-                    log.debug("Q{} 질문 저장 완료, ID: {}", index, savedQuestion.getQnaId());
-
-                    // 트랜잭션 상태 확인
-                    log.debug("트랜잭션 활성 상태: {}",
-                            org.springframework.transaction.support.TransactionSynchronizationManager
-                                    .isActualTransactionActive());
 
                     savedQuestions.add(savedQuestion);
 
@@ -261,10 +246,6 @@ public class GenerateQnaService {
                     answer.setConfidence(0.8f);
                     answer.setCreatedAt(LocalDateTime.now());
                     answer.setUpdatedAt(LocalDateTime.now());
-
-                    // 답변 엔티티 유효성 검사 로그
-                    log.debug("답변 엔티티 생성 완료 - questionId: {}, body length: {}",
-                            savedQuestion.getQnaId(), answerText.trim().length());
 
                     qnaAnswerRepository.save(answer);
                     log.debug("Q{} 답변 저장 완료", index);
@@ -504,9 +485,6 @@ public class GenerateQnaService {
         Map<String, Object> responseFormat = new HashMap<>();
         responseFormat.put("type", "json_object");
         requestBody.put("response_format", responseFormat);
-
-        // 요청 확인 로그
-        log.debug("요청 본문: {}", requestBody);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
