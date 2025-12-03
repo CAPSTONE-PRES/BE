@@ -5,6 +5,7 @@ import com.pres.pres_server.dto.Projects.*;
 import com.pres.pres_server.repository.*;
 import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProjectService {
         private final ProjectRepository projectRepository;
         private final TeamMemberRepository teamMemberRepository;
@@ -200,8 +202,16 @@ public class ProjectService {
                 // 발표 제한 시간 처리
                 if (request.getLimitedTime() != null) {
                         LimitedTimeDTO lt = request.getLimitedTime();
-                        project.setLimitedTime(Duration.ofMinutes(lt.getMinute()).plusSeconds(lt.getSecond()));
+                    log.info("Request LimitedTime - Minute: {}, Second: {}", lt.getMinute(), lt.getSecond());
+
+                    //project.setLimitedTime(Duration.ofMinutes(lt.getMinute()).plusSeconds(lt
+                    // .getSecond()));
+                    Duration duration = Duration.ofMinutes(lt.getMinute()).plusSeconds(lt.getSecond());
+
+                    log.info("Created Duration: {} seconds", duration.getSeconds());
+                    project.setLimitedTime(duration);
                 }
+                log.info("Set limited time:" + project.getLimitedTime());
 
                 return projectRepository.save(project);
         }
