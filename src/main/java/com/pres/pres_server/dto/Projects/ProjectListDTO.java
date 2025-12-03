@@ -2,6 +2,7 @@ package com.pres.pres_server.dto.Projects;
 
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.Project;
+import com.pres.pres_server.service.user.UserService;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -22,7 +23,7 @@ public class ProjectListDTO {
     private String presenterProfileUrl;
     private String lastVisited;
 
-    public static ProjectListDTO from(Project project) {
+    public static ProjectListDTO from(Project project, UserService userService) {
         String thumbnailUrl = null;
 
         if (project.getFiles() != null && !project.getFiles().isEmpty()) {
@@ -38,7 +39,8 @@ public class ProjectListDTO {
                 .Date(project.getDueDate())
                 .workspaceName(project.getWorkspaceId().getWorkspaceName())
                 .presenterName(project.getPresenter() != null ? project.getPresenter().getUsername() : null)
-                .presenterProfileUrl(project.getPresenter() != null ? project.getPresenter().getProfileImageUrl() : null)
-                .build();
+                .presenterProfileUrl(
+                        project.getPresenter() != null ? userService.resolveProfileUrl(project.getPresenter()) : null
+                )                .build();
     }
 }

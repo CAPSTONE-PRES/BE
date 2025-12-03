@@ -107,7 +107,7 @@ public class WorkspaceController {
     @Operation(summary = "워크스페이스 정보 반환", description = "워크스페이스에 저장된 정보를 불러옵니다.")
     @GetMapping("/{workspaceId}/info")
     public WorkspaceInfoDTO getWorkspaceInfo(@PathVariable Long workspaceId,@AuthenticationPrincipal User user) {
-        return workspaceService.getWorkspaceInfo(user, workspaceId);
+        return workspaceService.getWorkspaceInfo(user, workspaceId, userService);
     }
 
     @Operation(summary = "워크스페이스 이름으로 검색", description = "워크스페이스 이름을 기준으로 검색합니다.")
@@ -116,7 +116,7 @@ public class WorkspaceController {
             @RequestParam String keyword,
             @AuthenticationPrincipal User user
     ) {
-        List<WorkspaceInfoDTO> results = workspaceService.searchWorkspaces(keyword, user);
+        List<WorkspaceInfoDTO> results = workspaceService.searchWorkspaces(keyword, user, userService);
         return ResponseEntity.ok(results);
     }
 
@@ -131,7 +131,7 @@ public class WorkspaceController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
         }
 
-        return workspaceService.getWorkspaceList(user, type);
+        return workspaceService.getWorkspaceList(user, type, userService);
     }
 
     @GetMapping("/{workspaceId}/projects/list")
@@ -145,7 +145,7 @@ public class WorkspaceController {
 
         List<ProjectListDTO> response = projects.stream()
                 .map(project -> {
-                    ProjectListDTO dto = ProjectListDTO.from(project);
+                    ProjectListDTO dto = ProjectListDTO.from(project, userService);
 
                     // lastVisited 세팅
                     visitLogRepository.findTopByUserAndProjectOrderByVisitedAtDesc(user, project)

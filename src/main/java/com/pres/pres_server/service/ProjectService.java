@@ -27,6 +27,7 @@ public class ProjectService {
         private final WorkspaceRepository workspaceRepository;
         private final UserRepository userRepository;
         private final VisitLogService visitLogService;
+        private final UserService userService;
 
         public List<ProjectCalenderListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
@@ -166,7 +167,7 @@ public class ProjectService {
                                         .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
                                         .orElse(null);
 
-                                ProjectListDTO dto = ProjectListDTO.from(project);
+                                ProjectListDTO dto = ProjectListDTO.from(project, userService);
                                 dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
 
                                 return dto;

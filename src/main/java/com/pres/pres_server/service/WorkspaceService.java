@@ -29,18 +29,6 @@ public class WorkspaceService {
     private final VisitLogRepository visitLogRepository;
     private final ProjectRepository projectRepository;
 
-
-    private String buildProfileUrl(User user) {
-        String baseCdnUrl = "https://d53mjm0l7jtco.cloudfront.net";
-        String defaultProfile = "default-profiles/user1.svg";
-
-        if (user.getProfileImageKey() != null && !user.getProfileImageKey().isEmpty()) {
-            return baseCdnUrl + "/" + user.getProfileImageKey();
-        } else {
-            return baseCdnUrl + "/" + defaultProfile;
-        }
-    }
-
     @Transactional
     public Long createWorkspace(WorkspaceRequest request, User ownerUser) {
         WorkSpace workspace = new WorkSpace();
@@ -173,7 +161,7 @@ public class WorkspaceService {
 
 
     // 워크스페이스 정보 가져오기
-    public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId) {
+    public WorkspaceInfoDTO getWorkspaceInfo(User user,Long workspaceId,UserService userService) {
         WorkSpace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new RuntimeException("워크스페이스 없음"));
 
@@ -186,8 +174,9 @@ public class WorkspaceService {
         dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         // dto.setIsOwner(workspace.getOwnerUserId().getId().equals(user.getId()));
         dto.setWorkspaceOwnerName(workspace.getOwnerUserId().getUsername());
-        dto.setWorkspaceOwnerProfileUrl(buildProfileUrl(workspace.getOwnerUserId()));
-
+        dto.setWorkspaceOwnerProfileUrl(
+                userService.resolveProfileUrl(workspace.getOwnerUserId())
+        );
         // classtime1~3 -> 리스트 변환 (String)
         List<String> timeList = new ArrayList<>();
         if (workspace.getClasstime1() != null)
@@ -206,7 +195,7 @@ public class WorkspaceService {
                         member.getUser().getId(),
                         member.getUser().getEmail(),
                         member.getUser().getUsername(),
-                        buildProfileUrl(member.getUser())
+                        userService.resolveProfileUrl(member.getUser())   // ← 이 부분 수정됨!
                 ))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
@@ -220,19 +209,22 @@ public class WorkspaceService {
                 .min(LocalDate::compareTo);
         dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
 
-        // thumbnailList (각 프로젝트 파일 첫 페이지 URL 최대 4개)
+        // thumbnailList (각 프로젝트의 첫 번째 파일 기준 최대 4개)
         List<String> thumbnailList = new ArrayList<>();
+
         for (Project project : projects) {
-            List<PresentationFile> files = project.getFiles(); // 여기가 key!
-            for (PresentationFile file : files) {
-                List<PresentationImage> images = file.getImages();
-                if (!images.isEmpty()) {
-                    thumbnailList.add(images.get(0).getUrl()); // 첫 페이지 URL
-                } else {
-                    thumbnailList.add(null);
-                }
-                if (thumbnailList.size() >= 4) break; // 최대 4개
+            List<PresentationFile> files = project.getFiles();
+
+            if (files != null && !files.isEmpty()) {
+                Long fileId = files.get(0).getFileId();
+
+                // 규칙 기반 URL 생성
+                String url = "https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image";
+                thumbnailList.add(url);
+            } else {
+                thumbnailList.add(null);
             }
+
             if (thumbnailList.size() >= 4) break;
         }
 
@@ -245,7 +237,7 @@ public class WorkspaceService {
     }
 
     // 워크스페이스 리스트로 전부 받기
-    public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type) {
+    public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type, UserService userService) {
 
         List<WorkSpace> workspaces;
 
@@ -275,8 +267,9 @@ public class WorkspaceService {
                     dto.setWorkspaceId(ws.getWorkspaceId());
                     dto.setWorkspaceName(ws.getWorkspaceName());
                     dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
-                    dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
-
+                    dto.setWorkspaceOwnerProfileUrl(
+                            userService.resolveProfileUrl(ws.getOwnerUserId())
+                    );
 
                     List<String> timeList = new ArrayList<>();
                     if (ws.getClasstime1() != null) timeList.add(ws.getClasstime1());
@@ -297,7 +290,8 @@ public class WorkspaceService {
                                     member.getUser().getId(),
                                     member.getUser().getEmail(),
                                     member.getUser().getUsername(),
-                                    member.getUser().getProfileImageUrl()))
+                                    userService.resolveProfileUrl(member.getUser())
+                            ))
                             .collect(Collectors.toList());
                     dto.setWorkspaceMemberList(members);
 
@@ -392,7 +386,7 @@ public class WorkspaceService {
 
     // 워크스페이스 검색
     @Transactional(readOnly = true)
-    public List<WorkspaceInfoDTO> searchWorkspaces(String keyword, User user) {
+    public List<WorkspaceInfoDTO> searchWorkspaces(String keyword, User user,UserService userService) {
 
         List<WorkSpace> workspaces = workspaceRepository.findByWorkspaceNameContainingIgnoreCase(keyword);
 
@@ -401,7 +395,9 @@ public class WorkspaceService {
             dto.setWorkspaceId(ws.getWorkspaceId());
             dto.setWorkspaceName(ws.getWorkspaceName());
             dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
-            dto.setWorkspaceOwnerProfileUrl(ws.getOwnerUserId().getProfileImageUrl());
+            dto.setWorkspaceOwnerProfileUrl(
+                    userService.resolveProfileUrl(ws.getOwnerUserId())
+            );
             dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
 
             // 방문 로그 (최근 방문 시간)
@@ -426,7 +422,7 @@ public class WorkspaceService {
                                     member.getUser().getId(),
                                     member.getUser().getEmail(),
                                     member.getUser().getUsername(),
-                                    member.getUser().getProfileImageUrl()
+                                    userService.resolveProfileUrl(member.getUser())
                             ))
                             .collect(Collectors.toList())
             );
