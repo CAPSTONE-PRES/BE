@@ -2,6 +2,7 @@ package com.pres.pres_server.service;
 
 import com.pres.pres_server.domain.*;
 import com.pres.pres_server.dto.Workspace.*;
+import com.pres.pres_server.dto.file.FileInfoDto;
 import com.pres.pres_server.repository.*;
 import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
@@ -11,11 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -211,6 +210,36 @@ public class WorkspaceService {
                 ))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
+
+        // 가장 가까운 발표 날짜(upComingDate)
+        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId);
+        Optional<LocalDate> nextDateOpt = projects.stream()
+                .map(Project::getDueDate)
+                .filter(Objects::nonNull)
+                .filter(date -> date.isAfter(LocalDate.now()))
+                .min(LocalDate::compareTo);
+        dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
+
+        // thumbnailList (각 프로젝트 파일 첫 페이지 URL 최대 4개)
+        List<String> thumbnailList = new ArrayList<>();
+        for (Project project : projects) {
+            List<PresentationFile> files = project.getFiles(); // 여기가 key!
+            for (PresentationFile file : files) {
+                List<PresentationImage> images = file.getImages();
+                if (!images.isEmpty()) {
+                    thumbnailList.add(images.get(0).getUrl()); // 첫 페이지 URL
+                } else {
+                    thumbnailList.add(null);
+                }
+                if (thumbnailList.size() >= 4) break; // 최대 4개
+            }
+            if (thumbnailList.size() >= 4) break;
+        }
+
+        // 4개 미만이면 null 채우기
+        while (thumbnailList.size() < 4) thumbnailList.add(null);
+        dto.setThumbnailList(thumbnailList);
+
 
         return dto;
     }

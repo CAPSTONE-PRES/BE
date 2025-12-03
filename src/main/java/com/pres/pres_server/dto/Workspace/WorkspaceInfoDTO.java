@@ -23,4 +23,7 @@ public class WorkspaceInfoDTO {
     private String workspaceOwnerProfileUrl;
     private List<WorkspaceMemberDTO> workspaceMemberList;
 
+    private String upComingDate;          // 발표 없으면 null
+    private List<String> thumbnailList;   // 최대 4개, 부족하면 null 채움
+
 }
