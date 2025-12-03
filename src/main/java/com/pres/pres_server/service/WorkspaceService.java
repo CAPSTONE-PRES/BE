@@ -206,7 +206,7 @@ public class WorkspaceService {
                         member.getUser().getId(),
                         member.getUser().getEmail(),
                         member.getUser().getUsername(),
-                        buildProfileUrl(member.getUser())  // S3 key -> CloudFront URL 변환
+                        buildProfileUrl(member.getUser())
                 ))
                 .collect(Collectors.toList());
         dto.setWorkspaceMemberList(members);
