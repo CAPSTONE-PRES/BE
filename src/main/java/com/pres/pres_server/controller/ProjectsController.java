@@ -92,10 +92,6 @@ public class ProjectsController {
     public ResponseEntity<ProjectCalenderDdayListDTO> getNextProject(@AuthenticationPrincipal User user) {
         ProjectCalenderDdayListDTO dto = projectService.getNextProject(user.getId());
 
-        if (dto == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "예정된 발표가 없습니다.");
-        }
-
         return ResponseEntity.ok(dto);
     }
 

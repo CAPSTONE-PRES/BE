@@ -348,7 +348,7 @@ public class ProjectService {
                 LocalDate now = LocalDate.now();
                 Optional<Project> nextProjectOpt = projects.stream()
                         .filter(p -> p.getDueDate() != null)
-                        .filter(p -> p.getDueDate().isAfter(now)) // 현재 이후 날짜만
+                        .filter(p -> !p.getDueDate().isBefore(now)) // 오늘 포함 이후만 필터링
                         .min(Comparator.comparing(Project::getDueDate)); // 가장 빠른 날짜
 
                 if (nextProjectOpt.isEmpty()) {

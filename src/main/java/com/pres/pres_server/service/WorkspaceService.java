@@ -300,7 +300,7 @@ public class WorkspaceService {
                     Optional<LocalDate> nextDateOpt = projects.stream()
                             .map(Project::getDueDate)
                             .filter(Objects::nonNull)
-                            .filter(date -> date.isAfter(LocalDate.now()))
+                            .filter(date -> !date.isBefore(LocalDate.now()))
                             .min(LocalDate::compareTo);
                     dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
 
