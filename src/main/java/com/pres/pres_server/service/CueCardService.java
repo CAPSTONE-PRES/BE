@@ -14,6 +14,7 @@ import com.pres.pres_server.repository.CueCardCheckMemberRepository;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.TeamMemberRepository;
+import com.pres.pres_server.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -36,6 +37,8 @@ public class CueCardService {
     private final TeamMemberRepository teamMemberRepository;
     private final CueCardCheckMemberRepository cueCardCheckMemberRepository;
     private final PresentationFileRepository presentationFileRepository;
+    private final UserService userService;
+
 
     // 큐카드 페이지별 불러오기
     @Transactional(readOnly = true)
@@ -198,7 +201,7 @@ public class CueCardService {
                         tm.getUser().getId(),
                         tm.getUser().getEmail(),
                         tm.getUser().getUsername(),
-                        tm.getUser().getProfileImageUrl()
+                        userService.resolveProfileUrl(tm.getUser())
                 ))
                 .toList();
 
