@@ -120,6 +120,78 @@ public class PracticeSessionService {
                 practiceSessionRepository.save(session);
                 log.info(" 세션 audioUrl 업데이트 완료 - audioUrl: {}", fileInfo.getFileUrl());
 
+                // 5. 전체 피드백 생성 (AI)
+                Feedback feedback = feedbackRepository.findByPracticeSessionSessionId(sessionId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "피드백을 찾을 수 없습니다. sessionId: " + sessionId));
+
+                if (feedback.getOverallComment() == null || feedback.getOverallComment().isBlank()) {
+                        // Determine lowest scoring issue among the five score fields
+                        String lowestIssueType = null;
+                        Integer lowestScore = null;
+                        Map<String, Integer> scoreMap = new LinkedHashMap<>();
+                        scoreMap.put("SPEED", feedback.getSpmScore());
+                        scoreMap.put("FILLER", feedback.getFillerScore());
+                        scoreMap.put("REPETITION", feedback.getRepeatScore());
+                        scoreMap.put("SILENCE", feedback.getSilenceScore());
+                        scoreMap.put("ACCURACY", feedback.getAccuracyScore());
+
+                        for (Map.Entry<String, Integer> e : scoreMap.entrySet()) {
+                                Integer v = e.getValue();
+                                if (v == null)
+                                        continue;
+                                if (lowestScore == null || v < lowestScore) {
+                                        lowestScore = v;
+                                        lowestIssueType = e.getKey();
+                                }
+                        }
+
+                        String lowestIssueLabel = lowestIssueType != null ? switch (lowestIssueType) {
+                                case "SPEED" -> "말하기 속도";
+                                case "FILLER" -> "불필요한 추임새";
+                                case "REPETITION" -> "반복되는 어휘";
+                                case "SILENCE" -> "침묵 사용";
+                                case "ACCURACY" -> "발표 정확도";
+                                default -> "발표 전반";
+                        } : "발표 전반";
+
+                        // Aggregate slide-level comments for the selected issue type
+                        StringBuilder agg = new StringBuilder();
+                        try {
+                                List<SlideFeedbackDto> slideFeedbacks = getSlideFeedbacks(feedback.getFeedbackId(),
+                                                new HashMap<>());
+                                for (SlideFeedbackDto s : slideFeedbacks) {
+                                        if (s == null || s.getIssues() == null)
+                                                continue;
+                                        for (IssueDto it : s.getIssues()) {
+                                                if (it == null || it.getIssueType() == null)
+                                                        continue;
+                                                if (lowestIssueType.equals(it.getIssueType())) {
+                                                        if (it.getComment() != null && !it.getComment().isBlank()) {
+                                                                if (agg.length() > 0)
+                                                                        agg.append("\n");
+                                                                agg.append("Slide ").append(s.getSlideNumber())
+                                                                                .append(": ").append(it.getComment());
+                                                        }
+                                                }
+                                        }
+                                }
+                        } catch (Exception ignore) {
+                        }
+
+                        String aggregatedComments = agg.length() > 0 ? agg.toString() : "";
+                        try {
+                                String overallFeedback = openAIFeedbackService.generateOverallFeedback(
+                                                String.valueOf(sessionId), lowestIssueLabel,
+                                                aggregatedComments);
+                                feedback.setOverallComment(overallFeedback);
+                                feedbackRepository.save(feedback);
+                                log.info("✅ 전체 피드백 생성 및 저장 완료 - sessionId: {}", sessionId);
+                        } catch (Exception e) {
+                                log.warn("전체 피드백 생성 실패 - sessionId: {}, reason: {}", sessionId, e.getMessage());
+                        }
+                }
+
                 log.info(" 연습 세션 종료 완료 - sessionId: {}", sessionId);
                 return sessionId;
         }
@@ -178,72 +250,6 @@ public class PracticeSessionService {
                 List<PracticeHistoryDto> history = feedbackRepository.findHistoryByProjectIdExcludingSession(
                                 projectId, sessionId, top3);
 
-                // 4. 전체 피드백 생성 (AI)
-                // Determine lowest scoring issue among the five score fields: SPM(SPEED),
-                // FILLER, REPETITION, SILENCE, ACCURACY
-                String lowestIssueType = null;
-                Integer lowestScore = null;
-                Map<String, Integer> scoreMap = new LinkedHashMap<>();
-                scoreMap.put("SPEED", feedback.getSpmScore());
-                scoreMap.put("FILLER", feedback.getFillerScore());
-                scoreMap.put("REPETITION", feedback.getRepeatScore());
-                scoreMap.put("SILENCE", feedback.getSilenceScore());
-                scoreMap.put("ACCURACY", feedback.getAccuracyScore());
-
-                for (Map.Entry<String, Integer> e : scoreMap.entrySet()) {
-                        Integer v = e.getValue();
-                        if (v == null)
-                                continue;
-                        if (lowestScore == null || v < lowestScore) {
-                                lowestScore = v;
-                                lowestIssueType = e.getKey();
-                        }
-                }
-
-                String lowestIssueLabel = lowestIssueType != null ? switch (lowestIssueType) {
-                        case "SPEED" -> "말하기 속도";
-                        case "FILLER" -> "불필요한 추임새";
-                        case "REPETITION" -> "반복되는 어휘";
-                        case "SILENCE" -> "침묵 사용";
-                        case "ACCURACY" -> "발표 정확도";
-                        default -> "발표 전반";
-                } : "발표 전반";
-
-                String overallFeedback = null;
-                if (lowestIssueType != null) {
-                        // Aggregate slide-level comments for the selected issue type
-                        StringBuilder agg = new StringBuilder();
-                        try {
-                                for (SlideFeedbackDto s : slideFeedbacks) {
-                                        if (s == null || s.getIssues() == null)
-                                                continue;
-                                        for (IssueDto it : s.getIssues()) {
-                                                if (it == null || it.getIssueType() == null)
-                                                        continue;
-                                                if (lowestIssueType.equals(it.getIssueType())) {
-                                                        if (it.getComment() != null && !it.getComment().isBlank()) {
-                                                                if (agg.length() > 0)
-                                                                        agg.append("\n");
-                                                                agg.append("Slide ").append(s.getSlideNumber())
-                                                                                .append(": ").append(it.getComment());
-                                                        }
-                                                }
-                                        }
-                                }
-                        } catch (Exception ignore) {
-                        }
-
-                        String aggregatedComments = agg.length() > 0 ? agg.toString() : "";
-                        try {
-                                overallFeedback = openAIFeedbackService.generateOverallFeedback(
-                                                String.valueOf(sessionId), lowestIssueLabel,
-                                                aggregatedComments);
-                        } catch (Exception e) {
-                                log.warn("전체 AI 피드백 생성 실패 - sessionId={} reason={}", sessionId, e.getMessage());
-                                overallFeedback = null;
-                        }
-                }
-
                 return PracticeFeedbackDto.builder()
                                 .sessionId(sessionId)
                                 .feedbackId(feedback.getFeedbackId())
@@ -258,7 +264,7 @@ public class PracticeSessionService {
                                 .slideFeedbacks(slideFeedbacks)
                                 // full STT text excluded from session feedback response
                                 .history(history)
-                                .overallFeedback(overallFeedback)
+                                .overallFeedback(feedback.getOverallComment())
                                 // QnA 비교 결과는 제외
                                 .build();
         }

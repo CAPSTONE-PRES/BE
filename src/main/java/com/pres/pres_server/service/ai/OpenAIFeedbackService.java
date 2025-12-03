@@ -305,11 +305,10 @@ public class OpenAIFeedbackService {
 
     // 항목별 피드백 생성: silence (침묵 관련, 기존 hesitation 대체용)
     public Map<String, String> generateSilenceFeedback(String slideId, String transcript, int silenceCount,
-                                                       double totalSilenceSec) {
-        String system =
-                "너는 발표 코칭 전문가야. " +
-                        "침묵(멈춤) 사용에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
-                        "문단 대신 짧은 코멘트 한두 문장만 써.";
+            double totalSilenceSec) {
+        String system = "너는 발표 코칭 전문가야. " +
+                "침묵(멈춤) 사용에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
+                "문단 대신 짧은 코멘트 한두 문장만 써.";
 
         String user = String.format(
                 "슬라이드: %s\n전사: %s\n침묵 횟수: %d\n총 침묵(초): %.2f\n\n" +
@@ -339,11 +338,10 @@ public class OpenAIFeedbackService {
 
     // 항목별: 반복 repetition
     public Map<String, String> generateRepetitionFeedback(String slideId, String transcript, int repeatedWordCount,
-                                                          List<String> repeatedWords) {
-        String system =
-                "너는 발표 코칭 전문가야. " +
-                        "반복되는 어휘에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
-                        "문단 대신 짧은 코멘트 한두 문장만 써.";
+            List<String> repeatedWords) {
+        String system = "너는 발표 코칭 전문가야. " +
+                "반복되는 어휘에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
+                "문단 대신 짧은 코멘트 한두 문장만 써.";
 
         String user = String.format(
                 "슬라이드: %s\n전사: %s\n반복 단어 수: %d\n반복 단어 목록: %s\n\n" +
@@ -373,11 +371,10 @@ public class OpenAIFeedbackService {
 
     // 항목별: 필러 filler
     public Map<String, String> generateFillerFeedback(String slideId, String transcript, int fillerCount,
-                                                      List<String> fillerWords) {
-        String system =
-                "너는 발표 코칭 전문가야. " +
-                        "말 속의 추임새(필러)에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
-                        "문단 대신 짧은 코멘트 한두 문장만 써.";
+            List<String> fillerWords) {
+        String system = "너는 발표 코칭 전문가야. " +
+                "말 속의 추임새(필러)에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
+                "문단 대신 짧은 코멘트 한두 문장만 써.";
 
         String user = String.format(
                 "슬라이드: %s\n전사: %s\n필러 총 개수: %d\n필러 목록: %s\n\n" +
@@ -407,10 +404,9 @@ public class OpenAIFeedbackService {
 
     // 항목별: 정확도 accuracy
     public Map<String, String> generateAccuracyFeedback(String slideId, String transcript, String expectedKeyPoints) {
-        String system =
-                "너는 발표 코칭 전문가야. " +
-                        "내용의 정확도와 핵심 포인트 전달 여부에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
-                        "문단 대신 짧은 코멘트 한두 문장만 써.";
+        String system = "너는 발표 코칭 전문가야. " +
+                "내용의 정확도와 핵심 포인트 전달 여부에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
+                "문단 대신 짧은 코멘트 한두 문장만 써.";
 
         String user = String.format(
                 "슬라이드: %s\n전사: %s\n기대 핵심포인트: %s\n\n" +
@@ -418,7 +414,8 @@ public class OpenAIFeedbackService {
                         "- 내용의 정확도가 부족해서 생길 수 있는 혼란과, 발표 전에 정보를 다시 점검하라는 메시지를 한두 문장으로만 한국어 존댓말로 써줘.\n" +
                         "- 아래 예시는 톤 참고용이고, 그대로 쓰면 안 돼.\n" +
                         "  예시1: \"일부 내용이 기대한 핵심 포인트와 다르게 전달되어 청중이 혼란을 느낄 수 있었어요. 발표 전에 핵심 개념을 다시 한 번 정리해보시면 좋겠어요.\"\n" +
-                        "  예시2: \"주요 용어나 수치가 정확히 전달되지 않아 메시지의 설득력이 조금 떨어졌어요. 중요한 정보는 다시 확인하고 정확한 표현을 사용하는 연습을 해보세요.\"\n" +
+                        "  예시2: \"주요 용어나 수치가 정확히 전달되지 않아 메시지의 설득력이 조금 떨어졌어요. 중요한 정보는 다시 확인하고 정확한 표현을 사용하는 연습을 해보세요.\"\n"
+                        +
                         "- 예시는 말투만 참고하고, 실제 문장은 전사와 기대 핵심포인트를 비교한 결과를 기반으로 새로 만들어.\n" +
                         "- 가능하면 전사에서 빠졌거나 왜곡된 핵심포인트가 있다는 느낌을 문장 안에서 직접 언급해줘.\n" +
                         "- 리스트, 번호, 불릿 없이 문장만 출력해.\n" +
@@ -440,10 +437,9 @@ public class OpenAIFeedbackService {
 
     // 항목별: 속도 pace
     public Map<String, String> generatePaceFeedback(String slideId, String transcript, double spm, double idealSpm) {
-        String system =
-                "너는 발표 코칭 전문가야. " +
-                        "말하기 속도에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
-                        "문단 대신 짧은 코멘트 한두 문장만 써.";
+        String system = "너는 발표 코칭 전문가야. " +
+                "말하기 속도에 대해 짧고 명확한 피드백을 한두 문장으로만 제공해. " +
+                "문단 대신 짧은 코멘트 한두 문장만 써.";
 
         String user = String.format(
                 "슬라이드: %s\n전사: %s\n현재 SPM: %.1f\n권장 SPM: %.1f\n\n" +
@@ -478,7 +474,7 @@ public class OpenAIFeedbackService {
     public String generateOverallFeedback(String sessionId, String issueType, String aggregatedComments) {
         String system = """
                 너는 발표 코칭 전문가다.
-                전체 발표 연습 세션에서 가장 개선이 필요한 단 하나의 항목만 골라, 
+                전체 발표 연습 세션에서 가장 개선이 필요한 단 하나의 항목만 골라,
                 아래 톤/스타일을 반드시 따라 한 문장으로 총평을 생성해라.
 
                 ### 톤/스타일 규칙
@@ -493,7 +489,10 @@ public class OpenAIFeedbackService {
                 - 반복되는 표현을 줄이고 다양한 어휘를 사용해보세요!
                 - 발표 정확도를 높이면 발표 완성도가 더 올라갈 거예요!
                 - 좋은 발표였어요! 계속 노력해보세요.
-                (중요) 위 예시 문장들은 '톤 참고용'일 뿐이며, 실제 출력에서는 이 문장들을 그대로 사용하거나 아주 비슷하게 변형해 쓰면 안 된다.
+
+                  (중요)
+                  - 위 예시 문장들 자체를 절대 사용하지 마라.
+                  - 예시 문장을 단순 변형한 형태(동사만 바꾸기, 단어만 치환, 종결만 바꾸기 등)도 금지한다.
                 """;
 
         String user = String.format("""
@@ -508,13 +507,12 @@ public class OpenAIFeedbackService {
                 - 예시 톤과 완전히 동일한 스타일로 작성해.
                 - 리스트/번호/불릿 금지.
                 - JSON 금지.
-                - 최대 200토큰.
+                - 최대 150토큰.
                 """,
                 sessionId,
                 issueType,
                 aggregatedComments == null ? "" : aggregatedComments,
-                issueType
-        );
+                issueType);
 
         try {
             String content = executeChatRequest(system, user);
@@ -524,7 +522,6 @@ public class OpenAIFeedbackService {
             return null;
         }
     }
-
 
     // response_format helpers: build a strict json_schema expecting a single string
     // field
