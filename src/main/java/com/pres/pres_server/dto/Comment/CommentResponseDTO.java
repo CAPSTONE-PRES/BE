@@ -30,8 +30,9 @@ public class CommentResponseDTO {
                 .commentId(comment.getCommentId())
                 .authorUserId(comment.getAuthorUser().getId())
                 .authorName(comment.getAuthorUser().getUsername())
-                .authorProfileImageUrl(comment.getAuthorUser().getProfileImageKey() != null ?
-                        buildS3Url(comment.getAuthorUser().getProfileImageKey()) : null)
+                .authorProfileImageUrl(comment.getAuthorUser().getProfileImageKey() != null
+                        ? buildS3Url(comment.getAuthorUser().getProfileImageKey())
+                        : "https://d53mjm0l7jtco.cloudfront.net/default-profiles/user1.svg")
                 .content(comment.getContent())
                 .location(comment.getLocation())
                 .editable(comment.getAuthorUser().getId().equals(currentUser.getId()))
@@ -45,6 +46,6 @@ public class CommentResponseDTO {
     }
 
     private static String buildS3Url(String key) {
-        return "https://your-bucket-name.s3.amazonaws.com/" + key;
+        return "https://d53mjm0l7jtco.cloudfront.net/" + key;
     }
 }
