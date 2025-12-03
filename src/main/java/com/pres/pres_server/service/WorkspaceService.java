@@ -317,7 +317,7 @@ public class WorkspaceService {
                         if (files != null && !files.isEmpty()) {
                             // 첫 번째 파일 기준
                             Long fileId = files.get(0).getFileId();
-                            thumbnailList.add("https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image");
+                            thumbnailList.add("https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image");
                         } else {
                             thumbnailList.add(null);
                         }
@@ -447,7 +447,7 @@ public class WorkspaceService {
                 if (files != null && !files.isEmpty()) {
                     // 첫 번째 파일 기준
                     Long fileId = files.get(0).getFileId();
-                    thumbnailList.add("https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image");
+                    thumbnailList.add("https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image");
                 } else {
                     thumbnailList.add(null);
                 }
