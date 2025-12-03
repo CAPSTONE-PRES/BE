@@ -29,7 +29,7 @@ public class ProjectListDTO {
         if (project.getFiles() != null && !project.getFiles().isEmpty()) {
             PresentationFile firstFile = project.getFiles().get(0);
             // 규칙 기반 URL 매핑
-            thumbnailUrl = "https://15.164.97.26.nip.io/api/files/" + firstFile.getFileId() + "/page/1/image";
+            thumbnailUrl = "/api/files/" + firstFile.getFileId() + "/page/1/image";
         }
 
         return ProjectListDTO.builder()

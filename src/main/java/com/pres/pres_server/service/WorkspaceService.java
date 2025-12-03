@@ -219,7 +219,7 @@ public class WorkspaceService {
                 Long fileId = files.get(0).getFileId();
 
                 // 규칙 기반 URL 생성
-                String url = "https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image";
+                String url = "/api/files/" + fileId + "/page/1/image";
                 thumbnailList.add(url);
             } else {
                 thumbnailList.add(null);
@@ -311,7 +311,7 @@ public class WorkspaceService {
                         if (files != null && !files.isEmpty()) {
                             // 첫 번째 파일 기준
                             Long fileId = files.get(0).getFileId();
-                            thumbnailList.add("https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image");
+                            thumbnailList.add("/api/files/" + fileId + "/page/1/image");
                         } else {
                             thumbnailList.add(null);
                         }
@@ -443,7 +443,7 @@ public class WorkspaceService {
                 if (files != null && !files.isEmpty()) {
                     // 첫 번째 파일 기준
                     Long fileId = files.get(0).getFileId();
-                    thumbnailList.add("https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image");
+                    thumbnailList.add("/api/files/" + fileId + "/page/1/image");
                 } else {
                     thumbnailList.add(null);
                 }
