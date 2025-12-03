@@ -301,6 +301,34 @@ public class WorkspaceService {
                             .collect(Collectors.toList());
                     dto.setWorkspaceMemberList(members);
 
+                    // 가장 가까운 발표 날짜
+                    List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceId(ws.getWorkspaceId());
+                    Optional<LocalDate> nextDateOpt = projects.stream()
+                            .map(Project::getDueDate)
+                            .filter(Objects::nonNull)
+                            .filter(date -> date.isAfter(LocalDate.now()))
+                            .min(LocalDate::compareTo);
+                    dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
+
+                    // 썸네일 리스트 (최대 4개)
+                    List<String> thumbnailList = new ArrayList<>();
+                    for (Project project : projects) {
+                        List<PresentationFile> files = project.getFiles();
+                        if (files != null && !files.isEmpty()) {
+                            // 첫 번째 파일 기준
+                            Long fileId = files.get(0).getFileId();
+                            thumbnailList.add("https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image");
+                        } else {
+                            thumbnailList.add(null);
+                        }
+
+                        if (thumbnailList.size() >= 4) break; // 최대 4개
+                    }
+
+                    // 4개 미만이면 null 채우기
+                    while (thumbnailList.size() < 4) thumbnailList.add(null);
+
+                    dto.setThumbnailList(thumbnailList);
 
                     return dto;
                 })
@@ -402,6 +430,35 @@ public class WorkspaceService {
                             ))
                             .collect(Collectors.toList())
             );
+
+            // 가장 가까운 발표 날짜
+            List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceId(ws.getWorkspaceId());
+            Optional<LocalDate> nextDateOpt = projects.stream()
+                    .map(Project::getDueDate)
+                    .filter(Objects::nonNull)
+                    .filter(date -> date.isAfter(LocalDate.now()))
+                    .min(LocalDate::compareTo);
+            dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
+
+            // 썸네일 리스트 (최대 4개)
+            List<String> thumbnailList = new ArrayList<>();
+            for (Project project : projects) {
+                List<PresentationFile> files = project.getFiles();
+                if (files != null && !files.isEmpty()) {
+                    // 첫 번째 파일 기준
+                    Long fileId = files.get(0).getFileId();
+                    thumbnailList.add("https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image");
+                } else {
+                    thumbnailList.add(null);
+                }
+
+                if (thumbnailList.size() >= 4) break; // 최대 4개
+            }
+
+            // 4개 미만이면 null 채우기
+            while (thumbnailList.size() < 4) thumbnailList.add(null);
+
+            dto.setThumbnailList(thumbnailList);
 
             return dto;
         }).collect(Collectors.toList());

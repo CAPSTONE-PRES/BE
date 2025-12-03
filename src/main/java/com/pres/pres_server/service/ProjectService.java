@@ -89,15 +89,19 @@ public class ProjectService {
                 return projects.stream()
                         .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase()))
                         .map(p -> {
-                                String thumbnailUrl = p.getFiles() != null && !p.getFiles().isEmpty()
-                                        ? p.getFiles().get(0).getFileUrl()  // 첫 번째 파일 URL
-                                        : null;
+                                String thumbnail = null;
+                                List<PresentationFile> files = p.getFiles();
+                                if (files != null && !files.isEmpty()) {
+                                        Long fileId = files.get(0).getFileId();
+                                        thumbnail = "https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                                }
+
                                 return new ProjectSearchListDTO(
                                         p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
                                         p.getProjectId(),
                                         p.getTitle(),
                                         p.getWorkspaceId().getWorkspaceName(),
-                                        thumbnailUrl
+                                        thumbnail
                                 );
                         })
                         .toList();
@@ -357,7 +361,7 @@ public class ProjectService {
                 List<PresentationFile> files = nextProject.getFiles();
                 if (!files.isEmpty()) {
                         Long fileId = files.get(0).getFileId();
-                        thumbnail = "/baseUrl/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                        thumbnail = "https://d53mjm0l7jtco.cloudfront.net/" + fileId + "/page/1/image"; // 규칙 기반 URL
                 }
 
                 // 5. DTO 생성
