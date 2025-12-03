@@ -10,6 +10,7 @@ import com.pres.pres_server.dto.CueCard.CommentDetailDTO;
 import com.pres.pres_server.dto.CueCard.CueCardCommentDTO;
 import com.pres.pres_server.repository.CommentRepository;
 import com.pres.pres_server.repository.CueCardRepository;
+import com.pres.pres_server.service.user.UserService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,7 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final CueCardRepository cueCardRepository;
+    private final UserService userService;
 
     // 최상위 댓글 생성
     public CommentResponseDTO createComment(Long cueId, CommentRequestDTO request, User user) {
@@ -45,7 +47,7 @@ public class CommentService {
                 .build();
 
         commentRepository.save(comment);
-        return CommentResponseDTO.from(comment, user);
+        return CommentResponseDTO.from(comment, user, userService);
     }
 
     // 대댓글 생성
@@ -63,7 +65,7 @@ public class CommentService {
         parentComment.getReplies().add(reply);
         commentRepository.save(reply);
 
-        return ReplyDTO.from(reply, user);
+        return ReplyDTO.from(reply, user,userService);
     }
 
     // 댓글 수정
@@ -78,7 +80,7 @@ public class CommentService {
         comment.setContent(request.getContent());
         commentRepository.save(comment);
 
-        return CommentResponseDTO.from(comment, user);
+        return CommentResponseDTO.from(comment, user, userService);
     }
 
     // 댓글 삭제
@@ -98,7 +100,7 @@ public class CommentService {
         List<Comment> comments = commentRepository.findTopLevelCommentsWithReplies(cueId);
 
         return comments.stream()
-                .map(c -> CommentResponseDTO.from(c, currentUser))
+                .map(c -> CommentResponseDTO.from(c, currentUser, userService)) // userService 전달
                 .collect(Collectors.toList());
     }
 
