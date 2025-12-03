@@ -94,7 +94,7 @@ public class ProjectService {
                                 List<PresentationFile> files = p.getFiles();
                                 if (files != null && !files.isEmpty()) {
                                         Long fileId = files.get(0).getFileId();
-                                        thumbnail = "https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                                        thumbnail = "/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
                                 }
 
                                 return new ProjectSearchListDTO(
@@ -362,7 +362,7 @@ public class ProjectService {
                 List<PresentationFile> files = nextProject.getFiles();
                 if (!files.isEmpty()) {
                         Long fileId = files.get(0).getFileId();
-                        thumbnail = "https://15.164.97.26.nip.io/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                        thumbnail = "/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
                 }
 
                 // 5. DTO 생성
