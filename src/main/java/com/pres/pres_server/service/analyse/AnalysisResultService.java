@@ -255,9 +255,80 @@ public class AnalysisResultService {
         // 8. 슬라이드별 피드백 저장
         saveSlideAnalysis(savedFeedback, analysisResult);
 
-        // 9. 전체 요약(Overall)은 프론트에서 필요 시 AI로 생성하여 반환하도록 설계합니다.
-        // 저장하지 않고, DB에는 overallComment를 남기지 않습니다.
-        log.debug("  • Overall short comment generation skipped (no DB persistence)");
+        // 9. 전체 피드백 생성 (AI) - PracticeSessionService에서 옮겨온 로직
+        Feedback feedbackForOverall = savedFeedback;
+        if (feedbackForOverall.getOverallComment() == null || feedbackForOverall.getOverallComment().isBlank()) {
+            // Determine lowest scoring issue among the five score fields
+            String lowestIssueType = null;
+            Integer lowestScore = null;
+            Map<String, Integer> scoreMap = new LinkedHashMap<>();
+            scoreMap.put("SPEED", feedbackForOverall.getSpmScore());
+            scoreMap.put("FILLER", feedbackForOverall.getFillerScore());
+            scoreMap.put("REPETITION", feedbackForOverall.getRepeatScore());
+            scoreMap.put("SILENCE", feedbackForOverall.getSilenceScore());
+            scoreMap.put("ACCURACY", feedbackForOverall.getAccuracyScore());
+
+            for (Map.Entry<String, Integer> e : scoreMap.entrySet()) {
+                Integer v = e.getValue();
+                if (v == null)
+                    continue;
+                if (lowestScore == null || v < lowestScore) {
+                    lowestScore = v;
+                    lowestIssueType = e.getKey();
+                }
+            }
+
+            String lowestIssueLabel = lowestIssueType != null ? switch (lowestIssueType) {
+                case "SPEED" -> "말하기 속도";
+                case "FILLER" -> "불필요한 추임새";
+                case "REPETITION" -> "반복되는 어휘";
+                case "SILENCE" -> "침묵 사용";
+                case "ACCURACY" -> "발표 정확도";
+                default -> "발표 전반";
+            } : "발표 전반";
+
+            // Aggregate slide-level comments for the selected issue type
+            StringBuilder agg = new StringBuilder();
+            try {
+                List<SlideFeedback> slideFeedbackEntities = slideFeedbackRepository
+                        .findByFeedbackIdOrderBySlideNumber(feedbackForOverall.getFeedbackId());
+                for (SlideFeedback s : slideFeedbackEntities) {
+                    if (s == null || s.getIssues() == null)
+                        continue;
+                    try {
+                        IssueDto[] issues = objectMapper.readValue(s.getIssues(), IssueDto[].class);
+                        if (issues == null)
+                            continue;
+                        for (IssueDto it : issues) {
+                            if (it == null || it.getIssueType() == null)
+                                continue;
+                            if (lowestIssueType.equals(it.getIssueType())) {
+                                if (it.getComment() != null && !it.getComment().isBlank()) {
+                                    if (agg.length() > 0)
+                                        agg.append("\n");
+                                    agg.append("Slide ").append(s.getSlideNumber()).append(": ")
+                                            .append(it.getComment());
+                                }
+                            }
+                        }
+                    } catch (Exception ignore) {
+                        // ignore JSON parse issues for individual slides
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+
+            String aggregatedComments = agg.length() > 0 ? agg.toString() : "";
+            try {
+                String overallFeedback = openAIFeedbackService.generateOverallFeedback(
+                        String.valueOf(session.getSessionId()), lowestIssueLabel, aggregatedComments);
+                feedbackForOverall.setOverallComment(overallFeedback);
+                feedbackRepository.save(feedbackForOverall);
+                log.info("✅ 전체 피드백 생성 및 저장 완료 - sessionId: {}", session.getSessionId());
+            } catch (Exception e) {
+                log.warn("전체 피드백 생성 실패 - sessionId: {}, reason: {}", session.getSessionId(), e.getMessage());
+            }
+        }
 
         return savedFeedback;
     }
