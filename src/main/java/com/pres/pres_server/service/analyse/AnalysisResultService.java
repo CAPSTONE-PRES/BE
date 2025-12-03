@@ -560,7 +560,7 @@ public class AnalysisResultService {
             if (spmResults != null && i < spmResults.size()) {
                 AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
                 slideFeedback.setSpmUser(spmResult.getSpm());
-                slideFeedback.setSpmAverage(290); // 평균 SPM 기준값
+                slideFeedback.setSpmAverage(330); // 평균 SPM 기준값
 
                 // SPM이 최적 범위(예: SpeechSpeedService 기준)를 벗어난 경우에만 이슈로 추가
                 int spmVal = spmResult.getSpm();
@@ -573,7 +573,7 @@ public class AnalysisResultService {
                     try {
                         Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
                                 (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
-                                spmResult.getSpm(), 290.0);
+                                spmResult.getSpm(), 330);
                         if (p != null && p.containsKey("pace"))
                             speedBuilder.comment(p.get("pace"));
                     } catch (Exception e) {
@@ -1025,11 +1025,11 @@ public class AnalysisResultService {
                         if (spmResults != null && i < spmResults.size()) {
                             AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(i);
                             if (spmRes != null) {
-                                double currentWpm = spmRes.getSpm();
-                                double idealWpm = 290.0;
+                                double currentSpm = spmRes.getSpm();
+                                double idealSpm = 330.0;
                                 try {
                                     Map<String, String> p = openAIFeedbackService.generatePaceFeedback(
-                                            String.valueOf(i + 1), transcript, currentWpm, idealWpm);
+                                            String.valueOf(i + 1), transcript, currentSpm, idealSpm);
                                     if (p != null && p.containsKey("pace"))
                                         commentBuilder.append(p.get("pace")).append(" ");
                                 } catch (Exception e) {
