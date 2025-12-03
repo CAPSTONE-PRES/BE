@@ -176,7 +176,7 @@ public class UserService implements UserDetailsService {
                         .name(user.getUsername())
                         .userId(user.getId())
                         .email(user.getEmail())
-                        .profileUrl(user.getProfileImageUrl())
+                        .profileUrl(resolveProfileUrl(user))
                         .build())
                 .orElseGet(() -> UserValidationResponseDTO.builder()
                         .message("유효하지 않은 이메일 입니다")
