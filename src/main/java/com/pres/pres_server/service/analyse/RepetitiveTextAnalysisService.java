@@ -205,94 +205,67 @@ public class RepetitiveTextAnalysisService {
         Map<Integer, String> slideTextMap = new HashMap<>();
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
             for (int i = 0; i < slideSttTexts.size(); i++) {
-                slideTextMap.put(i + 1, slideSttTexts.get(i));
+                slideTextMap.put(i + 1, slideSttTexts.get(i)); // 슬라이드 번호를 1-based로 설정
             }
-            log.debug("  • Using provided slideSttTexts: {} slides", slideTextMap.size());
         } else {
-            try {
-                Map<Integer, String> mapped = mapTextToSlides(sttText, slideTransitions, segments);
-                if (mapped != null && !mapped.isEmpty()) {
-                    slideTextMap.putAll(mapped);
-                    log.debug("  • Computed slideTextMap from segments/transitions: {} slides", slideTextMap.size());
-                }
-            } catch (Exception ex) {
-                log.warn("  • mapTextToSlides failed: {}", ex.getMessage());
-            }
+            slideTextMap = mapTextToSlides(sttText, slideTransitions, segments);
         }
 
         if (slideTextMap.isEmpty()) {
-            log.info("  • slideTextMap empty — cannot perform slide-local L1 mapping. Returning empty list.");
+            log.warn("No slide text mapping available.");
             return Collections.emptyList();
         }
 
-        // 전역 단어 빈도(슬라이드들 합)
-        Map<String, Long> wordFreq = new HashMap<>();
-        Map<String, List<Offset>> OffsetsMap = new HashMap<>();
+        // 슬라이드 별 반복 어휘 분석
+        List<WordRepetition> allWordRepetitions = new ArrayList<>();
 
-        // 각 슬라이드별로 Komoran 토큰화 수행하여 슬라이드-로컬 offsets 생성
-        for (Map.Entry<Integer, String> se : slideTextMap.entrySet()) {
-            Integer slideIndex = se.getKey();
-            String slideText = se.getValue() != null ? se.getValue() : "";
-            if (slideText.isBlank())
-                continue;
+        for (Map.Entry<Integer, String> slideEntry : slideTextMap.entrySet()) {
+            int slideIndex = slideEntry.getKey();
+            String slideText = slideEntry.getValue();
 
-            List<KomoranAnalyzer.NormToken> normTokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
-            for (KomoranAnalyzer.NormToken nt : normTokens) {
-                String norm = nt.norm;
-                // 전역 빈도 집계
-                wordFreq.put(norm, wordFreq.getOrDefault(norm, 0L) + 1L);
+            // Komoran 토큰화 수행 (Offset 포함)
+            List<KomoranAnalyzer.NormToken> tokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
 
-                int begin = nt.begin;
-                int end = nt.end;
-                String snippet = "";
-                try {
-                    snippet = slideText.substring(Math.max(0, begin), Math.min(slideText.length(), end));
-                } catch (Exception ex) {
-                    snippet = "";
-                }
+            // 슬라이드별 로컬 오프셋 사용 (slideText 기준)
+            Map<String, List<Offset>> offsetsMap = tokens.stream()
+                    .collect(Collectors.groupingBy(
+                            token -> token.norm,
+                            Collectors.mapping(
+                                    token -> Offset.builder()
+                                            .begin(token.begin) // 슬라이드 텍스트 기준 오프셋
+                                            .end(token.end) // 슬라이드 텍스트 기준 오프셋
+                                            .slideIndex(slideIndex)
+                                            .text(slideText.substring(
+                                                    Math.max(0, token.begin),
+                                                    Math.min(slideText.length(), token.end)))
+                                            .build(),
+                                    Collectors.toList())));
 
-                OffsetsMap.computeIfAbsent(norm, k -> new ArrayList<>())
-                        .add(Offset.builder().begin(begin).end(end).slideIndex(slideIndex).text(snippet).build());
-            }
+            // 단어 빈도 계산: offsetsMap의 리스트 크기로 실제 반복 횟수 계산
+            Map<String, Long> wordFreq = offsetsMap.entrySet().stream()
+                    .filter(entry -> !FILLER_WORDS.contains(entry.getKey()))
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> (long) entry.getValue().size()));
+
+            // 슬라이드 별 반복 어휘 필터링
+            List<WordRepetition> wordRepetitions = wordFreq.entrySet().stream()
+                    .filter(entry -> entry.getValue() >= MIN_REPETITION_COUNT)
+                    .filter(entry -> !pre.presentationKeywords.contains(entry.getKey()))
+                    .map(entry -> WordRepetition.builder()
+                            .word(entry.getKey())
+                            .count(entry.getValue().intValue())
+                            .Offsets(offsetsMap.getOrDefault(entry.getKey(), Collections.emptyList()))
+                            .build())
+                    .sorted(Comparator.comparingInt(WordRepetition::getCount).reversed())
+                    .collect(Collectors.toList());
+
+            log.info("Slide {}: Found {} word repetitions.", slideIndex, wordRepetitions.size());
+            allWordRepetitions.addAll(wordRepetitions);
         }
 
-        // Debug 로그
-        log.info("  • Slides processed for L1: {}", slideTextMap.size());
-        log.info("  • Unique tokens (L1): {}", wordFreq.size());
-        log.info("  • Top 10 frequent words: {}",
-                wordFreq.entrySet().stream().sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
-                        .limit(10).collect(Collectors.toList()));
-
-        // 키워드/필러 필터링 통계
-        List<String> excludedByKeywords = wordFreq.entrySet().stream()
-                .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
-                .filter(e -> pre.presentationKeywords.contains(e.getKey()))
-                .filter(e -> !FILLER_WORDS.contains(e.getKey()))
-                .map(e -> e.getKey() + "(" + e.getValue() + "회)")
-                .sorted().collect(Collectors.toList());
-
-        List<String> excludedByFillers = wordFreq.entrySet().stream()
-                .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
-                .filter(e -> FILLER_WORDS.contains(e.getKey()))
-                .map(e -> e.getKey() + "(" + e.getValue() + "회)")
-                .sorted().collect(Collectors.toList());
-
-        List<WordRepetition> result = wordFreq.entrySet().stream()
-                .filter(e -> e.getValue() >= MIN_REPETITION_COUNT)
-                .filter(e -> !pre.presentationKeywords.contains(e.getKey()))
-                .filter(e -> !FILLER_WORDS.contains(e.getKey()))
-                .map(e -> WordRepetition.builder().word(e.getKey()).count(e.getValue().intValue())
-                        .Offsets(OffsetsMap.getOrDefault(e.getKey(), Collections.emptyList())).build())
-                .sorted(Comparator.comparingInt(WordRepetition::getCount).reversed())
-                .collect(Collectors.toList());
-
-        log.info("  • Word repetitions found (L1): {}", result.size());
-        if (!excludedByKeywords.isEmpty())
-            log.info("  • Excluded by keywords: {}", excludedByKeywords);
-        if (!excludedByFillers.isEmpty())
-            log.info("  • Excluded by fillers (avoid double penalty): {}", excludedByFillers);
-
-        return result;
+        log.info("Total word repetitions across slides: {}", allWordRepetitions.size());
+        return allWordRepetitions;
     }
 
     // ========== Level 2: 슬라이드 내 2-gram 반복 (In-Slide 2-gram Repetition) ==========
