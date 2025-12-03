@@ -60,8 +60,6 @@ public class GenerateQnaService {
         // Q&A 생성 (단일 호출로 변경)
         String qnaPrompt = buildQnaPrompt(extractedText);
         String qnaResponse = callAiModel(qnaPrompt);
-        log.info("=== AI Q&A 응답 ===");
-        log.info("{}", qnaResponse);
 
         // 생성된 내용 반환 (저장하지 않음)
         Map<String, String> result = new HashMap<>();
@@ -90,7 +88,7 @@ public class GenerateQnaService {
     // DB 저장만 담당하는 트랜잭션 메서드
     @Transactional(rollbackFor = Exception.class)
     public List<QnaQuestion> saveQnaToDatabase(Long fileId, String extractedText,
-            Map<String, String> generatedContent) {
+                                               Map<String, String> generatedContent) {
         // 기존 Q&A 삭제 (중복 방지)
         clearExistingQnaInternal(fileId);
 
@@ -116,8 +114,7 @@ public class GenerateQnaService {
      * Controller에서는 이 메서드만 호출하면 됨
      */
     public QnaGenerateResponseDto generateAndSaveQnaWithResponse(Long fileId) {
-        log.info("Q&A 생성 및 저장 시작 - fileId: {}", fileId);
-
+        
         String fullText = extractTextService.getFullTextByFileId(fileId);
         var savedQuestions = generateAndSaveQna(fullText, fileId);
         QnaListDto qnaListDto = getSavedQnaAsDto(fileId);
@@ -165,8 +162,7 @@ public class GenerateQnaService {
 
     // JSON 기반 QnA 파싱 및 저장 로직 (개선된 버전)
     private List<QnaQuestion> parseAndSaveQnaFromJson(String qnaResponse, PresentationFile presentationFile,
-            String extractedText) {
-        log.info("=== Q&A 파싱 및 저장 시작 ===");
+                                                      String extractedText) {
         log.debug("트랜잭션 활성 상태 (시작): {}",
                 org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
 
@@ -179,8 +175,6 @@ public class GenerateQnaService {
         }
 
         try {
-            log.info("=== JSON 파싱 시작 ===");
-            log.info("Q&A 응답 전체 내용:\n{}", qnaResponse);
 
             // Jackson ObjectMapper를 사용한 JSON 파싱
             // (공유 빈으로 주입되어 JsonReadFeature는 AppConfig에서 설정됨)
@@ -190,7 +184,6 @@ public class GenerateQnaService {
 
             // 응답이 따옴표로 감싸져 있고 이스케이프 문자가 포함된 경우 처리
             if (cleanedResponse.startsWith("\"") && cleanedResponse.endsWith("\"")) {
-                log.info("이스케이프된 JSON 문자열 감지, 정리 시작");
                 // 앞뒤 따옴표 제거
                 cleanedResponse = cleanedResponse.substring(1, cleanedResponse.length() - 1);
                 // 이스케이프 문자 복원
@@ -202,7 +195,6 @@ public class GenerateQnaService {
                         .replace("\\/", "/") // 이스케이프된 슬래시
                         .replace("\\\\", "\\"); // 이스케이프된 백슬래시 (마지막에 처리)
 
-                log.info("이스케이프 정리 완료");
                 log.debug("정리된 JSON:\n{}", cleanedResponse);
             }
 
@@ -225,17 +217,13 @@ public class GenerateQnaService {
                     String questionText = item.get("question").asText();
                     String answerText = item.get("answer").asText();
 
-                    log.info("처리 중인 Q{} - 카테고리: [{}]", index, category);
-                    log.info("질문: {}", questionText.substring(0, Math.min(100, questionText.length())));
-                    log.info("답변: {}", answerText.substring(0, Math.min(100, answerText.length())));
-
                     // 내용 검증
                     if (questionText.trim().isEmpty() || answerText.trim().isEmpty()) {
                         log.warn("Q{}: 질문 또는 답변이 비어있음", index);
                         continue;
                     }
 
-                    log.info("Q{} 저장 시작", index);
+                    log.debug("Q{} 저장 시작", index);
 
                     // 질문 저장
                     QnaQuestion question = new QnaQuestion();
@@ -253,9 +241,8 @@ public class GenerateQnaService {
                     log.debug("질문 엔티티 생성 완료 - presentationFile ID: {}, body length: {}",
                             presentationFile.getFileId(), questionText.trim().length());
 
-                    log.info("Q{} 질문 저장 중...", index);
                     QnaQuestion savedQuestion = qnaQuestionRepository.save(question);
-                    log.info("Q{} 질문 저장 완료, ID: {}", index, savedQuestion.getQnaId());
+                    log.debug("Q{} 질문 저장 완료, ID: {}", index, savedQuestion.getQnaId());
 
                     // 트랜잭션 상태 확인
                     log.debug("트랜잭션 활성 상태: {}",
@@ -279,12 +266,8 @@ public class GenerateQnaService {
                     log.debug("답변 엔티티 생성 완료 - questionId: {}, body length: {}",
                             savedQuestion.getQnaId(), answerText.trim().length());
 
-                    log.info("Q{} 답변 저장 중...", index);
                     qnaAnswerRepository.save(answer);
-                    log.info("Q{} 답변 저장 완료", index);
-
-                    log.info("✅ Q{} 저장 완료 - 질문: {}", index,
-                            questionText.substring(0, Math.min(50, questionText.length())) + "...");
+                    log.debug("Q{} 답변 저장 완료", index);
 
                 } catch (Exception e) {
                     log.error("개별 Q&A 처리 실패: {}", e.getMessage(), e);
@@ -523,7 +506,6 @@ public class GenerateQnaService {
         requestBody.put("response_format", responseFormat);
 
         // 요청 확인 로그
-        log.info("🚀 OpenAI API 요청 - 모델: {}, JSON mode: active", requestBody.get("model"));
         log.debug("요청 본문: {}", requestBody);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
@@ -577,7 +559,7 @@ public class GenerateQnaService {
 
     /**
      * 순차적으로 질문 조회 (연습 세션용)
-     * 
+     *
      * @param fileId 파일 ID
      * @param index  질문 인덱스 (0부터 시작, 0~4)
      * @return 해당 인덱스의 질문
