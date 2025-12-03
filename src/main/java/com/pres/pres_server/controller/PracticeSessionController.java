@@ -162,6 +162,8 @@ public class PracticeSessionController {
 
                 log.info("✅ 피드백 조회 완료 - sessionId: {}, grade: {}", sessionId, feedback.getGrade());
 
+                log.info("Returning totalDurationSeconds to client: {}", feedback.getTotalDurationSeconds());
+
                 return ResponseEntity.ok(feedback);
         }
 
