@@ -73,6 +73,7 @@ public class ProjectsController {
         return ResponseEntity.ok("프로젝트가 성공적으로 삭제되었습니다.");
     }
 
+    @Operation(summary = "특정 프로젝트 정보 반환", description = "해당 프로젝트에 대한 정보를 반환")
     @GetMapping("/{projectId}/info")
     public ProjectInfoDTO getProjectInfo(@AuthenticationPrincipal User user, @PathVariable Long projectId) {
         return projectService.getProjectInfo(user, projectId);
