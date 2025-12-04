@@ -24,7 +24,6 @@ public class IssueDto {
     private Map<String, Integer> repeatDetail;
     private Integer errorCount;
     private Integer spmUser;
-    private Integer spmAverage;
     private String comment;
     // 하이라이트용 오프셋 리스트 (begin/end: 슬라이드 텍스트 기준 인덱스)
     private List<OffsetDto> offsets;

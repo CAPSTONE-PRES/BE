@@ -246,7 +246,6 @@ public class PracticeSessionService {
                                 issues.add(IssueDto.builder()
                                                 .issueType("SPEED")
                                                 .spmUser(entity.getSpmUser())
-                                                .spmAverage(entity.getSpmAverage())
                                                 .comment(entity.getComment())
                                                 .build());
                         }

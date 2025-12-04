@@ -40,9 +40,6 @@ public class SlideFeedback {
     @Column(name = "spm_user")
     private Integer spmUser; // 사용자 SPM
 
-    @Column(name = "spm_average")
-    private Integer spmAverage; // 비교 평균 SPM (290 등)
-
     // -------------------
     // 망설임 / 필러 (issue_type = FILLER)
     // -------------------

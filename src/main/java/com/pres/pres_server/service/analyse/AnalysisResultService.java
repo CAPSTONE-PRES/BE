@@ -631,15 +631,13 @@ public class AnalysisResultService {
             if (spmResults != null && i < spmResults.size()) {
                 AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
                 slideFeedback.setSpmUser(spmResult.getSpm());
-                slideFeedback.setSpmAverage(330); // 평균 SPM 기준값
 
                 // SPM이 최적 범위(예: SpeechSpeedService 기준)를 벗어난 경우에만 이슈로 추가
                 int spmVal = spmResult.getSpm();
                 if (!speechSpeedService.isOptimalSpeed(spmVal)) {
                     IssueDto.IssueDtoBuilder speedBuilder = IssueDto.builder()
                             .issueType("SPEED")
-                            .spmUser(spmResult.getSpm())
-                            .spmAverage(290);
+                            .spmUser(spmResult.getSpm());
                     // 즉시 OpenAI로 속도 코멘트 생성(실패하면 null 허용)
                     try {
                         Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
