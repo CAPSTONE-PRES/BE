@@ -14,6 +14,9 @@ public class CookieUtil {
         Cookie cookie = new Cookie(name, value);
         cookie.setPath("/"); // 모든 경로에서 접근 가능
         cookie.setMaxAge(maxAge);
+        // 보안 설정: Java/Jakarta Cookie에서 HttpOnly, Secure 설정
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true);
         response.addCookie(cookie);
     }
 

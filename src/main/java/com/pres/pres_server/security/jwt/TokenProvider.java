@@ -94,6 +94,14 @@ public class TokenProvider {
         if (header != null && header.startsWith("Bearer ")) {
             return header.substring(7);
         }
+        // 헤더에 없으면 쿠키에서 찾기
+        if (request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie c : request.getCookies()) {
+                if ("refresh_token".equals(c.getName())) {
+                    return c.getValue();
+                }
+            }
+        }
         return null;
     }
 }
