@@ -30,14 +30,15 @@ public class FileController {
     private final CueSlideService cueSlideService;
     private final PresentationImageService presentationImageService;
 
-    //TODO: file upload 로직과 image 변환 로직 API 분리
+    // TODO: file upload 로직과 image 변환 로직 API 분리?
     @Operation(summary = "presentation file 업로드", description = "presentation file을 업로드하고, 파일 ID와 URL을 반환합니다.")
     @PostMapping(value = "/upload", consumes = { "multipart/form-data" })
     public ResponseEntity<FileUploadDto> uploadFile(@RequestPart("file") MultipartFile file,
             @RequestParam("uploaderId") Long uploaderId,
             @RequestParam("projectId") Long projectId) {
-        log.info("upload api starts");
         // 파일 업로드, 이미지 변환 및 db저장
+        log.info("파일 업로드 요청: uploaderId={}, projectId={}, fileName={}",
+                uploaderId, projectId, file.getOriginalFilename());
         FileUploadDto result = presentationFileService.uploadAndSave(file, uploaderId, projectId);
         // 성공 메세지와 결과 반환
         return ResponseEntity.ok(result);
@@ -145,6 +146,8 @@ public class FileController {
                 .body(resource);
     }
 
-    //TODO: 추가 자료 업로드 API 생성 (이미지 생성 x, extract Text만 진행해서 CueCard와 QnA 생성에 도움)
+    // TODO: 추가 자료 업로드 API 생성 (이미지 생성 x, extract Text만 진행해서 CueCard와 QnA 생성에 도움)
+
+    // TODO: pdf 다운로드 API 생성 (현재 db에 이미지로 저장된 상태, 라이브러리 활용 필요)
 
 }

@@ -48,7 +48,8 @@ public class PresentationFileService {
 
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
-        log.info("uploadAndSave start");
+        log.info("uploadAndSave start - uploaderId={}, projectId={}, originalName={}, size={}",
+            uploaderId, projectId, file == null ? null : file.getOriginalFilename(), file == null ? 0 : file.getSize());
         // 1. 파일 시스템에 원본 파일 저장
         FileInfoDto origin = fileUploadService.saveFile(file);
 
@@ -66,16 +67,19 @@ public class PresentationFileService {
         try {
             if (isPdf) {
                 // PDF → 전 페이지 이미지
+                log.info("Converting PDF to images - path={}, dpi={}", origin.getFilePath(), dpi);
                 images = fileUploadService.createPdfImages(origin.getFilePath(), dpi);
             } else if (lower.endsWith(".pptx")) {
                 // PPTX → 전 슬라이드 이미지
+                log.info("Converting PPTX to images - path={}, dpi={}", origin.getFilePath(), dpi);
                 images = fileUploadService.convertPptxToImage(origin.getFilePath(), dpi, maxSlides);
             } else {
                 // 지원 확장자 제한
                 fileUploadService.deleteFile(origin.getFilePath());
                 throw new IllegalArgumentException("지원하지 않는 파일 형식입니다. (.pptx 또는 .pdf만 지원)");
             }
-            if (images.isEmpty()) {
+            log.info("Image conversion result count={}", images == null ? 0 : images.size());
+            if (images == null || images.isEmpty()) {
                 // 생성 실패 보상
                 fileUploadService.deleteFile(origin.getFilePath());
                 throw new RuntimeException("이미지 변환 결과가 비어 있습니다.");
@@ -93,6 +97,7 @@ public class PresentationFileService {
                 fileUploadService.deleteFile(origin.getFilePath());
             } catch (Exception ignore) {
             }
+            log.error("uploadAndSave: image conversion failed - origin={}, error={}", origin.getFilePath(), e.getMessage(), e);
             throw e;
         }
         // PresentationFile을 먼저 DB에 저장해서 PK(fileId)를 확보.
@@ -149,6 +154,7 @@ public class PresentationFileService {
             entity.setProject(project);
 
             PresentationFile saved = presentationFileRepository.save(entity);
+            log.info("PresentationFile saved - fileId={}, path={}, saveName={}", saved.getFileId(), saved.getFilePath(), saved.getSaveName());
 
             // 이미지 엔티티를 배치로 저장
             java.util.List<PresentationImage> imageEntities = new java.util.ArrayList<>();
@@ -179,7 +185,7 @@ public class PresentationFileService {
                 presentationFileRepository.save(saved);
             }
 
-            return FileUploadDto.builder()
+                return FileUploadDto.builder()
                     .fileId(saved.getFileId())
                     .fileUrl(saved.getFileUrl())
                     .thumbnailUrl(saved.getThumbnailUrl())
