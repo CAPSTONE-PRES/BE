@@ -42,6 +42,7 @@ public class ExtractTextService {
 
     // fileId로 텍스트 추출 및 DB 저장 (권장)
     public ExtractedTextDto extractTextAndSave(Long fileId) {
+        log.info("Extracting text for fileId={}", fileId);
 
         PresentationFile presentationFile = presentationFileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
@@ -63,7 +64,9 @@ public class ExtractTextService {
                 ExtractedTextDto result = extractPdfTextByPage(file);
                 fullText = result.getFullText();
                 slideTexts = result.getSlideTexts();
+                log.info("Extracted PDF text - filePath={}, slideTexts={}", filePath, slideTexts);
             } else if (fileName.toLowerCase().endsWith(".pptx")) {
+                log.info("Extracting PPTX text - filePath={}", filePath);
                 ExtractedTextDto result = extractPptTextBySlide(file);
                 fullText = result.getFullText();
                 slideTexts = result.getSlideTexts();
@@ -81,6 +84,8 @@ public class ExtractTextService {
             extractedText.setFullText(fullText);
             extractedText.setSlideTexts(slideTexts);
             extractedTextRepository.save(extractedText);
+            log.info("ExtractedText saved - fileId={}, slidesExtracted={}", fileId,
+                    slideTexts == null ? 0 : slideTexts.size());
 
             // 텍스트 부족한 슬라이드 검증
             ExtractedTextDto result = validateSlideContent(new ExtractedTextDto(fullText, slideTexts));
@@ -94,6 +99,7 @@ public class ExtractTextService {
             extractedText.setInsufficientMessage(result.getInsufficientMessage());
             extractedTextRepository.save(extractedText);
 
+            log.info("Text extraction and validation completed - fileId={}", fileId);
             return result;
 
         } catch (Exception e) {
