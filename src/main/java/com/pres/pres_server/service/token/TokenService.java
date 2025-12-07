@@ -39,6 +39,20 @@ public class TokenService {
         return refreshToken;
     }
 
+    // 리프레시 토큰 유효성 검사: 토큰 구조/서명 검사 및 DB 존재 여부 확인
+    public boolean isValidRefreshToken(String refreshToken) {
+        try {
+            if (!tokenProvider.validToken(refreshToken)) {
+                return false;
+            }
+            // DB에서 토큰을 조회해 존재하는지 확인
+            refreshTokenService.findByRefreshToken(refreshToken);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // JWT 리프레시 토큰 무효화 (예: DB에서 삭제)
     public void invalidateRefreshToken(String refreshToken) {
         refreshTokenService.deleteByRefreshToken(refreshToken);

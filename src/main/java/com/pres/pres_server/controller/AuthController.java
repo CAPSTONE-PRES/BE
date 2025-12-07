@@ -169,7 +169,7 @@ public class AuthController {
                 return ResponseEntity.ok(tokenDto);
         }
 
-        @Operation(summary = "카카오 로그인", description = "카카오 계정으로 로그인합니다.", security = {
+        @Operation(summary = "카카오 로그인", description = "카카오 계정으로 로그인하기 위해 카카오 인가 코드 요청 URL을 생성합니다", security = {
                         @SecurityRequirement(name = "") }, // 인증
                                                            // 불필요
                                                            // 명시
@@ -232,4 +232,21 @@ public class AuthController {
                 return ResponseEntity.ok("Kakao logout success");
         }
 
+        @Operation(summary = "Access Token 재발급", description = "만료된 Access Token을 Refresh Token을 사용하여 재발급합니다.", responses = {
+                        @ApiResponse(responseCode = "200", description = "성공", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CreateAccessTokenResponse.class))),
+                        @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "application/json", schema = @Schema(example = "{ \"message\": \"Unauthorized\" }"))),
+                        @ApiResponse(responseCode = "400", description = "잘못된 요청")
+        })
+        @PostMapping("/refresh")
+        public ResponseEntity<CreateAccessTokenResponse> refreshAccessToken(HttpServletRequest request) {
+                // Refresh Token 추출
+                String refreshToken = tokenProvider.resolveRefreshToken(request);
+                if (refreshToken == null || !tokenService.isValidRefreshToken(refreshToken)) {
+                        return ResponseEntity.status(401).body(null); // 인증 실패
+                }
+
+                // 새로운 Access Token 생성
+                String newAccessToken = tokenService.createAccessToken(refreshToken);
+                return ResponseEntity.ok(new CreateAccessTokenResponse(newAccessToken, null));
+        }
 }
