@@ -28,6 +28,7 @@ public class WorkspaceService {
     private final VisitLogService visitLogService;
     private final VisitLogRepository visitLogRepository;
     private final ProjectRepository projectRepository;
+    private final UserService userService;
 
     @Transactional
     public Long createWorkspace(WorkspaceRequest request, User ownerUser) {
@@ -236,8 +237,8 @@ public class WorkspaceService {
         return dto;
     }
 
-    // 워크스페이스 리스트로 전부 받기
-    public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type, UserService userService) {
+    // 서버에 있는 워크스페이스 리스트로 전부 받기
+    public List<WorkspaceInfoDTO> getAllWorkspaceList(User user, int type, UserService userService) {
 
         List<WorkSpace> workspaces;
 
@@ -329,6 +330,118 @@ public class WorkspaceService {
                 .collect(Collectors.toList());
     }
 
+    public List<WorkspaceInfoDTO> getWorkspaceList(User user, int type) {
+
+        List<WorkSpace> workspaces;
+
+        if (type == 2) {
+            workspaces = workspaceRepository.findAllByUserOrderByWorkspaceName(user);
+        }
+        else if (type == 1) {
+            List<VisitLog> logs = visitLogRepository
+                    .findByUserOrderByVisitedAtDesc(user);
+
+            workspaces = logs.stream()
+                    .map(VisitLog::getWorkspace)
+                    .filter(ws -> isMyWorkspace(ws, user))
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            List<WorkSpace> mySpaces = workspaceRepository.findAllByUser(user);
+            mySpaces.removeAll(workspaces);
+            workspaces.addAll(mySpaces);
+        }
+        else {
+            throw new IllegalArgumentException("Invalid type: " + type);
+        }
+
+        return workspaces.stream()
+                .map(ws -> convertToDTO(ws, user))
+                .collect(Collectors.toList());
+    }
+
+    // 내가 속한 워크스페이스인지 검사 (오너 OR 팀멤버)
+    private boolean isMyWorkspace(WorkSpace ws, User user) {
+        // 오너면 TRUE
+        if (ws.getOwnerUserId().getId().equals(user.getId())) return true;
+
+        // 팀 멤버면 TRUE
+        return teamMemberRepository.findByWorkspace_WorkspaceId(ws.getWorkspaceId())
+                .stream()
+                .anyMatch(member -> member.getUser().getId().equals(user.getId()));
+    }
+
+    // DTO 변환 메서드 (코드 가독성 up)
+    private WorkspaceInfoDTO convertToDTO(WorkSpace ws, User user) {
+
+        WorkspaceInfoDTO dto = new WorkspaceInfoDTO();
+        dto.setWorkspaceId(ws.getWorkspaceId());
+        dto.setWorkspaceName(ws.getWorkspaceName());
+        dto.setWorkspaceOwnerName(ws.getOwnerUserId().getUsername());
+        dto.setWorkspaceOwnerProfileUrl(
+                userService.resolveProfileUrl(ws.getOwnerUserId())
+        );
+
+        // 수업 시간 리스트
+        List<String> timeList = new ArrayList<>();
+        if (ws.getClasstime1() != null) timeList.add(ws.getClasstime1());
+        if (ws.getClasstime2() != null) timeList.add(ws.getClasstime2());
+        if (ws.getClasstime3() != null) timeList.add(ws.getClasstime3());
+        dto.setWorkspaceTimeList(timeList);
+
+        // 내가 오너인지 여부
+        dto.setIsOwner(ws.getOwnerUserId().getId().equals(user.getId()));
+
+        // 마지막 방문 시간
+        VisitLog lastVisit = visitLogRepository
+                .findTopByUserAndWorkspaceOrderByVisitedAtDesc(user, ws)
+                .orElse(null);
+        dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
+
+        // 팀 멤버 리스트
+        List<TeamMember> teamMembers = teamMemberRepository
+                .findByWorkspace_WorkspaceId(ws.getWorkspaceId());
+
+        List<WorkspaceMemberDTO> members = teamMembers.stream()
+                .map(member -> new WorkspaceMemberDTO(
+                        member.getMemberId(),
+                        member.getUser().getId(),
+                        member.getUser().getEmail(),
+                        member.getUser().getUsername(),
+                        userService.resolveProfileUrl(member.getUser())
+                ))
+                .collect(Collectors.toList());
+
+        dto.setWorkspaceMemberList(members);
+
+        // 가까운 발표 날짜
+        List<Project> projects = projectRepository.findByWorkspaceId_WorkspaceId(ws.getWorkspaceId());
+        Optional<LocalDate> nextDateOpt = projects.stream()
+                .map(Project::getDueDate)
+                .filter(Objects::nonNull)
+                .filter(date -> !date.isBefore(LocalDate.now()))
+                .min(LocalDate::compareTo);
+        dto.setUpComingDate(nextDateOpt.map(LocalDate::toString).orElse(null));
+
+        // 썸네일 (최대 4개)
+        List<String> thumbnailList = new ArrayList<>();
+        for (Project project : projects) {
+            List<PresentationFile> files = project.getFiles();
+            if (files != null && !files.isEmpty()) {
+                Long fileId = files.get(0).getFileId();
+                thumbnailList.add("/api/files/" + fileId + "/page/1/image");
+            } else {
+                thumbnailList.add(null);
+            }
+
+            if (thumbnailList.size() >= 4) break;
+        }
+        while (thumbnailList.size() < 4) thumbnailList.add(null);
+
+        dto.setThumbnailList(thumbnailList);
+
+        return dto;
+    }
 
     // 워크스페이스 즐겨찾기
     @Transactional

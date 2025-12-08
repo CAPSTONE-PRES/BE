@@ -121,7 +121,20 @@ public class WorkspaceController {
     }
 
 
-    @Operation(summary = "워크스페이스 리스트", description = "모든 워크플레이스 불러오기 (type값 1은 최근방문 순, 2는 제목순)")
+    @Operation(summary = "서버에 있는 전체 워크스페이스 리스트", description = "모든 워크플레이스 불러오기 (type값 1은 최근방문 순, 2는 제목순)")
+    @GetMapping("/list/all")
+    public List<WorkspaceInfoDTO> getAllWorkspaceList(
+            @RequestParam int type,
+            @AuthenticationPrincipal User user) {
+
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
+        }
+
+        return workspaceService.getAllWorkspaceList(user, type, userService);
+    }
+
+    @Operation(summary = "해당 사용자의 워크스페이스 리스트", description = "해당 사용자의 워크플레이스 불러오기 (type값 1은 최근방문 순, 2는 제목순)")
     @GetMapping("/list")
     public List<WorkspaceInfoDTO> getWorkspaceList(
             @RequestParam int type,
@@ -131,7 +144,7 @@ public class WorkspaceController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "회원정보를 찾을 수 없습니다");
         }
 
-        return workspaceService.getWorkspaceList(user, type, userService);
+        return workspaceService.getWorkspaceList(user, type);
     }
 
     @GetMapping("/{workspaceId}/projects/list")
