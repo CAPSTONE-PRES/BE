@@ -44,6 +44,17 @@ public class FileController {
         return ResponseEntity.ok(result);
     }
 
+    // added
+    // 업로드 가능 형식 확인 (pdf, txt, etc.)
+    @Operation(summary = "추가 자료 업로드 (이미지 변환 없이 텍스트 추출)", description = "추가 자료 내용만 저장, 이미지 변환을 수행하지 않고 원본 파일을 저장한 뒤 텍스트 추출을 수행합니다.")
+    @PostMapping(value = "/upload-resource", consumes = { "multipart/form-data" })
+    public ResponseEntity<FileUploadDto> uploadResource(@RequestPart("file") MultipartFile file,
+            @RequestParam("uploaderId") Long uploaderId,
+            @RequestParam("projectId") Long projectId) {
+        FileUploadDto result = presentationFileService.uploadResourceAndExtract(file, uploaderId, projectId);
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "presentation file 삭제", description = "파일 ID로 파일을 삭제합니다.")
     @DeleteMapping("/{fileId}")
     public ResponseEntity<Void> deleteFile(@PathVariable("fileId") Long fileId) {
@@ -146,8 +157,21 @@ public class FileController {
                 .body(resource);
     }
 
-    // TODO: 추가 자료 업로드 API 생성 (이미지 생성 x, extract Text만 진행해서 CueCard와 QnA 생성에 도움)
-
-    // TODO: pdf 다운로드 API 생성 (현재 db에 이미지로 저장된 상태, 라이브러리 활용 필요)
+    // added
+    @Operation(summary = "발표자료 PDF 다운로드", description = "저장된 슬라이드 이미지를 모아 PDF로 생성하여 다운로드합니다.")
+    @GetMapping("/download-pdf/{fileId}")
+    public ResponseEntity<Resource> downloadPresentationPdf(@PathVariable("fileId") Long fileId) {
+        String pdfPath = presentationFileService.generatePdfFromImages(fileId);
+        org.springframework.core.io.FileSystemResource resource = new org.springframework.core.io.FileSystemResource(
+                pdfPath);
+        if (!resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        String fileName = "presentation_" + fileId + ".pdf";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(resource);
+    }
 
 }

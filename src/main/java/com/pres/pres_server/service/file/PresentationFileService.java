@@ -49,7 +49,8 @@ public class PresentationFileService {
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
         log.info("uploadAndSave start - uploaderId={}, projectId={}, originalName={}, size={}",
-            uploaderId, projectId, file == null ? null : file.getOriginalFilename(), file == null ? 0 : file.getSize());
+                uploaderId, projectId, file == null ? null : file.getOriginalFilename(),
+                file == null ? 0 : file.getSize());
         // 1. 파일 시스템에 원본 파일 저장
         FileInfoDto origin = fileUploadService.saveFile(file);
 
@@ -97,7 +98,8 @@ public class PresentationFileService {
                 fileUploadService.deleteFile(origin.getFilePath());
             } catch (Exception ignore) {
             }
-            log.error("uploadAndSave: image conversion failed - origin={}, error={}", origin.getFilePath(), e.getMessage(), e);
+            log.error("uploadAndSave: image conversion failed - origin={}, error={}", origin.getFilePath(),
+                    e.getMessage(), e);
             throw e;
         }
         // PresentationFile을 먼저 DB에 저장해서 PK(fileId)를 확보.
@@ -154,7 +156,8 @@ public class PresentationFileService {
             entity.setProject(project);
 
             PresentationFile saved = presentationFileRepository.save(entity);
-            log.info("PresentationFile saved - fileId={}, path={}, saveName={}", saved.getFileId(), saved.getFilePath(), saved.getSaveName());
+            log.info("PresentationFile saved - fileId={}, path={}, saveName={}", saved.getFileId(), saved.getFilePath(),
+                    saved.getSaveName());
 
             // 이미지 엔티티를 배치로 저장
             java.util.List<PresentationImage> imageEntities = new java.util.ArrayList<>();
@@ -185,7 +188,7 @@ public class PresentationFileService {
                 presentationFileRepository.save(saved);
             }
 
-                return FileUploadDto.builder()
+            return FileUploadDto.builder()
                     .fileId(saved.getFileId())
                     .fileUrl(saved.getFileUrl())
                     .thumbnailUrl(saved.getThumbnailUrl())
@@ -205,6 +208,71 @@ public class PresentationFileService {
             }
             throw new RuntimeException("DB 저장 실패, 파일 롤백됨", e);
         }
+    }
+
+    /**
+     * 추가 자료 업로드: 이미지 변환을 수행하지 않고 원본 파일만 저장하고 텍스트 추출을 수행합니다.
+     * 주로 참고자료(예: 텍스트 중심 PDF) 업로드 후 Cue/QnA 생성에 활용할 용도입니다.
+     */
+    @Transactional
+    public FileUploadDto uploadResourceAndExtract(MultipartFile file, Long uploaderId, Long projectId) {
+        // 1. 파일 저장
+        FileInfoDto origin = fileUploadService.saveFile(file);
+
+        try {
+            PresentationFile entity = new PresentationFile();
+            entity.setSaveName(origin.getSaveName());
+            entity.setFilePath(origin.getFilePath());
+            entity.setFileUrl(origin.getFileUrl());
+            entity.setOriginalName(origin.getOriginalName());
+            entity.setFileType(origin.getFileType());
+            entity.setFileSize(origin.getSize());
+            entity.setUploadedAt(origin.getUploadedAt());
+
+            User uploader = userRepository.findById(uploaderId)
+                    .orElseThrow(() -> new IllegalArgumentException("업로더를 찾을 수 없습니다. id=" + uploaderId));
+            entity.setUploader(uploader);
+
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. id=" + projectId));
+            entity.setProject(project);
+
+            PresentationFile saved = presentationFileRepository.save(entity);
+
+            // 텍스트 추출 수행(이미지 변환 없이 바로 추출)
+            extractTextService.extractTextAndSave(saved.getFileId());
+
+            return FileUploadDto.builder()
+                    .fileId(saved.getFileId())
+                    .fileUrl(saved.getFileUrl())
+                    .thumbnailUrl(saved.getThumbnailUrl())
+                    .build();
+        } catch (RuntimeException e) {
+            // 실패 시 저장된 파일 보상
+            try {
+                fileUploadService.deleteFile(origin.getFilePath());
+            } catch (Exception ignore) {
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 저장된 슬라이드 이미지를 모아 임시 PDF 파일을 생성하여 반환합니다.
+     * 반환값은 생성된 PDF의 파일 시스템 경로입니다.
+     */
+    public String generatePdfFromImages(Long fileId) {
+        PresentationFile file = presentationFileRepository.findById(fileId)
+                .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
+
+        List<PresentationImage> images = presentationImageRepository.findAllByFile_FileIdOrderByPageNumberAsc(fileId);
+        if (images == null || images.isEmpty()) {
+            throw new IllegalArgumentException("해당 파일에 이미지가 없습니다.");
+        }
+
+        // 이미지 경로 목록을 FileUploadService에 위임하여 PDF를 생성한다.
+        java.util.List<String> paths = images.stream().map(PresentationImage::getPath).toList();
+        return fileUploadService.createPdfFromImages(paths);
     }
 
     public List<String> getAllSlideImages(Long fileId) {

@@ -44,6 +44,51 @@ public class FileUploadService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
+    @org.springframework.beans.factory.annotation.Value("${file.font-dir:}")
+    private String fontDir;
+
+    // 폰트 등록 상태 플래그
+    private static volatile boolean fontsRegistered = false;
+
+    // 등록되지 않은 경우 fontDir에 있는 ttf/otf 폰트를 JVM에 등록합니다.
+    public void registerFontsFromConfig() {
+        if (fontsRegistered) return;
+        synchronized (FileUploadService.class) {
+            if (fontsRegistered) return;
+            if (fontDir == null || fontDir.isBlank()) {
+                fontsRegistered = true; // no-op
+                return;
+            }
+            try {
+                java.nio.file.Path dir = Paths.get(fontDir);
+                if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+                    log.warn("Font dir does not exist or is not a directory: {}", fontDir);
+                    fontsRegistered = true;
+                    return;
+                }
+                java.awt.GraphicsEnvironment ge = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment();
+                try (java.util.stream.Stream<java.nio.file.Path> stream = Files.list(dir)) {
+                    stream.filter(p -> {
+                        String n = p.getFileName().toString().toLowerCase();
+                        return n.endsWith(".ttf") || n.endsWith(".otf");
+                    }).forEach(p -> {
+                        try {
+                            java.awt.Font f = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, p.toFile());
+                            ge.registerFont(f);
+                            log.info("Registered font: {}", p.getFileName());
+                        } catch (Exception e) {
+                            log.warn("Failed to register font {}: {}", p.getFileName(), e.getMessage());
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                log.warn("Failed to register fonts from {}: {}", fontDir, e.getMessage());
+            } finally {
+                fontsRegistered = true;
+            }
+        }
+    }
+
     // 파일 시스템에 파일 저장, 저장된 파일의 정보 반환
     public FileInfoDto saveFile(MultipartFile file) {
 
@@ -141,7 +186,12 @@ public class FileUploadService {
         int safeDpi = Math.max(72, Math.min(dpi, 450));
         int slideLimit = Math.max(0, maxSlides);
 
-        try {
+            try {
+            // 폰트 디렉토리에 폰트를 등록해서 렌더링 폰트 폴백에 도움
+            try {
+                registerFontsFromConfig();
+            } catch (Exception ignore) {
+            }
             return convertPptxToImagesInternal(path, safeDpi, slideLimit);
         } catch (IOException e) {
             throw new RuntimeException("PPTX → 이미지 변환 실패: " + path, e);
@@ -156,6 +206,47 @@ public class FileUploadService {
         Files.createDirectories(uploadPath);
 
         try (XMLSlideShow show = new XMLSlideShow(Files.newInputStream(pptxPath))) {
+            // Diagnostic: log available font families on the JVM (helps detect missing fonts)
+            try {
+                java.awt.GraphicsEnvironment ge = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment();
+                String[] availableFonts = ge.getAvailableFontFamilyNames();
+                log.info("Available JVM fonts (count={}): {}", availableFonts.length,
+                        String.join(", ", java.util.Arrays.copyOf(availableFonts, Math.min(30, availableFonts.length))));
+            } catch (Exception e) {
+                log.warn("Failed to list JVM fonts: {}", e.getMessage());
+            }
+
+            // Diagnostic: inspect slides for declared font families in text runs
+            try {
+                int slideIdx = 0;
+                for (XSLFSlide s : show.getSlides()) {
+                    slideIdx++;
+                    try {
+                        java.util.Set<String> slideFonts = new java.util.LinkedHashSet<>();
+                        for (org.apache.poi.sl.usermodel.Shape shape : s.getShapes()) {
+                            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape) {
+                                org.apache.poi.xslf.usermodel.XSLFTextShape tx = (org.apache.poi.xslf.usermodel.XSLFTextShape) shape;
+                                for (org.apache.poi.xslf.usermodel.XSLFTextParagraph p : tx.getTextParagraphs()) {
+                                    for (org.apache.poi.xslf.usermodel.XSLFTextRun r : p.getTextRuns()) {
+                                        try {
+                                            String f = r.getFontFamily();
+                                            if (f != null && !f.isBlank())
+                                                slideFonts.add(f);
+                                        } catch (Exception ignore) {
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!slideFonts.isEmpty())
+                            log.info("Slide[{}] declared font families: {}", slideIdx, slideFonts);
+                    } catch (Exception ex) {
+                        log.debug("Failed to inspect slide text fonts for slide {}: {}", slideIdx, ex.getMessage());
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+
             final String baseName = pptxPath.getFileName().toString().replaceAll("(?i)\\.pptx$",
                     "");
             final Dimension pg = show.getPageSize(); // pt 단위 (1/72 inch)
@@ -358,6 +449,53 @@ public class FileUploadService {
             log.warn("Invalid fileUrl provided: {}", fileUrl);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    /**
+     * 저장된 이미지 파일 경로 목록을 받아 임시 PDF 파일을 생성합니다.
+     * 반환값은 생성된 PDF의 파일 시스템 경로입니다.
+     */
+    public String createPdfFromImages(java.util.List<String> imagePaths) {
+        if (imagePaths == null || imagePaths.isEmpty()) {
+            throw new IllegalArgumentException("imagePaths must not be empty");
+        }
+
+        java.util.UUID uuid = java.util.UUID.randomUUID();
+        String pdfName = uuid.toString() + ".pdf";
+        java.nio.file.Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+        try {
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("PDF 생성용 디렉토리 생성 실패", e);
+        }
+
+        java.nio.file.Path pdfPath = uploadPath.resolve(pdfName);
+
+        try (org.apache.pdfbox.pdmodel.PDDocument doc = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            for (String imgPath : imagePaths) {
+                if (imgPath == null) continue;
+                java.awt.image.BufferedImage bimg = javax.imageio.ImageIO.read(new java.io.File(imgPath));
+                if (bimg == null) continue;
+                float width = bimg.getWidth();
+                float height = bimg.getHeight();
+
+                org.apache.pdfbox.pdmodel.common.PDRectangle rect = new org.apache.pdfbox.pdmodel.common.PDRectangle(width, height);
+                org.apache.pdfbox.pdmodel.PDPage page = new org.apache.pdfbox.pdmodel.PDPage(rect);
+                doc.addPage(page);
+
+                org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject pdImage = org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory.createFromImage(doc, bimg);
+                try (org.apache.pdfbox.pdmodel.PDPageContentStream content = new org.apache.pdfbox.pdmodel.PDPageContentStream(doc, page)) {
+                    content.drawImage(pdImage, 0, 0, width, height);
+                }
+            }
+            doc.save(pdfPath.toFile());
+        } catch (Exception e) {
+            throw new RuntimeException("PDF 생성 실패", e);
+        }
+
+        return pdfPath.toString();
     }
 
     // 메모리 상태 체크 및 대기
