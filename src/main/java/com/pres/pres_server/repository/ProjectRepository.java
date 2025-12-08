@@ -2,9 +2,12 @@ package com.pres.pres_server.repository;
 
 import java.util.List;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-
 import com.pres.pres_server.domain.Project;
+import com.pres.pres_server.domain.User;
+import com.pres.pres_server.domain.WorkSpace;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
@@ -16,5 +19,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     // 워크스페이스 ID로 프로젝트 전체 조회
     List<Project> findByWorkspaceId_WorkspaceId(Long workspaceId);
 
+    List<Project> findByWorkspaceId_WorkspaceIdIn(List<WorkSpace> workspaces);
+
+    // WorkSpace 객체 리스트로 프로젝트 조회
+    List<Project> findByWorkspaceIdIn(List<WorkSpace> workspaces);
 
 }

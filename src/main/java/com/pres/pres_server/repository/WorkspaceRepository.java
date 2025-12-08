@@ -29,4 +29,10 @@ public interface WorkspaceRepository extends JpaRepository<WorkSpace, Long> {
             "ORDER BY w.workspaceName ASC")
     List<WorkSpace> findAllByUserOrderByWorkspaceName(@Param("user") User user);
 
+    List<WorkSpace> findByOwnerUserId_Id(Long id);
+
+    @Query("SELECT tm.workspace FROM TeamMember tm WHERE tm.user = :user")
+    List<WorkSpace> findWorkspacesByTeamMember(@Param("user") User user);
+
+
 }

@@ -13,10 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.time.format.DateTimeFormatter;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -142,41 +140,67 @@ public class ProjectService {
                         ))
                         .collect(Collectors.toList());
         }*/
+
         public List<ProjectListDTO> getProjectList(User user, int type) {
+
+                // 1) 사용자가 owner 인 workspace
+                List<WorkSpace> ownerWS = workspaceRepository.findByOwnerUserId_Id(user.getId());
+
+                // 2) 사용자가 member 로 속한 workspace
+                List<WorkSpace> memberWS = workspaceRepository.findWorkspacesByTeamMember(user);
+
+                // workspace 중복 제거
+                Set<WorkSpace> userWorkspaces = new LinkedHashSet<>();
+                userWorkspaces.addAll(ownerWS);
+                userWorkspaces.addAll(memberWS);
+
+                // 3) 이 workspace 안의 모든 프로젝트 조회
+                List<Project> userProjects =
+                        projectRepository.findByWorkspaceIdIn(new ArrayList<>(userWorkspaces));
 
                 List<Project> projects;
 
+                // type=2 → 제목순
                 if (type == 2) {
-                        projects = projectRepository.findAllByOrderByTitleAsc();
-                } else if (type == 1) {
-                        List<VisitLog> logs = visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
+                        projects = userProjects.stream()
+                                .sorted(Comparator.comparing(Project::getTitle))
+                                .collect(Collectors.toList());
+                }
+
+                // type=1 → 최근 방문순
+                else if (type == 1) {
+
+                        List<VisitLog> logs = visitLogRepository
+                                .findByUserAndProjectInOrderByVisitedAtDesc(user, userProjects);
+
                         projects = logs.stream()
                                 .map(VisitLog::getProject)
                                 .distinct()
                                 .collect(Collectors.toList());
 
-                        List<Project> allProjects = projectRepository.findAll();
-                        allProjects.removeAll(projects);
-                        projects.addAll(allProjects);
-                } else {
+                        // 방문기록 없는 project 뒤에 추가
+                        List<Project> notVisited = new ArrayList<>(userProjects);
+                        notVisited.removeAll(projects);
+                        projects.addAll(notVisited);
+                }
+
+                else {
                         throw new IllegalArgumentException("Invalid type: " + type);
                 }
 
+                // DTO 변환
                 return projects.stream()
                         .map(project -> {
-                                // 마지막 방문 로그 조회
                                 VisitLog lastVisit = visitLogRepository
                                         .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
                                         .orElse(null);
 
                                 ProjectListDTO dto = ProjectListDTO.from(project, userService);
                                 dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
-
                                 return dto;
                         })
                         .collect(Collectors.toList());
         }
-
 
         // 프로젝트 생성 서비스
         @Transactional

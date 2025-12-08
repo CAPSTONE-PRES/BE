@@ -39,5 +39,8 @@ public interface VisitLogRepository extends JpaRepository<VisitLog, Long> {
 
     void deleteByProject(Project project);
 
+    // 프로젝트 리스트 안에서, 특정 유저의 방문 로그를 최근순으로 조회
+    List<VisitLog> findByUserAndProjectInOrderByVisitedAtDesc(User user, List<Project> projects);
+
 }
 
