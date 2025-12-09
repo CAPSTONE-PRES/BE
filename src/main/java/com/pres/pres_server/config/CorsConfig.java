@@ -22,7 +22,14 @@ public class CorsConfig {
                 "https://localhost:*",
                 "https://15.164.97.26.nip.io",
                 "https://pres-server.s3.ap-northeast-2.amazonaws.com",
-                "http://15.164.97.26"));
+                "http://15.164.97.26",
+                // Added production IP and domains
+                "http://54.180.167.52",
+                "http://54.180.167.52:*",
+                "https://pres-web.com",
+                "http://pres-web.com",
+                "https://www.pres-web.com",
+                "http://www.pres-web.com"));
 
         config.setAllowedMethods(Arrays.asList(
                 "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
