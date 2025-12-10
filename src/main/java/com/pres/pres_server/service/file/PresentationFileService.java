@@ -45,6 +45,8 @@ public class PresentationFileService {
 
     @org.springframework.beans.factory.annotation.Value("${file.max-path-length:1024}")
     private int maxPathLength;
+    @org.springframework.beans.factory.annotation.Value("${file.max-resource-size:104857600}")
+    private long maxResourceSize; // 기본 100MB
 
     @Transactional
     public FileUploadDto uploadAndSave(MultipartFile file, Long uploaderId, Long projectId) {
@@ -146,6 +148,8 @@ public class PresentationFileService {
             entity.setFileType(origin.getFileType());
             entity.setFileSize(origin.getSize());
             entity.setUploadedAt(origin.getUploadedAt());
+            // 메인 발표 파일 업로드: additional = false
+            entity.setAdditional(false);
 
             User uploader = userRepository.findById(uploaderId)
                     .orElseThrow(() -> new IllegalArgumentException("업로더를 찾을 수 없습니다. id=" + uploaderId));
@@ -154,6 +158,8 @@ public class PresentationFileService {
             Project project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. id=" + projectId));
             entity.setProject(project);
+
+            // (주의) 메인 업로드 경로이므로 additional=true 설정 제거
 
             PresentationFile saved = presentationFileRepository.save(entity);
             log.info("PresentationFile saved - fileId={}, path={}, saveName={}", saved.getFileId(), saved.getFilePath(),
@@ -216,10 +222,28 @@ public class PresentationFileService {
      */
     @Transactional
     public FileUploadDto uploadResourceAndExtract(MultipartFile file, Long uploaderId, Long projectId) {
+        // 사전 검증: 확장자 및 크기 (저장 전에 검증해서 빠르게 예외 반환)
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("업로드할 파일이 없습니다.");
+        }
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || originalName.isBlank()) {
+            throw new IllegalArgumentException("파일 이름을 확인할 수 없습니다.");
+        }
+        String lower = originalName.toLowerCase();
+        if (!(lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".txt"))) {
+            throw new IllegalArgumentException("지원하지 않는 파일 형식입니다. 허용: .pdf, .docx, .txt");
+        }
+        if (file.getSize() > maxResourceSize) {
+            throw new IllegalArgumentException(
+                    String.format("파일 크기가 허용치를 초과했습니다: %d bytes (최대 %d bytes)", file.getSize(), maxResourceSize));
+        }
+
         // 1. 파일 저장
         FileInfoDto origin = fileUploadService.saveFile(file);
 
         try {
+            // TODO: DB 저장 수정해야하는거 아닌지 확인 (파일 메타데이터 저장)
             PresentationFile entity = new PresentationFile();
             entity.setSaveName(origin.getSaveName());
             entity.setFilePath(origin.getFilePath());
@@ -236,6 +260,9 @@ public class PresentationFileService {
             Project project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다. id=" + projectId));
             entity.setProject(project);
+
+            // 추가 자료로 저장함을 명시
+            entity.setAdditional(true);
 
             PresentationFile saved = presentationFileRepository.save(entity);
 
