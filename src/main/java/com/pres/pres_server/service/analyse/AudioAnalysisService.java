@@ -399,7 +399,7 @@ public class AudioAnalysisService {
             int spmScore = speechSpeedService.mapSpmToScore(spm);
 
             results.add(SlideSpmResult.builder()
-                    .slideNumber(i + 1)
+                    .slideNumber(interval.getSlideNumber())
                     .spm(spm)
                     .spmScore(spmScore)
                     .build());
