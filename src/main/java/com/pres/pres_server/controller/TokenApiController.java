@@ -35,4 +35,20 @@ public class TokenApiController {
         return ResponseEntity.ok(token);
     }
 
+        // 개발/테스트용 짧은 만료 토큰 발급 API (기본 3분)
+        @PostMapping("/test-token-short")
+        public ResponseEntity<String> generateShortTestToken(
+            @RequestParam String email,
+            @RequestParam Long id,
+            @RequestParam(required = false, defaultValue = "3") Long minutes) {
+        User testUser = User.builder()
+            .id(id)
+            .email(email)
+            .build();
+        String token = tokenProvider.generateToken(testUser, Duration.ofMinutes(minutes)); // minutes 분 유효
+        return ResponseEntity.ok(token);
+        }
+
+    
+
 }
