@@ -17,10 +17,13 @@ public class ExtractedTextDto {
     // 텍스트가 부족한 슬라이드 정보
     private List<Integer> insufficientSlides;
     private String insufficientMessage;
+    // 텍스트가 충분한지 여부 (true면 충분함, false면 부족)
+    private Boolean isSufficient;
 
     // 기존 생성자와의 호환성을 위한 생성자
     public ExtractedTextDto(String fullText, List<String> slideTexts) {
         this.fullText = fullText;
         this.slideTexts = slideTexts;
+        this.isSufficient = true;
     }
 }
