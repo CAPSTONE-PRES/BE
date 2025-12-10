@@ -116,6 +116,10 @@ public class AuthController {
         @PostMapping("/email/sendcode")
         // requestBody로 요청 값 매핑
         public ResponseEntity<EmailAuthSendResponse> sendSignupEmail(@RequestBody @Valid EmailAuthSendRequest req) {
+                // 이미 가입된 이메일이면 코드 발송을 허용하지 않음
+                if (userService.findOptionalByEmail(req.getEmail()).isPresent()) {
+                        return ResponseEntity.badRequest().body(new EmailAuthSendResponse("이미 가입된 이메일입니다."));
+                }
                 emailService.sendCode(req.getEmail());
                 return ResponseEntity.ok(new EmailAuthSendResponse("인증 코드 발송 완료"));
         }
