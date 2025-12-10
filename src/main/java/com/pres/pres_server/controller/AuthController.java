@@ -204,14 +204,13 @@ public class AuthController {
                         @ApiResponse(responseCode = "200", description = "성공"),
                         @ApiResponse(responseCode = "401", description = "인증 실패")
         })
-        public ResponseEntity<?> kakaoCallback(@RequestParam("code") String code, HttpServletResponse response) {
+        public void kakaoCallback(@RequestParam("code") String code, HttpServletResponse response) throws IOException {
                 // 코드 유효성 검사
                 if (code == null || code.isEmpty()) {
                         throw new KakaoBadRequestException("코드가 올바르지 않습니다.");
                 }
                 // 1. 인가 코드로 카카오 토큰 정보(객체)를 발급받음
                 KakaoTokenResponse kakaoTokenResponse = kakaoAuthService.getToken(code);
-
                 // 2. 토큰 정보(객체)를 통해 사용자 정보 조회 및 회원가입/인증
                 User user = kakaoAuthService.processKakaoUser(kakaoTokenResponse);
 
@@ -220,7 +219,10 @@ public class AuthController {
                 String accessToken = tokenService.createAccessToken(refreshToken);
                 int cookieMaxAge = 14 * 24 * 60 * 60;
                 CookieUtil.addCookie(response, "refresh_token", refreshToken, cookieMaxAge);
-                return ResponseEntity.ok(new CreateAccessTokenResponse(accessToken, null)); // refreshToken 제거
+
+                // 프론트 리다이렉트 URL
+                String redirectUrl = "https://pres-web.com/oauth/kakao?accessToken=" + accessToken;
+                response.sendRedirect(redirectUrl);
         }
 
         @Operation(summary = "카카오 로그아웃", description = "카카오 계정으로 로그인한 사용자를 리프레시 토큰을 무효화하는 방식으로 로그아웃합니다.", responses = {
