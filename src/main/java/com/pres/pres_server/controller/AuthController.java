@@ -30,12 +30,14 @@ import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.util.CookieUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -231,9 +233,18 @@ public class AuthController {
                         @RequestParam("accessToken") String accessToken) {
                 // 1. 헤더에서 리프레시 토큰 추출
                 String refreshToken = tokenProvider.resolveRefreshToken(request);
+                if (refreshToken == null || refreshToken.isBlank()) {
+                        // 쿠키(또는 Authorization 헤더)가 없는 경우
+                        return ResponseEntity.badRequest().body("refresh token missing");
+                }
 
                 // 2. 리프레시 토큰 무효화 (DB에서 삭제)
-                tokenService.invalidateRefreshToken(refreshToken);
+                try {
+                        tokenService.invalidateRefreshToken(refreshToken);
+                } catch (Exception e) {
+                        log.warn("Failed to invalidate refresh token: {}", e.getMessage());
+                        return ResponseEntity.status(500).body("failed to invalidate refresh token");
+                }
 
                 return ResponseEntity.ok("Kakao logout success");
         }
@@ -244,15 +255,42 @@ public class AuthController {
                         @ApiResponse(responseCode = "400", description = "잘못된 요청")
         })
         @PostMapping("/refresh")
-        public ResponseEntity<CreateAccessTokenResponse> refreshAccessToken(HttpServletRequest request) {
-                // Refresh Token 추출
-                String refreshToken = tokenProvider.resolveRefreshToken(request);
-                if (refreshToken == null || !tokenService.isValidRefreshToken(refreshToken)) {
-                        return ResponseEntity.status(401).body(null); // 인증 실패
-                }
+        public ResponseEntity<?> refreshAccessToken(HttpServletRequest request) {
+                try {
+                        // 쿠키에서 refresh token만 허용 — 헤더 폴백 제거
+                        String refreshToken = null;
+                        Cookie[] cookies = request.getCookies();
+                        if (cookies != null) {
+                                for (Cookie c : cookies) {
+                                        if ("refresh_token".equals(c.getName())) {
+                                                refreshToken = c.getValue();
+                                                log.debug("refresh token found in cookie");
+                                                break;
+                                        }
+                                }
+                        }
 
-                // 새로운 Access Token 생성
-                String newAccessToken = tokenService.createAccessToken(refreshToken);
-                return ResponseEntity.ok(new CreateAccessTokenResponse(newAccessToken, null));
+                        // 토큰 존재 확인
+                        if (refreshToken == null || refreshToken.isBlank()) {
+                                log.info("refresh token missing in refresh request");
+                                return ResponseEntity.status(400).body(Map.of("error", "refresh_token_missing"));
+                        }
+
+                        // 유효성 검사
+                        if (!tokenService.isValidRefreshToken(refreshToken)) {
+                                log.info("invalid refresh token during refresh request");
+                                return ResponseEntity.status(401).body(Map.of("error", "invalid_refresh_token"));
+                        }
+
+                        // 새로운 Access Token 생성
+                        String newAccessToken = tokenService.createAccessToken(refreshToken);
+                        return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+                } catch (IllegalArgumentException iae) {
+                        log.warn("refresh failed: {}", iae.getMessage());
+                        return ResponseEntity.status(401).body(Map.of("error", "invalid_refresh_token"));
+                } catch (Exception e) {
+                        log.error("unexpected error on refresh", e);
+                        return ResponseEntity.status(500).body(Map.of("error", "internal_error"));
+                }
         }
 }

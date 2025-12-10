@@ -43,9 +43,18 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
         // 가져온 값에서 접두사 제거
         String token = getAccessToken(authorizationHeader);
         // 토큰 유효성 검사
-        if (token != null && tokenProvider.validToken(token)) {
-            Authentication authentication = tokenProvider.getAuthentication(token);
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+        if (token != null) {
+            boolean valid = tokenProvider.validToken(token);
+            if (valid) {
+                Authentication authentication = tokenProvider.getAuthentication(token);
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } else {
+                // 클라이언트가 토큰을 보냈는데 만료/무효한 경우 즉시 401 반환
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"error\":\"invalid_or_expired_access_token\"}");
+                return;
+            }
         }
 
         filterChain.doFilter(request, response);

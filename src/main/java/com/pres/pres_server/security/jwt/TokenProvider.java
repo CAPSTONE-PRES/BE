@@ -18,6 +18,7 @@ import java.time.Duration;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Header;
+import io.jsonwebtoken.ExpiredJwtException;
 import com.pres.pres_server.domain.User;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,8 +57,12 @@ public class TokenProvider {
         try {
             Jwts.parser().setSigningKey(jwtProperties.getSecretKey()).parseClaimsJws(token);
             return true;
+        } catch (ExpiredJwtException eje) {
+            // 만료된 토큰은 흔한 상황이므로 info로 기록
+            log.info("Expired JWT token: {}", eje.getMessage());
         } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
+            // 서명 오류 등 예외는 경고 수준
+            log.warn("Invalid JWT token: {}", e.getMessage());
         }
         return false;
     }
@@ -68,9 +73,8 @@ public class TokenProvider {
         Claims claims = getClaims(token);
         Long userId = claims.get("id", Long.class);
 
-        User user =
-                userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException(
-                        "User not found" + userId));
+        User user = userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException(
+                "User not found" + userId));
         return new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
     }
 
