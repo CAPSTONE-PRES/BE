@@ -70,12 +70,17 @@ public class PracticeSessionService {
                 session = practiceSessionRepository.save(session);
                 log.info("PracticeSession 생성 완료 - sessionId: {}", session.getSessionId());
 
-                // 3. 프로젝트에 연결된 발표 파일 조회
-                PresentationFile presentationFile = presentationFileRepository.findByProjectWithExtractedText(project)
-                                .orElseThrow(() -> new IllegalArgumentException(
-                                                "프로젝트에 연결된 발표 파일이 없습니다. projectId: " + projectId));
+                                // 3. 프로젝트에 연결된 (메인) 발표 파일 조회 - additional == false 인 파일만 사용
+                                List<PresentationFile> mainFiles = presentationFileRepository.findAllByProjectAndAdditionalFalse(project);
+                                if (mainFiles == null || mainFiles.isEmpty()) {
+                                        throw new IllegalArgumentException("프로젝트에 연결된 메인 발표 파일이 없습니다. projectId: " + projectId);
+                                }
+                                if (mainFiles.size() > 1) {
+                                        throw new IllegalStateException("메인 발표 자료가 2개 이상 존재합니다. projectId: " + projectId);
+                                }
 
-                Long fileId = presentationFile.getFileId();
+                                PresentationFile presentationFile = mainFiles.get(0);
+                                Long fileId = presentationFile.getFileId();
                 log.info("PresentationFile 조회 완료 - fileId: {}", fileId);
 
                 // 4. 여기서는 더 이상 슬라이드/큐카드/qrUrl 리스트를 조립하지 않는다.
@@ -153,20 +158,22 @@ public class PracticeSessionService {
                 Long fileId = null;
                 Map<Integer, String> slideToImageUrl = new HashMap<>();
                 try {
-                        var pfOpt = presentationFileRepository.findByProjectWithExtractedText(session.getProject());
-                        if (pfOpt.isPresent()) {
-                                fileId = pfOpt.get().getFileId();
-                                try {
-                                        // 페이지 번호 -> 외부 이미지 URL 매핑을 가져와 직접 사용
-                                        java.util.Map<Integer, String> urlMap = presentationImageService
-                                                        .getImageUrlMap(fileId);
-                                        if (urlMap != null && !urlMap.isEmpty()) {
-                                                slideToImageUrl.putAll(urlMap);
+                                // 메인 파일만 선택하여 이미지 URL 매핑 시도
+                                List<PresentationFile> mains = presentationFileRepository.findAllByProjectAndAdditionalFalse(session.getProject());
+                                if (mains != null && !mains.isEmpty()) {
+                                        if (mains.size() > 1) {
+                                                log.warn("프로젝트에 메인 파일이 다수 존재합니다. sessionId={}", session.getSessionId());
                                         }
-                                } catch (Exception e) {
-                                        log.info("프레젠테이션 이미지 URL 조회 실패: {}", e.getMessage());
+                                        fileId = mains.get(0).getFileId();
+                                        try {
+                                                java.util.Map<Integer, String> urlMap = presentationImageService.getImageUrlMap(fileId);
+                                                if (urlMap != null && !urlMap.isEmpty()) {
+                                                        slideToImageUrl.putAll(urlMap);
+                                                }
+                                        } catch (Exception e) {
+                                                log.info("프레젠테이션 이미지 URL 조회 실패: {}", e.getMessage());
+                                        }
                                 }
-                        }
                 } catch (Exception ignore) {
                 }
 
