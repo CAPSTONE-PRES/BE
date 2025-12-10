@@ -348,6 +348,8 @@ public class ExtractTextService {
 
         // 지원하지 않는 파일 형식의 경우 검증 건너뛰기
         if (currentPdfPageInfos == null && currentSlideInfos == null) {
+            // 명확성을 위해 충분함(true)으로 설정 후 반환
+            extractedText.setIsSufficient(true);
             return extractedText;
         }
 
@@ -393,6 +395,9 @@ public class ExtractTextService {
         if (!insufficientSlides.isEmpty()) {
             extractedText.setInsufficientSlides(insufficientSlides);
             extractedText.setInsufficientMessage("텍스트가 부족한 페이지가 있습니다. (" + messageBuilder.toString() + ")");
+            extractedText.setIsSufficient(false);
+        } else {
+            extractedText.setIsSufficient(true);
         }
 
         return extractedText;
@@ -433,6 +438,9 @@ public class ExtractTextService {
             }
             dto.setInsufficientSlides(insufficientSlides);
             dto.setInsufficientMessage(extractedText.getInsufficientMessage());
+            dto.setIsSufficient(extractedText.getIsSufficient());
+        } else {
+            dto.setIsSufficient(extractedText.getIsSufficient());
         }
 
         return dto;
@@ -515,6 +523,9 @@ public class ExtractTextService {
             }
             dto.setInsufficientSlides(list);
             dto.setInsufficientMessage(extractedText.getInsufficientMessage());
+            dto.setIsSufficient(extractedText.getIsSufficient());
+        } else {
+            dto.setIsSufficient(extractedText.getIsSufficient());
         }
 
         return dto;
