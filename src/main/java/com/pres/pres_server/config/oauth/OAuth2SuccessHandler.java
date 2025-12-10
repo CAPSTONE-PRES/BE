@@ -1,12 +1,10 @@
 package com.pres.pres_server.config.oauth;
 
 import java.io.IOException;
-import java.time.Duration;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
-import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.pres.pres_server.domain.RefreshToken;
@@ -22,17 +20,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
-@Component
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
     public static final String REFRESH_TOKEN_COOKIE_NAME = "refresh_token";
     public static final String REDIRECT_PATH = "http://localhost:3000/oauth2/redirect"; // 프론트엔드 리다이렉트 경로
-    public static final Duration REFRESH_TOKEN_DURATION = Duration.ofDays(14);
-    public static final Duration ACCESS_TOKEN_DURATION = Duration.ofDays(1);
 
     private final TokenProvider tokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final OAuth2AuthorizationRequestBasedOnCookieRepository requestBasedOnCookieRepository;
     private final UserService userService;
+    private final com.pres.pres_server.security.jwt.JwtProperties jwtProperties;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -42,12 +38,12 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         User user = userService.findByEmail((String) oAuth2User.getAttributes().get("email"));
 
         // refresh token 생성 -> 저장 -> 쿠키에 저장
-        String refreshToken = tokenProvider.generateToken(user, REFRESH_TOKEN_DURATION);
+        String refreshToken = tokenProvider.generateToken(user, jwtProperties.getRefreshTokenDuration());
         saveRefreshToken(user.getId(), refreshToken);
         addRefreshTokenCookie(request, response, refreshToken);
 
         // access token 생성 -> 패스에 액세스 토큰 추가
-        String accessToken = tokenProvider.generateToken(user, ACCESS_TOKEN_DURATION);
+        String accessToken = tokenProvider.generateToken(user, jwtProperties.getOauthAccessTokenDuration());
         String targetUrl = getTargetUrl(accessToken);
 
         // 인증 관련 설정 값, 쿠키 제거
@@ -67,7 +63,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     // 생성된 리프레쉬 토큰을 쿠키에 저장
     private void addRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response, String refreshToken) {
-        int cookieMaxAge = (int) REFRESH_TOKEN_DURATION.toSeconds();
+        int cookieMaxAge = (int) jwtProperties.getRefreshTokenDuration().toSeconds();
 
         CookieUtil.deleteCookie(request, response, REFRESH_TOKEN_COOKIE_NAME); // 기존 쿠키 삭제
         CookieUtil.addCookie(response, REFRESH_TOKEN_COOKIE_NAME, refreshToken, cookieMaxAge);

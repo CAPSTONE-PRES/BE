@@ -26,71 +26,73 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @Configuration
 public class WebOAuthSecurityConfig {
 
-    private final OAuth2UserCustomService customService;
-    private final UserService userService;
-    private final TokenProvider tokenProvider;
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final CorsConfigurationSource corsConfigurationSource;
+        private final OAuth2UserCustomService customService;
+        private final UserService userService;
+        private final TokenProvider tokenProvider;
+        private final RefreshTokenRepository refreshTokenRepository;
+        private final com.pres.pres_server.security.jwt.JwtProperties jwtProperties;
+        private final CorsConfigurationSource corsConfigurationSource;
 
-    @Bean
-    public WebSecurityCustomizer configure() { // 스프링 시큐리티 기능 비활성화
+        @Bean
+        public WebSecurityCustomizer configure() { // 스프링 시큐리티 기능 비활성화
                 return (web) -> web.ignoring().requestMatchers("/static/**");
-    }
+        }
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .csrf(csrf -> csrf.disable())
-                .httpBasic(AbstractHttpConfigurer::disable)
-                .formLogin(AbstractHttpConfigurer::disable)
-                .logout(AbstractHttpConfigurer::disable)
-                .sessionManagement(management -> management
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(tokenAuthenticationFilter(),
-                        UsernamePasswordAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth
-                        // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        // 토큰 관련 API (테스트용 포함)
-                        .requestMatchers("/api/token", "/test-token").permitAll()
-                        // 인증 관련 API (회원가입, 로그인, 이메일 인증)
-                        .requestMatchers("/auth/**").permitAll()
-                        // 이미지 헤더에 auth 불가능
-                        .requestMatchers("/api/files/**").permitAll()
-                        // 나머지 모든 API는 인증 필요
-                        .requestMatchers("/api/**", "/user/**", "/projects/**", "/workspace/**")
-                        .authenticated()
-                        .anyRequest().permitAll())
-                .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/login")
-                        .authorizationEndpoint(authorization -> authorization
-                                .authorizationRequestRepository(
-                                        oAuth2AuthorizationRequestBasedOnCookieRepository()))
-                        .userInfoEndpoint(userInfo -> userInfo.userService(customService))
-                        .successHandler(oAuth2SuccessHandler()))
-                .exceptionHandling(exceptions -> exceptions
-                        .defaultAuthenticationEntryPointFor(
-                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
-                                new AntPathRequestMatcher("/api/**")))
-                .build();
-    }
+        @Bean
+        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                return http
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                                .csrf(csrf -> csrf.disable())
+                                .httpBasic(AbstractHttpConfigurer::disable)
+                                .formLogin(AbstractHttpConfigurer::disable)
+                                .logout(AbstractHttpConfigurer::disable)
+                                .sessionManagement(management -> management
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .addFilterBefore(tokenAuthenticationFilter(),
+                                                UsernamePasswordAuthenticationFilter.class)
+                                .authorizeHttpRequests(auth -> auth
+                                                // Swagger UI와 OpenAPI JSON 인증 없이 접근 가능
+                                                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                                                // 토큰 관련 API (테스트용 포함)
+                                                .requestMatchers("/api/token", "/test-token").permitAll()
+                                                // 인증 관련 API (회원가입, 로그인, 이메일 인증)
+                                                .requestMatchers("/auth/**").permitAll()
+                                                // 이미지 헤더에 auth 불가능
+                                                .requestMatchers("/api/files/**").permitAll()
+                                                // 나머지 모든 API는 인증 필요
+                                                .requestMatchers("/api/**", "/user/**", "/projects/**", "/workspace/**")
+                                                .authenticated()
+                                                .anyRequest().permitAll())
+                                .oauth2Login(oauth2 -> oauth2
+                                                .loginPage("/login")
+                                                .authorizationEndpoint(authorization -> authorization
+                                                                .authorizationRequestRepository(
+                                                                                oAuth2AuthorizationRequestBasedOnCookieRepository()))
+                                                .userInfoEndpoint(userInfo -> userInfo.userService(customService))
+                                                .successHandler(oAuth2SuccessHandler()))
+                                .exceptionHandling(exceptions -> exceptions
+                                                .defaultAuthenticationEntryPointFor(
+                                                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                                                                new AntPathRequestMatcher("/api/**")))
+                                .build();
+        }
 
-    @Bean
-    public OAuth2SuccessHandler oAuth2SuccessHandler() {
-        return new OAuth2SuccessHandler(tokenProvider,
-                refreshTokenRepository,
-                oAuth2AuthorizationRequestBasedOnCookieRepository(),
-                userService);
-    }
+        @Bean
+        public OAuth2SuccessHandler oAuth2SuccessHandler() {
+                return new OAuth2SuccessHandler(tokenProvider,
+                                refreshTokenRepository,
+                                oAuth2AuthorizationRequestBasedOnCookieRepository(),
+                                userService,
+                                jwtProperties);
+        }
 
-    @Bean
-    public TokenAuthenticationFilter tokenAuthenticationFilter() {
-        return new TokenAuthenticationFilter(tokenProvider);
-    }
+        @Bean
+        public TokenAuthenticationFilter tokenAuthenticationFilter() {
+                return new TokenAuthenticationFilter(tokenProvider);
+        }
 
-    @Bean
-    public OAuth2AuthorizationRequestBasedOnCookieRepository oAuth2AuthorizationRequestBasedOnCookieRepository() {
-        return new OAuth2AuthorizationRequestBasedOnCookieRepository();
-    }
+        @Bean
+        public OAuth2AuthorizationRequestBasedOnCookieRepository oAuth2AuthorizationRequestBasedOnCookieRepository() {
+                return new OAuth2AuthorizationRequestBasedOnCookieRepository();
+        }
 }
