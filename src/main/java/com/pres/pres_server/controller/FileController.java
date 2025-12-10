@@ -30,7 +30,6 @@ public class FileController {
     private final CueSlideService cueSlideService;
     private final PresentationImageService presentationImageService;
 
-    // TODO: file upload 로직과 image 변환 로직 API 분리?
     @Operation(summary = "presentation file 업로드", description = "presentation file을 업로드하고, 파일 ID와 URL을 반환합니다.")
     @PostMapping(value = "/upload", consumes = { "multipart/form-data" })
     public ResponseEntity<FileUploadDto> uploadFile(@RequestPart("file") MultipartFile file,
@@ -73,9 +72,11 @@ public class FileController {
     @Operation(summary = "큐카드,Qr 생성 및 저장", description = "파일 ID로 추출된 텍스트를 기반으로 큐카드를 생성합니다.")
     @PostMapping("/generate-cue/{fileId}")
     public ResponseEntity<CueGenerationResponseDto> generateCue(@PathVariable("fileId") Long fileId,
-            @RequestParam(name = "maxSections", required = false, defaultValue = "5") int maxSections) {
-        // 큐카드 생성을 담당하는 서비스 호출 (fileId만 전달)
-        CueGenerationResponseDto cueCard = generateCueService.generateCueCards(fileId, maxSections);
+            @RequestParam(name = "maxSections", required = false, defaultValue = "5") int maxSections,
+            @RequestParam(name = "additionalFileId", required = false) Long additionalFileId) {
+        // 큐카드 생성을 담당하는 서비스 호출 (fileId와 optional 추가자료 fileId 전달)
+        CueGenerationResponseDto cueCard = generateCueService.generateCueCards(fileId, maxSections,
+                additionalFileId);
         return ResponseEntity.ok(cueCard);
     }
 
