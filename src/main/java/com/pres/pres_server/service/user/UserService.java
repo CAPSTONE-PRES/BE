@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @Service
@@ -167,6 +168,10 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new IllegalArgumentException("이메일로 사용자를 찾을 수 없습니다: " + email));
     }
 
+    // 안전한 Optional 반환 메서드 (존재 여부 확인용)
+    public Optional<User> findOptionalByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
 
     // 이메일 유효성 검사
     public UserValidationResponseDTO validateUserEmail(String memberEmail) {
