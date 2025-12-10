@@ -602,4 +602,72 @@ public class OpenAIFeedbackService {
         return responseFormat;
     }
 
+    /**
+     * 문서를 발표용 불릿 포인트로 요약하여 JSON 배열로 반환하도록 요청합니다.
+     * 실패하거나 파싱 오류가 발생하면 빈 리스트를 반환합니다.
+     *
+     * @param text      원문 텍스트
+     * @param maxPoints 최대 반환 포인트 수
+     * @return 요약 포인트 리스트(빈 리스트일 수 있음)
+     */
+    public List<String> generateDocumentSummary(String text, int maxPoints) {
+        String system = "너는 발표용 요약을 생성하는 도우미야. 결과는 발표자가 즉시 슬라이드 노트나 큐카드로 쓸 수 있는 짧은 불릿 문장들이어야 해.";
+
+        String user = String.format(
+                "문서를 발표용 bullet point %d개로 요약해서 JSON 배열로 반환하라. 각 항목은 한 문장 이내로 간결하게 작성하고, 불필요한 서술을 제거해라. 출력은 반드시 JSON 배열만 반환하라.\n문서:\n%s",
+                Math.max(1, maxPoints), (text == null ? "" : text));
+
+        // response_format: JSON schema로 "array of strings"를 기대
+        Map<String, Object> responseFormat = new HashMap<>();
+        Map<String, Object> jsonSchemaContainer = new HashMap<>();
+
+        Map<String, Object> schema = new HashMap<>();
+        schema.put("type", "array");
+        Map<String, Object> itemSpec = new HashMap<>();
+        itemSpec.put("type", "string");
+        schema.put("items", itemSpec);
+        schema.put("minItems", 1);
+
+        jsonSchemaContainer.put("name", "DocSummaryArray");
+        jsonSchemaContainer.put("schema", schema);
+        jsonSchemaContainer.put("strict", true);
+
+        responseFormat.put("type", "json_schema");
+        responseFormat.put("json_schema", jsonSchemaContainer);
+
+        try {
+            String content = executeChatRequest(system, user, responseFormat);
+            log.debug("OpenAI raw content (doc summary): {}", content);
+            if (content == null || content.isBlank()) {
+                return Collections.emptyList();
+            }
+
+            try {
+                List<String> points = objectMapper.readValue(content, new TypeReference<List<String>>() {
+                });
+                return points == null ? Collections.emptyList() : points;
+            } catch (Exception e) {
+                log.warn("문서 요약 파싱 실패, 원시 응답을 시도: {}", content);
+                // 일부 모델이 문자열로 감싸진 JSON을 반환할 수 있으므로, 안전하게 문자 제거 후 재시도
+                String trimmed = content.trim();
+                if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
+                        || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+                    String unwrapped = trimmed.substring(1, trimmed.length() - 1);
+                    try {
+                        List<String> points = objectMapper.readValue(unwrapped, new TypeReference<List<String>>() {
+                        });
+                        return points == null ? Collections.emptyList() : points;
+                    } catch (Exception ex) {
+                        log.error("문서 요약 파싱 재시도 실패", ex);
+                        return Collections.emptyList();
+                    }
+                }
+                return Collections.emptyList();
+            }
+        } catch (Exception e) {
+            log.error("generateDocumentSummary 실패: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
 }
