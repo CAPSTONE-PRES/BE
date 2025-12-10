@@ -22,6 +22,8 @@ import org.springframework.web.client.RestTemplate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.pres.pres_server.service.ai.OpenAIFeedbackService;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -32,9 +34,13 @@ public class GenerateCueService {
     private final CueCardRepository cueCardRepository;
     private final PresentationFileRepository presentationFileRepository;
     private final CueSlideService cueSlideService;
+    private final OpenAIFeedbackService openAIFeedbackService;
 
     @Value("${openai.api.key}")
     private String OPENAI_API_KEY;
+
+    @Value("${ai.summarization.maxSyncLength:20000}")
+    private int maxSyncLength;
 
     // ObjectMapper 는 빈 주입 권장. 기존 new 유지 시 문제 없지만 설정 일관성 위해 빈으로 주입해도 됨.
     private final ObjectMapper objectMapper;
@@ -43,6 +49,11 @@ public class GenerateCueService {
 
     @Transactional
     public CueGenerationResponseDto generateCueCards(Long fileId, int maxSections) {
+        return generateCueCards(fileId, maxSections, null);
+    }
+
+    @Transactional
+    public CueGenerationResponseDto generateCueCards(Long fileId, int maxSections, Long additionalFileId) {
         if (fileId == null || fileId <= 0) {
             throw new IllegalArgumentException("유효하지 않은 파일 ID입니다: " + fileId);
         }
@@ -62,6 +73,51 @@ public class GenerateCueService {
             throw new IllegalStateException("추출된 슬라이드 텍스트가 없습니다: fileId=" + fileId);
         }
 
+        // 문서 요약(동기) 연동: 추가자료가 주어지면 추가자료만 요약(우선 사용).
+        // 기본적으로는 슬라이드 텍스트만 사용 (메인 fullText는 요약하지 않음)
+        List<String> documentSummaryPoints = Collections.emptyList();
+
+        if (additionalFileId != null) {
+            // 추가자료가 실제로 `additional`로 표시된 파일인지 검증
+            PresentationFile addFile = presentationFileRepository.findById(additionalFileId)
+                    .orElseThrow(() -> new IllegalArgumentException("추가자료 파일을 찾을 수 없습니다: " + additionalFileId));
+            if (!addFile.isAdditional()) {
+                throw new IllegalArgumentException("지정한 파일이 추가자료로 표시되어 있지 않습니다: " + additionalFileId);
+            }
+
+            try {
+                ExtractedTextDto addDto = extractTextService.getExtractedTextByFileId(additionalFileId);
+                String addFull = addDto == null ? "" : addDto.getFullText();
+                if (addFull != null && !addFull.isBlank()) {
+                    int alen = addFull.length();
+                    if (alen <= maxSyncLength) {
+                        try {
+                            List<String> addPoints = openAIFeedbackService.generateDocumentSummary(addFull, 5);
+                            if (addPoints == null) {
+                                documentSummaryPoints = Collections.emptyList();
+                            } else {
+                                documentSummaryPoints = addPoints;
+                            }
+                            log.info("추가자료 요약 생성 완료: points={} (fileId={}, additionalFileId={})",
+                                    (documentSummaryPoints == null ? 0 : documentSummaryPoints.size()), fileId,
+                                    additionalFileId);
+                        } catch (Exception e) {
+                            log.warn("추가자료 요약 생성 실패, 무시하고 진행합니다: additionalFileId={}, err={}",
+                                    additionalFileId, e.getMessage());
+                            documentSummaryPoints = Collections.emptyList();
+                        }
+                    } else {
+                        log.info("추가자료 문서가 커서 요약을 스킵합니다 (len={} > {}): additionalFileId={}", alen,
+                                maxSyncLength, additionalFileId);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("추가자료 추출 텍스트 조회 실패 (additionalFileId={}), 무시하고 진행합니다: {}", additionalFileId,
+                        e.getMessage());
+                documentSummaryPoints = Collections.emptyList();
+            }
+        }
+
         List<Integer> failed = new ArrayList<>();
         Map<Integer, String> slideErrors = new LinkedHashMap<>();
         int successCount = 0;
@@ -77,7 +133,7 @@ public class GenerateCueService {
                 }
 
                 String prompt = buildCueCardPrompt(slides.get(i), slideNum, maxSections,
-                        totalSlides);
+                        totalSlides, documentSummaryPoints);
                 String json = callAiModel(prompt, maxSections);
                 CueSlideDto slideDto = parseToCueSlideDto(json, slideNum, maxSections);
 
@@ -538,7 +594,18 @@ public class GenerateCueService {
     }
 
     // ======================= Prompt Builder =======================
-    private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections, int totalSlides) {
+    private String buildCueCardPrompt(String slideText, int slideNumber, int maxSections, int totalSlides,
+            List<String> summaryPoints) {
+        String summaryBlock = "";
+        if (summaryPoints != null && !summaryPoints.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[추가자료 요약]\n");
+            for (int i = 0; i < summaryPoints.size(); i++) {
+                sb.append(i + 1).append(". ").append(summaryPoints.get(i)).append("\n");
+            }
+            summaryBlock = sb.toString();
+        }
+
         return """
                 너는 대학생 발표자료에서 발표자가 사용할 발표 대본과 요약 큐카드를 생성하는 전문가다.
                 출력은 반드시 JSON 형식으로만 하며, JSON 외의 설명문이나 텍스트를 포함하지 말라.
@@ -715,6 +782,9 @@ public class GenerateCueService {
 
                 ---
 
+                [요약]
+                %s
+
                 [입력 슬라이드 텍스트]
                 %s
                 """.formatted(
@@ -732,7 +802,8 @@ public class GenerateCueService {
                 slideNumber, // 12) "slide = %d 로 설정한다."
                 maxSections, // 13) "최대 %d개의 섹션"
                 slideNumber, // 14) "slide 번호 오기입 금지 (반드시 %d)"
-                slideText // 15) 입력 슬라이드 텍스트
+                summaryBlock, // 15) 추가자료 요약(빈 문자열 가능)
+                slideText // 16) 입력 슬라이드 텍스트
         );
     }
 
