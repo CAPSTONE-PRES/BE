@@ -63,6 +63,9 @@ public class PresentationFile {
     @OneToOne(mappedBy = "presentationFile", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private ExtractedText extractedText;
 
+    @Column(name = "is_additional", nullable = false)
+    private boolean additional = false; // false = 메인 발표 자료, true = 추가 자료
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
