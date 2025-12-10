@@ -219,7 +219,8 @@ public class AuthController {
                 CookieUtil.addCookie(response, "refresh_token", refreshToken, cookieMaxAge);
 
                 // 프론트 리다이렉트 URL
-                String redirectUrl = "https://pres-web.com/oauth/kakao?accessToken=" + accessToken;
+                String redirectUrl =
+                        "https://pres-web.com/kakao/callback?accessToken=" + accessToken;
                 response.sendRedirect(redirectUrl);
         }
 
