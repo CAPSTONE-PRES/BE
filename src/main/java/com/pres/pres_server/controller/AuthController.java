@@ -186,7 +186,7 @@ public class AuthController {
                                         @ApiResponse(responseCode = "401", description = "인증 실패", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Failed Redirect", value = "Failed to redirect to Kakao OAuth"))),
                                         @ApiResponse(responseCode = "400", description = "잘못된 요청", content = @Content(mediaType = "text/plain", schema = @Schema(implementation = String.class), examples = @ExampleObject(name = "Bad Request", value = "Bad request")))
                         })
-        @PostMapping("/kakao/login")
+        @GetMapping("/kakao/login")
         public void kakaoLogin(HttpServletResponse response) throws IOException {
                 String redirectUrl = kakaoAuthService.getOauthRedirectURL();
                 response.sendRedirect(redirectUrl);
