@@ -40,6 +40,12 @@ public class ExtractTextService {
     @Value("${ocr.tesseract.lang:kor+eng}")
     private String tesseractLang;
 
+    @Value("${extract.max-pdf-pages:1000}")
+    private int maxPdfPages;
+
+    @Value("${extract.max-fulltext-chars:500000}")
+    private int maxFullTextChars;
+
     // fileId로 텍스트 추출 및 DB 저장 (권장)
     public ExtractedTextDto extractTextAndSave(Long fileId) {
         log.info("Extracting text for fileId={}", fileId);
@@ -57,20 +63,33 @@ public class ExtractTextService {
         String fileName = presentationFile.getOriginalName();
         String fullText = "";
         List<String> slideTexts = new ArrayList<>();
+        boolean isAdditional = presentationFile.isAdditional();
 
         try {
             // 파일 확장자에 따른 처리
-            if (fileName.toLowerCase().endsWith(".pdf")) {
+            String lower = fileName.toLowerCase();
+            if (lower.endsWith(".pdf")) {
+                // PDF 처리: 페이지 단위로 텍스트를 추출(추가자료/메인 구분 없이 동일 처리)
                 ExtractedTextDto result = extractPdfTextByPage(file);
                 fullText = result.getFullText();
                 slideTexts = result.getSlideTexts();
                 log.info("Extracted PDF text - filePath={}, slideTexts={}", filePath, slideTexts);
-            } else if (fileName.toLowerCase().endsWith(".pptx")) {
+            } else if (lower.endsWith(".pptx")) {
                 log.info("Extracting PPTX text - filePath={}", filePath);
+                // PPTX는 추가자료 여부와 관계없이 슬라이드 단위 추출을 사용
                 ExtractedTextDto result = extractPptTextBySlide(file);
                 fullText = result.getFullText();
                 slideTexts = result.getSlideTexts();
                 currentPdfPageInfos = null; // PPTX는 PDF 정보 없음
+            } else if (lower.endsWith(".docx")) {
+                // DOCX (추가자료/일반 모두 fullText 중심으로 처리)
+                ExtractedTextDto result = extractDocxAsFullText(file);
+                fullText = result.getFullText();
+                slideTexts = result.getSlideTexts();
+            } else if (lower.endsWith(".txt")) {
+                ExtractedTextDto result = extractTxtAsFullText(file);
+                fullText = result.getFullText();
+                slideTexts = result.getSlideTexts();
             } else {
                 throw new IllegalArgumentException("지원하지 않는 파일 형식입니다: " + fileName);
             }
@@ -123,13 +142,17 @@ public class ExtractTextService {
             // PDFRenderer 준비
             org.apache.pdfbox.rendering.PDFRenderer renderer = new org.apache.pdfbox.rendering.PDFRenderer(document);
             // TextValidationService를 사용한 PDF 검증
+            int pageCount = document.getNumberOfPages();
+            if (pageCount > maxPdfPages) {
+                log.warn("PDF 페이지 수({})가 허용치({})를 초과합니다. 일부 페이지만 처리합니다.", pageCount, maxPdfPages);
+            }
             List<PdfPageInfo> pdfPageInfos = textValidationService.validatePdfContent(document);
             currentPdfPageInfos = pdfPageInfos; // 전역 변수에 저장
 
             // 텍스트 추출
             PDFTextStripper stripper = new PDFTextStripper();
-            int pageCount = document.getNumberOfPages();
-            for (int i = 1; i <= pageCount; i++) {
+            int pageCountActual = Math.min(document.getNumberOfPages(), maxPdfPages);
+            for (int i = 1; i <= pageCountActual; i++) {
                 stripper.setStartPage(i);
                 stripper.setEndPage(i);
                 String pageText = stripper.getText(document);
@@ -153,6 +176,12 @@ public class ExtractTextService {
 
                 slideTexts.add(extracted);
                 fullTextBuilder.append("[페이지 ").append(i).append("]\n").append(extracted).append("\n\n");
+
+                if (fullTextBuilder.length() > maxFullTextChars) {
+                    log.warn("PDF 추출된 전체 텍스트가 허용 길이({})를 초과하여 잘라냅니다.", maxFullTextChars);
+                    fullTextBuilder.append("\n[생략: 길이 초과]\n");
+                    break;
+                }
             }
         } catch (IOException e) {
             throw new RuntimeException("PDF 텍스트 추출 실패: " + e.getMessage());
@@ -266,6 +295,44 @@ public class ExtractTextService {
         }
 
         return new ExtractedTextDto(sb.toString(), slideTexts);
+    }
+
+    // DOCX 전체 텍스트 추출 (paragraph-based)
+    private ExtractedTextDto extractDocxAsFullText(File file) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        try (FileInputStream fis = new FileInputStream(file);
+                org.apache.poi.xwpf.usermodel.XWPFDocument doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(fis)) {
+            for (org.apache.poi.xwpf.usermodel.XWPFParagraph p : doc.getParagraphs()) {
+                String text = p.getText();
+                if (text != null && !text.isBlank()) {
+                    sb.append(text).append("\n");
+                }
+                if (sb.length() > maxFullTextChars) {
+                    log.warn("DOCX 추출이 허용 길이({})를 초과하여 중단합니다.", maxFullTextChars);
+                    sb.append("\n[생략: 길이 초과]\n");
+                    break;
+                }
+            }
+        }
+        return new ExtractedTextDto(sb.toString(), new ArrayList<>());
+    }
+
+    // TXT 파일 전체 텍스트 추출
+    private ExtractedTextDto extractTxtAsFullText(File file) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(
+                new FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line).append("\n");
+                if (sb.length() > maxFullTextChars) {
+                    log.warn("TXT 추출이 허용 길이({})를 초과하여 중단합니다.", maxFullTextChars);
+                    sb.append("\n[생략: 길이 초과]\n");
+                    break;
+                }
+            }
+        }
+        return new ExtractedTextDto(sb.toString(), new ArrayList<>());
     }
 
     /**
