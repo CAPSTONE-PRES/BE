@@ -86,9 +86,7 @@ public class AuthController {
                 User user = userService.findByEmail(req.getEmail());
                 // accessToken, refreshToken 동시 발급
                 String refreshToken = tokenService.createRefreshToken(user);
-                String accessToken = tokenService.createTestAccessToken(refreshToken);
-                // TODO: 다시 되돌려 놓기
-                // String accessToken = tokenService.createAccessToken(refreshToken);
+                String accessToken = tokenService.createAccessToken(refreshToken);
                 // 리프레시 토큰을 HttpOnly 쿠키로 전달 (14일)
                 int cookieMaxAge = 14 * 24 * 60 * 60;
                 CookieUtil.addCookie(response, "refresh_token", refreshToken, cookieMaxAge);
