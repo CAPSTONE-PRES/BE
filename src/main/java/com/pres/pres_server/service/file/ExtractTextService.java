@@ -2,6 +2,7 @@ package com.pres.pres_server.service.file;
 
 import com.pres.pres_server.domain.PresentationFile;
 import com.pres.pres_server.domain.ExtractedText;
+import com.pres.pres_server.dto.file.InsufficientSlidePreviewDto;
 import com.pres.pres_server.repository.PresentationFileRepository;
 import com.pres.pres_server.repository.ExtractedTextRepository;
 import com.pres.pres_server.dto.file.SlideContentInfo;
@@ -20,6 +21,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -116,6 +118,7 @@ public class ExtractTextService {
                     result.getInsufficientSlides() != null ? result.getInsufficientSlides().toString() : null);
             extractedText.setInsufficientMessage(result.getInsufficientMessage());
 
+            //이미지 url 반환
             if (!isAdditional && result.getInsufficientSlides() != null && !result.getInsufficientSlides().isEmpty()) {
                 // 최대 2개로 제한
                 List<Integer> targetSlides = result.getInsufficientSlides()
@@ -124,15 +127,18 @@ public class ExtractTextService {
                         .limit(2)
                         .toList();
 
-                List<String> imageUrls = new ArrayList<>();
+                List<InsufficientSlidePreviewDto> previews = new ArrayList<>();
                 for (Integer page : targetSlides) {
                     presentationImageRepository.findByFile_FileIdAndPageNumber(fileId, page)
-                            .ifPresent(img -> imageUrls.add(img.getUrl()));
+                            .ifPresent(img -> {
+                                String url = "/api/files/" + fileId + "/page/" + page + "/image";
+                                previews.add(new InsufficientSlidePreviewDto(page, url));
+                            });
                 }
-                result.setInsufficientImages(imageUrls);
+                result.setInsufficientSlidePreviews(previews);
             } else {
                 // 추가자료거나 슬라이드 정보 없으면 이미지 안 보냄
-                result.setInsufficientImages(List.of());
+                result.setInsufficientSlidePreviews(Collections.emptyList());
             }
             extractedTextRepository.save(extractedText);
             return result;
