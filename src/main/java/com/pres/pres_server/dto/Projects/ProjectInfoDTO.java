@@ -25,9 +25,13 @@ public class ProjectInfoDTO {
 
     private List<Long> fileIds;
 
+    // 가장 최근 연습 세션 ID, 이전 연습 세션 피드백을 보여주기 위함
+    private Long latestSession;
+
     // Duration을 { "minute": x, "second": y } 형태
     public DurationInfo getLimitTime() {
-        if (limitedTime == null) return null;
+        if (limitedTime == null)
+            return null;
         return new DurationInfo(limitedTime.toMinutesPart(), limitedTime.toSecondsPart());
     }
 
@@ -38,4 +42,3 @@ public class ProjectInfoDTO {
         private int second;
     }
 }
-

@@ -28,6 +28,7 @@ public class ProjectService {
         private final UserRepository userRepository;
         private final VisitLogService visitLogService;
         private final UserService userService;
+        private final com.pres.pres_server.repository.PracticeSessionRepository practiceSessionRepository;
 
         public List<ProjectCalenderListDTO> getProjectsByUserId(Long userId) {
                 // 1. 사용자가 속한 workspace 조회
@@ -74,72 +75,73 @@ public class ProjectService {
                                 .toList();
         }
 
-
         public List<ProjectSearchListDTO> searchProjectsByTitle(Long userId, String title) {
                 // workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
-                        .map(tm -> tm.getWorkspace().getWorkspaceId())
-                        .toList();
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
 
                 // workspace에 속한 프로젝트 조회
                 List<Project> projects = projectRepository
-                        .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
 
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return projects.stream()
-                        .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase()))
-                        .map(p -> {
-                                String thumbnail = null;
-                                List<PresentationFile> files = p.getFiles();
-                                if (files != null && !files.isEmpty()) {
-                                        Long fileId = files.get(0).getFileId();
-                                        thumbnail = "/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
-                                }
+                                .filter(p -> p.getTitle().toLowerCase().contains(title.toLowerCase()))
+                                .map(p -> {
+                                        String thumbnail = null;
+                                        List<PresentationFile> files = p.getFiles();
+                                        if (files != null && !files.isEmpty()) {
+                                                Long fileId = files.get(0).getFileId();
+                                                thumbnail = "/api/files/" + fileId + "/page/1/image"; // 규칙 기반 URL
+                                        }
 
-                                return new ProjectSearchListDTO(
-                                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
-                                        p.getProjectId(),
-                                        p.getTitle(),
-                                        p.getWorkspaceId().getWorkspaceName(),
-                                        thumbnail
-                                );
-                        })
-                        .toList();
+                                        return new ProjectSearchListDTO(
+                                                        p.getDueDate() != null ? p.getDueDate().format(formatter) : "",
+                                                        p.getProjectId(),
+                                                        p.getTitle(),
+                                                        p.getWorkspaceId().getWorkspaceName(),
+                                                        thumbnail);
+                                })
+                                .toList();
         }
 
-
-        /*public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
-
-                List<Project> projects;
-
-                if (type == 2) {
-                        // 제목순 정렬
-                        projects = projectRepository.findAllByOrderByTitleAsc();
-                } else if (type == 1) {
-                        // 최근 방문순
-                        List<VisitLog> logs = visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
-                        projects = logs.stream()
-                                .map(VisitLog::getProject)
-                                .distinct()
-                                .collect(Collectors.toList());
-
-                        List<Project> allProjects = projectRepository.findAll();
-                        allProjects.removeAll(projects);
-                        projects.addAll(allProjects);
-                } else {
-                        throw new IllegalArgumentException("Invalid type: " + type);
-                }
-
-                return projects.stream()
-                        .map(project -> new ProjectCalenderListDTO(
-                                project.getCreatedAt() != null ? project.getCreatedAt().toLocalDate().toString() : "",
-                                project.getProjectId(),
-                                project.getTitle(),
-                                project.getWorkspaceId().getWorkspaceName()
-                        ))
-                        .collect(Collectors.toList());
-        }*/
+        /*
+         * public List<ProjectCalenderListDTO> getProjectList(User user, int type) {
+         * 
+         * List<Project> projects;
+         * 
+         * if (type == 2) {
+         * // 제목순 정렬
+         * projects = projectRepository.findAllByOrderByTitleAsc();
+         * } else if (type == 1) {
+         * // 최근 방문순
+         * List<VisitLog> logs =
+         * visitLogRepository.findByUserAndProjectIsNotNullOrderByVisitedAtDesc(user);
+         * projects = logs.stream()
+         * .map(VisitLog::getProject)
+         * .distinct()
+         * .collect(Collectors.toList());
+         * 
+         * List<Project> allProjects = projectRepository.findAll();
+         * allProjects.removeAll(projects);
+         * projects.addAll(allProjects);
+         * } else {
+         * throw new IllegalArgumentException("Invalid type: " + type);
+         * }
+         * 
+         * return projects.stream()
+         * .map(project -> new ProjectCalenderListDTO(
+         * project.getCreatedAt() != null ?
+         * project.getCreatedAt().toLocalDate().toString() : "",
+         * project.getProjectId(),
+         * project.getTitle(),
+         * project.getWorkspaceId().getWorkspaceName()
+         * ))
+         * .collect(Collectors.toList());
+         * }
+         */
 
         public List<ProjectListDTO> getProjectList(User user, int type) {
 
@@ -155,28 +157,27 @@ public class ProjectService {
                 userWorkspaces.addAll(memberWS);
 
                 // 3) 이 workspace 안의 모든 프로젝트 조회
-                List<Project> userProjects =
-                        projectRepository.findByWorkspaceIdIn(new ArrayList<>(userWorkspaces));
+                List<Project> userProjects = projectRepository.findByWorkspaceIdIn(new ArrayList<>(userWorkspaces));
 
                 List<Project> projects;
 
                 // type=2 → 제목순
                 if (type == 2) {
                         projects = userProjects.stream()
-                                .sorted(Comparator.comparing(Project::getTitle))
-                                .collect(Collectors.toList());
+                                        .sorted(Comparator.comparing(Project::getTitle))
+                                        .collect(Collectors.toList());
                 }
 
                 // type=1 → 최근 방문순
                 else if (type == 1) {
 
                         List<VisitLog> logs = visitLogRepository
-                                .findByUserAndProjectInOrderByVisitedAtDesc(user, userProjects);
+                                        .findByUserAndProjectInOrderByVisitedAtDesc(user, userProjects);
 
                         projects = logs.stream()
-                                .map(VisitLog::getProject)
-                                .distinct()
-                                .collect(Collectors.toList());
+                                        .map(VisitLog::getProject)
+                                        .distinct()
+                                        .collect(Collectors.toList());
 
                         // 방문기록 없는 project 뒤에 추가
                         List<Project> notVisited = new ArrayList<>(userProjects);
@@ -190,23 +191,24 @@ public class ProjectService {
 
                 // DTO 변환
                 return projects.stream()
-                        .map(project -> {
-                                VisitLog lastVisit = visitLogRepository
-                                        .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
-                                        .orElse(null);
+                                .map(project -> {
+                                        VisitLog lastVisit = visitLogRepository
+                                                        .findTopByUserAndProjectOrderByVisitedAtDesc(user, project)
+                                                        .orElse(null);
 
-                                ProjectListDTO dto = ProjectListDTO.from(project, userService);
-                                dto.setLastVisited(lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
-                                return dto;
-                        })
-                        .collect(Collectors.toList());
+                                        ProjectListDTO dto = ProjectListDTO.from(project, userService);
+                                        dto.setLastVisited(
+                                                        lastVisit != null ? lastVisit.getVisitedAt().toString() : null);
+                                        return dto;
+                                })
+                                .collect(Collectors.toList());
         }
 
         // 프로젝트 생성 서비스
         @Transactional
         public Project createProject(Long workspaceId, ProjectCreateRequest request, User currentUser) {
                 WorkSpace workspace = workspaceRepository.findById(workspaceId)
-                        .orElseThrow(() -> new RuntimeException("워크스페이스가 존재하지 않습니다."));
+                                .orElseThrow(() -> new RuntimeException("워크스페이스가 존재하지 않습니다."));
 
                 Project project = new Project();
                 project.setWorkspaceId(workspace);
@@ -217,7 +219,7 @@ public class ProjectService {
                 // 발표자 처리
                 if (request.getPresenterId() != null) {
                         User presenter = userRepository.findById(request.getPresenterId())
-                                .orElseThrow(() -> new RuntimeException("Presenter가 존재하지 않습니다."));
+                                        .orElseThrow(() -> new RuntimeException("Presenter가 존재하지 않습니다."));
                         project.setPresenter(presenter);
                 } else {
                         project.setPresenter(currentUser);
@@ -226,14 +228,14 @@ public class ProjectService {
                 // 발표 제한 시간 처리
                 if (request.getLimitedTime() != null) {
                         LimitedTimeDTO lt = request.getLimitedTime();
-                    log.info("Request LimitedTime - Minute: {}, Second: {}", lt.getMinute(), lt.getSecond());
+                        log.info("Request LimitedTime - Minute: {}, Second: {}", lt.getMinute(), lt.getSecond());
 
-                    //project.setLimitedTime(Duration.ofMinutes(lt.getMinute()).plusSeconds(lt
-                    // .getSecond()));
-                    Duration duration = Duration.ofMinutes(lt.getMinute()).plusSeconds(lt.getSecond());
+                        // project.setLimitedTime(Duration.ofMinutes(lt.getMinute()).plusSeconds(lt
+                        // .getSecond()));
+                        Duration duration = Duration.ofMinutes(lt.getMinute()).plusSeconds(lt.getSecond());
 
-                    log.info("Created Duration: {} seconds", duration.getSeconds());
-                    project.setLimitedTime(duration);
+                        log.info("Created Duration: {} seconds", duration.getSeconds());
+                        project.setLimitedTime(duration);
                 }
                 log.info("Set limited time:" + project.getLimitedTime());
 
@@ -244,21 +246,24 @@ public class ProjectService {
         @Transactional
         public void updateProject(Long projectId, ProjectUpdateRequest request, User user) {
                 Project project = projectRepository.findById(projectId)
-                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+                                .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
 
                 // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 수정 가능
                 if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
-                        && !project.getPresenter().getId().equals(user.getId())) {
+                                && !project.getPresenter().getId().equals(user.getId())) {
                         throw new RuntimeException("권한이 없습니다.");
                 }
 
                 // 수정 가능한 항목만 업데이트
-                if (request.getTitle() != null) project.setTitle(request.getTitle());
-                if (request.getDueDate() != null) project.setDueDate(request.getDueDate()); // LocalDate
-                if (request.getLimitedTime() != null) project.setLimitedTime(request.getLimitedTime());
+                if (request.getTitle() != null)
+                        project.setTitle(request.getTitle());
+                if (request.getDueDate() != null)
+                        project.setDueDate(request.getDueDate()); // LocalDate
+                if (request.getLimitedTime() != null)
+                        project.setLimitedTime(request.getLimitedTime());
                 if (request.getPresenterId() != null) {
                         User newPresenter = userRepository.findById(request.getPresenterId())
-                                .orElseThrow(() -> new IllegalArgumentException("발표자가 존재하지 않습니다."));
+                                        .orElseThrow(() -> new IllegalArgumentException("발표자가 존재하지 않습니다."));
                         project.setPresenter(newPresenter);
                 }
 
@@ -266,28 +271,28 @@ public class ProjectService {
         }
 
         // 프로젝트 삭제 서비스
-//        @Transactional
-//        public void deleteProject(Long projectId, User user) {
-//                Project project = projectRepository.findById(projectId)
-//                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
-//
-//                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
-//                if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
-//                        && !project.getPresenter().getId().equals(user.getId())) {
-//                        throw new RuntimeException("권한이 없습니다.");
-//                }
-//
-//                projectRepository.delete(project);
-//        }
+        // @Transactional
+        // public void deleteProject(Long projectId, User user) {
+        // Project project = projectRepository.findById(projectId)
+        // .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+        //
+        // // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 삭제 가능
+        // if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
+        // && !project.getPresenter().getId().equals(user.getId())) {
+        // throw new RuntimeException("권한이 없습니다.");
+        // }
+        //
+        // projectRepository.delete(project);
+        // }
         @Transactional
         public void deleteProject(Long projectId, User user) {
                 Project project = projectRepository.findById(projectId)
-                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+                                .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
 
                 // 삭제 권한 : 워크스페이스의 소유자 또는 발표자만 삭제 가능
                 boolean isOwner = project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId());
                 boolean isPresenter = project.getPresenter() != null
-                        && project.getPresenter().getId().equals(user.getId());
+                                && project.getPresenter().getId().equals(user.getId());
 
                 if (!isOwner && !isPresenter) {
                         throw new RuntimeException("권한이 없습니다.");
@@ -300,63 +305,71 @@ public class ProjectService {
                 projectRepository.delete(project);
         }
 
-
         // 특정 프로젝트 정보 반환
         public ProjectInfoDTO getProjectInfo(User user, Long projectId) {
                 Project project = projectRepository.findById(projectId)
-                        .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다."));
+                                .orElseThrow(() -> new IllegalArgumentException("프로젝트를 찾을 수 없습니다."));
 
                 // 방문 로그 upsert
                 visitLogService.upsertVisitLog(user, project);
 
                 WorkSpace workspace = project.getWorkspaceId();
 
+                // 가장 최근 연습 세션 조회 (프론트 요청으로 추가 12-11)
+                Long latestSessionId = practiceSessionRepository
+                                .findTopByProjectProjectIdOrderByPracticedAtDesc(project.getProjectId())
+                                .map(PracticeSession::getSessionId)
+                                .orElse(null);
+
                 return ProjectInfoDTO.builder()
-                        .projectId(project.getProjectId())
-                        .projectTitle(project.getTitle())
-                        .workspaceId(workspace != null ? workspace.getWorkspaceId() : null)
-                        .workspaceName(workspace != null ? workspace.getWorkspaceName() : null)
-                        .dueDate(project.getDueDate())
-                        .limitedTime(project.getLimitedTime())
-                        .fileIds(project.getFiles() != null
-                                ? project.getFiles().stream()
-                                .map(PresentationFile::getFileId)
-                                .collect(Collectors.toList())
-                                : null)
-                        .build();
+                                .projectId(project.getProjectId())
+                                .projectTitle(project.getTitle())
+                                .workspaceId(workspace != null ? workspace.getWorkspaceId() : null)
+                                .workspaceName(workspace != null ? workspace.getWorkspaceName() : null)
+                                .dueDate(project.getDueDate())
+                                .limitedTime(project.getLimitedTime())
+                                .fileIds(project.getFiles() != null
+                                                ? project.getFiles().stream()
+                                                                .map(PresentationFile::getFileId)
+                                                                .collect(Collectors.toList())
+                                                : null)
+                                .latestSession(latestSessionId)
+                                .build();
         }
 
         // 프로젝트 정렬 3가지
         @Transactional(readOnly = true)
         public List<Project> getProjectsByWorkspace(Long workspaceId, int type, User user) {
                 WorkSpace workspace = workspaceRepository.findById(workspaceId)
-                        .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
+                                .orElseThrow(() -> new IllegalArgumentException("워크스페이스가 존재하지 않습니다."));
 
                 List<Project> projects;
 
                 // 정렬
                 switch (type) {
                         case 1: // 최근 방문순
-                                projects = visitLogRepository.findByWorkspaceAndUserOrderByVisitedAtDesc(workspace, user)
-                                        .stream()
-                                        .map(VisitLog::getProject)
-                                        .filter(p -> p != null) // null(워크스페이스만 방문) 제거
-                                        .distinct()             // 같은 프로젝트 여러 번 방문했을 수 있으니 중복 제거
-                                        .toList();
+                                projects = visitLogRepository
+                                                .findByWorkspaceAndUserOrderByVisitedAtDesc(workspace, user)
+                                                .stream()
+                                                .map(VisitLog::getProject)
+                                                .filter(p -> p != null) // null(워크스페이스만 방문) 제거
+                                                .distinct() // 같은 프로젝트 여러 번 방문했을 수 있으니 중복 제거
+                                                .toList();
                                 break;
 
                         case 3: // 발표일자순 (dueDate 오름차순)
                                 projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
-                                        .stream()
-                                        .sorted(Comparator.comparing(Project::getDueDate))
-                                        .toList();
+                                                .stream()
+                                                .sorted(Comparator.comparing(Project::getDueDate))
+                                                .toList();
                                 break;
 
                         case 2: // 제목순 (String 오름차순)
                                 projects = projectRepository.findByWorkspaceId_WorkspaceId(workspaceId)
-                                        .stream()
-                                        .sorted(Comparator.comparing(Project::getTitle, String.CASE_INSENSITIVE_ORDER))
-                                        .toList();
+                                                .stream()
+                                                .sorted(Comparator.comparing(Project::getTitle,
+                                                                String.CASE_INSENSITIVE_ORDER))
+                                                .toList();
                                 break;
 
                         default:
@@ -371,19 +384,19 @@ public class ProjectService {
                 // 1. 사용자가 속한 workspace 조회
                 List<TeamMember> members = teamMemberRepository.findByUser_Id(userId);
                 List<Long> workspaceIds = members.stream()
-                        .map(tm -> tm.getWorkspace().getWorkspaceId())
-                        .toList();
+                                .map(tm -> tm.getWorkspace().getWorkspaceId())
+                                .toList();
 
                 // 2. workspace에 속한 프로젝트 조회
                 List<Project> projects = projectRepository
-                        .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
+                                .findByWorkspaceId_WorkspaceIdInOrderByDueDateAsc(workspaceIds);
 
                 // 3. 현재 이후 날짜 필터
                 LocalDate now = LocalDate.now();
                 Optional<Project> nextProjectOpt = projects.stream()
-                        .filter(p -> p.getDueDate() != null)
-                        .filter(p -> !p.getDueDate().isBefore(now)) // 오늘 포함 이후만 필터링
-                        .min(Comparator.comparing(Project::getDueDate)); // 가장 빠른 날짜
+                                .filter(p -> p.getDueDate() != null)
+                                .filter(p -> !p.getDueDate().isBefore(now)) // 오늘 포함 이후만 필터링
+                                .min(Comparator.comparing(Project::getDueDate)); // 가장 빠른 날짜
 
                 if (nextProjectOpt.isEmpty()) {
                         return null; // 또는 Optional 반환 가능
@@ -402,13 +415,11 @@ public class ProjectService {
                 // 5. DTO 생성
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 return new ProjectCalenderDdayListDTO(
-                        nextProject.getDueDate().format(formatter),
-                        nextProject.getProjectId(),
-                        nextProject.getTitle(),
-                        nextProject.getWorkspaceId().getWorkspaceName(),
-                        thumbnail
-                );
+                                nextProject.getDueDate().format(formatter),
+                                nextProject.getProjectId(),
+                                nextProject.getTitle(),
+                                nextProject.getWorkspaceId().getWorkspaceName(),
+                                thumbnail);
         }
-
 
 }
