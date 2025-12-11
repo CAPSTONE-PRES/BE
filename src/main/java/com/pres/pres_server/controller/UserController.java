@@ -25,6 +25,7 @@ import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.email.EmailService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,9 +35,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Optional;
 
 @Tag(name = "User", description = "사용자 관련 API")
 @RestController
+@Slf4j
 @RequestMapping("/user")
 @RequiredArgsConstructor
 public class UserController {
@@ -51,32 +54,37 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponseDto> getMyInfo(@AuthenticationPrincipal User user) {
         try {
+            log.info("GET /user/me called - principalId={}", user == null ? null : user.getId());
             User myInfo = userService.getUser(user.getId());
-            return ResponseEntity.ok(userService.toDto(myInfo));
+            UserResponseDto dto = userService.toDto(myInfo);
+            log.info("GET /user/me - principalId={}, dbId={}, response={}", user == null ? null : user.getId(),
+                    myInfo == null ? null : myInfo.getId(), dto);
+            return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
     }
 
-    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody =
-            @RequestBody(description = "수정할 " +
+    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody = @RequestBody(description = "수정할 "
+            +
             "사용자 정보", required = true, content = @Content(schema = @Schema(implementation = UserUpdateDto.class))), responses = {
-            @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
-    })
+                    @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
+            })
     @PatchMapping("/me")
     public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
             @RequestBody UserUpdateDto updateUserDto) {
+        log.info("PATCH /user/me called - userId={}, payload={}", user == null ? null : user.getId(), updateUserDto);
         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
-        return ResponseEntity.ok(userService.toDto(updatedUser));
+        UserResponseDto resp = userService.toDto(updatedUser);
+        log.info("PATCH /user/me response - userId={}, response={}", user == null ? null : user.getId(), resp);
+        return ResponseEntity.ok(resp);
     }
-
 
     /**
      * 내 프로필 이미지 업로드
      */
     @Operation(summary = "프로필 이미지 업로드", description = "로그인된 사용자의 프로필 이미지를 업로드합니다.")
-    @PostMapping(value = "/me/profile-image",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserResponseDto> updateMyProfileImage(
             @AuthenticationPrincipal User user,
             @RequestParam("file") MultipartFile file) {
@@ -153,7 +161,7 @@ public class UserController {
     public ResponseEntity<List<UserResponseDto>> getAllUsers() {
         List<User> users = userService.listUsers();
         List<UserResponseDto> response = users.stream()
-                .map(userService::toDto)  // 메서드 레퍼런스 사용
+                .map(userService::toDto) // 메서드 레퍼런스 사용
                 .toList();
         return ResponseEntity.ok(response);
     }
@@ -187,9 +195,10 @@ public class UserController {
     })
     @PostMapping("/send-reset-code")
     public ResponseEntity<String> sendResetCode(@RequestBody ResetPasswordEmailRequest req) {
-        User user = userService.findByEmail(req.getEmail());
-        if (user == null)
+        Optional<User> user = userService.findOptionalByEmail(req.getEmail());
+        if (user.isEmpty()) {
             return ResponseEntity.notFound().build();
+        }
         emailService.sendCode(req.getEmail());
         return ResponseEntity.ok("인증코드 발송 완료");
     }

@@ -9,6 +9,7 @@ import com.pres.pres_server.repository.UserRepository;
 import com.pres.pres_server.service.DefaultProfileImageService;
 import com.pres.pres_server.service.S3Service;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import java.util.Optional;
 
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class UserService implements UserDetailsService {
     @Value("${app.cdn.base-url}")
     private String cdnBaseUrl;
@@ -41,6 +43,7 @@ public class UserService implements UserDetailsService {
     // 사용자 정보 변경
     @Transactional
     public User updateUser(Long id, UserUpdateDto dto) {
+        log.info("updateUser called - id={}, dto={}", id, dto);
         User user = getUser(id);
 
         // 입력값 간단 검증 (null은 패치에서 '미변경' 의미이므로 길이 검증은 hasText일 때만)
@@ -66,8 +69,9 @@ public class UserService implements UserDetailsService {
                 user.setPassword(passwordEncoder.encode(dto.getPassword()));
             }
         }
-        userRepository.save(user);
-        return user;
+        User saved = userRepository.save(user);
+        log.info("User updated - id={}, username(before->after)={}->{}", id, user.getUsername(), saved.getUsername());
+        return saved;
     }
 
     /**
