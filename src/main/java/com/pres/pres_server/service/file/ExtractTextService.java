@@ -7,6 +7,7 @@ import com.pres.pres_server.repository.ExtractedTextRepository;
 import com.pres.pres_server.dto.file.SlideContentInfo;
 import com.pres.pres_server.dto.file.ExtractedTextDto;
 import com.pres.pres_server.dto.file.PdfPageInfo;
+import com.pres.pres_server.repository.PresentationImageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,7 @@ public class ExtractTextService {
     private final PresentationFileRepository presentationFileRepository;
     private final ExtractedTextRepository extractedTextRepository;
     private final TextValidationService textValidationService;
+    private final PresentationImageRepository presentationImageRepository;
 
     // 현재 처리 중인 파일 정보를 저장하는 필드들
     private List<SlideContentInfo> currentSlideInfos;
@@ -40,7 +42,7 @@ public class ExtractTextService {
     @Value("${ocr.tesseract.lang:kor+eng}")
     private String tesseractLang;
 
-    @Value("${extract.max-pdf-pages:1000}")
+    @Value("${extract.max-pdf-pages:100}")
     private int maxPdfPages;
 
     @Value("${extract.max-fulltext-chars:500000}")
@@ -49,6 +51,8 @@ public class ExtractTextService {
     // fileId로 텍스트 추출 및 DB 저장 (권장)
     public ExtractedTextDto extractTextAndSave(Long fileId) {
         log.info("Extracting text for fileId={}", fileId);
+        currentPdfPageInfos = null;
+        currentSlideInfos = null;
 
         PresentationFile presentationFile = presentationFileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("파일을 찾을 수 없습니다: " + fileId));
@@ -73,9 +77,7 @@ public class ExtractTextService {
                 ExtractedTextDto result = extractPdfTextByPage(file);
                 fullText = result.getFullText();
                 slideTexts = result.getSlideTexts();
-                log.info("Extracted PDF text - filePath={}, slideTexts={}", filePath, slideTexts);
             } else if (lower.endsWith(".pptx")) {
-                log.info("Extracting PPTX text - filePath={}", filePath);
                 // PPTX는 추가자료 여부와 관계없이 슬라이드 단위 추출을 사용
                 ExtractedTextDto result = extractPptTextBySlide(file);
                 fullText = result.getFullText();
@@ -102,9 +104,6 @@ public class ExtractTextService {
             // 기존 엔티티인 경우 내용 업데이트
             extractedText.setFullText(fullText);
             extractedText.setSlideTexts(slideTexts);
-            extractedTextRepository.save(extractedText);
-            log.info("ExtractedText saved - fileId={}, slidesExtracted={}", fileId,
-                    slideTexts == null ? 0 : slideTexts.size());
 
             // 텍스트 부족한 슬라이드 검증
             ExtractedTextDto result = validateSlideContent(new ExtractedTextDto(fullText, slideTexts));
@@ -116,9 +115,26 @@ public class ExtractTextService {
             extractedText.setInsufficientSlides(
                     result.getInsufficientSlides() != null ? result.getInsufficientSlides().toString() : null);
             extractedText.setInsufficientMessage(result.getInsufficientMessage());
-            extractedTextRepository.save(extractedText);
 
-            log.info("Text extraction and validation completed - fileId={}", fileId);
+            if (!isAdditional && result.getInsufficientSlides() != null && !result.getInsufficientSlides().isEmpty()) {
+                // 최대 2개로 제한
+                List<Integer> targetSlides = result.getInsufficientSlides()
+                        .stream()
+                        .sorted()
+                        .limit(2)
+                        .toList();
+
+                List<String> imageUrls = new ArrayList<>();
+                for (Integer page : targetSlides) {
+                    presentationImageRepository.findByFile_FileIdAndPageNumber(fileId, page)
+                            .ifPresent(img -> imageUrls.add(img.getUrl()));
+                }
+                result.setInsufficientImages(imageUrls);
+            } else {
+                // 추가자료거나 슬라이드 정보 없으면 이미지 안 보냄
+                result.setInsufficientImages(List.of());
+            }
+            extractedTextRepository.save(extractedText);
             return result;
 
         } catch (Exception e) {
@@ -217,8 +233,8 @@ public class ExtractTextService {
             Process p = pb.start();
 
             try (java.io.InputStream is = p.getInputStream();
-                    java.io.InputStreamReader isr = new java.io.InputStreamReader(is);
-                    java.io.BufferedReader br = new java.io.BufferedReader(isr)) {
+                 java.io.InputStreamReader isr = new java.io.InputStreamReader(is);
+                 java.io.BufferedReader br = new java.io.BufferedReader(isr)) {
                 StringBuilder out = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -249,7 +265,7 @@ public class ExtractTextService {
         StringBuilder sb = new StringBuilder();
 
         try (FileInputStream fis = new FileInputStream(file);
-                XMLSlideShow ppt = new XMLSlideShow(fis)) {
+             XMLSlideShow ppt = new XMLSlideShow(fis)) {
 
             // TextValidationService를 사용한 슬라이드 검증
             List<SlideContentInfo> slideContentInfos = textValidationService.validateSlideContent(ppt);
@@ -301,7 +317,7 @@ public class ExtractTextService {
     private ExtractedTextDto extractDocxAsFullText(File file) throws IOException {
         StringBuilder sb = new StringBuilder();
         try (FileInputStream fis = new FileInputStream(file);
-                org.apache.poi.xwpf.usermodel.XWPFDocument doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(fis)) {
+             org.apache.poi.xwpf.usermodel.XWPFDocument doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(fis)) {
             for (org.apache.poi.xwpf.usermodel.XWPFParagraph p : doc.getParagraphs()) {
                 String text = p.getText();
                 if (text != null && !text.isBlank()) {
@@ -383,8 +399,8 @@ public class ExtractTextService {
             Process p = pb.start();
 
             try (java.io.InputStream is = p.getInputStream();
-                    java.io.InputStreamReader isr = new java.io.InputStreamReader(is);
-                    java.io.BufferedReader br = new java.io.BufferedReader(isr)) {
+                 java.io.InputStreamReader isr = new java.io.InputStreamReader(is);
+                 java.io.BufferedReader br = new java.io.BufferedReader(isr)) {
                 StringBuilder out = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) {
