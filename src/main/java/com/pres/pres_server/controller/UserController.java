@@ -19,7 +19,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
-import io.swagger.v3.oas.annotations.parameters.RequestBody;
 
 import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.email.EmailService;
@@ -33,6 +32,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.Optional;
@@ -65,18 +65,12 @@ public class UserController {
         }
     }
 
-    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.", requestBody = @RequestBody(description = "수정할 "
-            +
-            "사용자 정보", required = true, content = @Content(schema = @Schema(implementation = UserUpdateDto.class))), responses = {
-                    @ApiResponse(responseCode = "200", description = "수정 성공", content = @Content(schema = @Schema(implementation = UserResponseDto.class), examples = @ExampleObject(value = "{ \"id\": 1, \"email\": \"test@example.com\", \"username\": \"홍길동\", \"emailVerified\": true }")))
-            })
+    @Operation(summary = "내 정보 수정", description = "로그인된 사용자의 정보를 수정합니다.")
     @PatchMapping("/me")
     public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
             @RequestBody UserUpdateDto updateUserDto) {
-        log.info("PATCH /user/me called - userId={}, payload={}", user == null ? null : user.getId(), updateUserDto);
-        User updatedUser = userService.updateUser(user.getId(), updateUserDto);
+         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
         UserResponseDto resp = userService.toDto(updatedUser);
-        log.info("PATCH /user/me response - userId={}, response={}", user == null ? null : user.getId(), resp);
         return ResponseEntity.ok(resp);
     }
 
