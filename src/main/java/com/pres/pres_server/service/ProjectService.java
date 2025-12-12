@@ -246,29 +246,37 @@ public class ProjectService {
         @Transactional
         public void updateProject(Long projectId, ProjectUpdateRequest request, User user) {
                 Project project = projectRepository.findById(projectId)
-                                .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
+                        .orElseThrow(() -> new IllegalArgumentException("프로젝트가 존재하지 않습니다."));
 
-                // 권한 체크: 프로젝트 워크스페이스의 소유자 혹은 발표자만 수정 가능
+                // 권한 체크
                 if (!project.getWorkspaceId().getOwnerUserId().getId().equals(user.getId())
-                                && !project.getPresenter().getId().equals(user.getId())) {
+                        && !project.getPresenter().getId().equals(user.getId())) {
                         throw new RuntimeException("권한이 없습니다.");
                 }
 
-                // 수정 가능한 항목만 업데이트
+                // 수정 항목 적용
                 if (request.getTitle() != null)
                         project.setTitle(request.getTitle());
+
                 if (request.getDueDate() != null)
-                        project.setDueDate(request.getDueDate()); // LocalDate
-                if (request.getLimitedTime() != null)
-                        project.setLimitedTime(request.getLimitedTime());
+                        project.setDueDate(request.getDueDate());
+
+                if (request.getLimitedTime() != null) {
+                        LimitedTimeDTO lt = request.getLimitedTime();
+                        Duration duration = Duration.ofMinutes(lt.getMinute())
+                                .plusSeconds(lt.getSecond());
+                        project.setLimitedTime(duration);
+                }
+
                 if (request.getPresenterId() != null) {
                         User newPresenter = userRepository.findById(request.getPresenterId())
-                                        .orElseThrow(() -> new IllegalArgumentException("발표자가 존재하지 않습니다."));
+                                .orElseThrow(() -> new IllegalArgumentException("발표자가 존재하지 않습니다."));
                         project.setPresenter(newPresenter);
                 }
 
                 projectRepository.save(project);
         }
+
 
         // 프로젝트 삭제 서비스
         // @Transactional

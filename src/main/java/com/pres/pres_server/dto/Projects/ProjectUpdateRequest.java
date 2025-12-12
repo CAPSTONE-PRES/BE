@@ -11,6 +11,6 @@ import java.time.LocalDateTime;
 public class ProjectUpdateRequest {
     private String title;
     private LocalDate dueDate;
-    private Duration limitedTime;
+    private LimitedTimeDTO limitedTime;
     private Long presenterId; // 선택
 }
