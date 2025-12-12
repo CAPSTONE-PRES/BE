@@ -54,13 +54,18 @@ public class ProjectsController {
 
     @Operation(summary = "프로젝트 수정", description = "프로젝트 정보를 수정합니다")
     @PatchMapping("/projects/{projectId}/update")
-    public ResponseEntity<String> updateProject(
+    public ResponseEntity<Map<String, Object>> updateProject(
             @PathVariable Long projectId,
             @RequestBody ProjectUpdateRequest request,
             @AuthenticationPrincipal User user) {
 
         projectService.updateProject(projectId, request, user);
-        return ResponseEntity.ok("프로젝트 정보가 성공적으로 수정되었습니다.");
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("projectId", projectId);
+        response.put("message", "프로젝트가 성공적으로 수정되었습니다.");
+
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "프로젝트 삭제", description = "특정 프로젝트를 삭제합니다")
