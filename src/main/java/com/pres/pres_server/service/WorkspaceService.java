@@ -99,23 +99,7 @@ public class WorkspaceService {
         if (users.size() != request.getEmails().size()) {
             throw new IllegalArgumentException("존재하지 않는 이메일이 포함되어 있습니다");
         }
-
-        // 기존 팀 멤버 삭제
-        teamMemberRepository.deleteByWorkspace(workspace);
-
-        // 새 팀 멤버 생성
-        List<TeamMember> newMembers = users.stream()
-                .map(u -> {
-                    TeamMember tm = new TeamMember();
-                    tm.setWorkspace(workspace);
-                    tm.setUser(u);
-                    tm.setRole("MEMBER"); // 기본 역할 설정, 필요시 변경 가능
-                    tm.setInvited_at(LocalDateTime.now());
-                    return tm;
-                })
-                .collect(Collectors.toList());
-
-        teamMemberRepository.saveAll(newMembers);
+        syncMembersAndNotifyInvites(workspace, users);
     }
 
     // 워크스페이스 정보 수정
@@ -680,6 +664,7 @@ public class WorkspaceService {
                 .collect(Collectors.toList());
 
         if (!toDelete.isEmpty()) {
+            // 삭제
             teamMemberRepository.deleteAll(toDelete);
         }
 
@@ -704,6 +689,7 @@ public class WorkspaceService {
                         return tm;
                     })
                     .collect(Collectors.toList());
+            // 저장
             teamMemberRepository.saveAll(toInsertMembers);
         }
 
