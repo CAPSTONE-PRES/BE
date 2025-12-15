@@ -1,5 +1,6 @@
 package com.pres.pres_server.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.pres.pres_server.domain.Project;
@@ -23,5 +24,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     // WorkSpace 객체 리스트로 프로젝트 조회
     List<Project> findByWorkspaceIdIn(List<WorkSpace> workspaces);
+
+    // dueDate로 프로젝트 조회 (스케줄러용)
+    List<Project> findByDueDate(LocalDate dueDate);
 
 }
