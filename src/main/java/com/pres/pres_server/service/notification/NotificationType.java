@@ -1,0 +1,12 @@
+package com.pres.pres_server.service.notification;
+
+/**
+ * 알림 타입 정의
+ */
+public enum NotificationType {
+    WORKSPACE_ACTIVITY,
+    INVITE,
+    REVIEW_COMMENT,
+    PRACTICE_REMINDER_D1,
+    PRACTICE_REMINDER_D2
+}
