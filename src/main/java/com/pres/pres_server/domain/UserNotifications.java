@@ -47,9 +47,11 @@ public class UserNotifications {
     @Column(name = "practice_reminder_enabled", nullable = false)
     private boolean practiceReminderEnabled = true;
 
+    @Builder.Default
     @Column(name = "practice_remind_d1", nullable = false)
     private boolean practiceRemindD1 = false;
 
+    @Builder.Default
     @Column(name = "practice_remind_d2", nullable = false)
     private boolean practiceRemindD2 = false;
 

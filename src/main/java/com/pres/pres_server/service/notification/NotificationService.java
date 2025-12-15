@@ -2,9 +2,9 @@ package com.pres.pres_server.service.notification;
 
 import com.pres.pres_server.domain.Project;
 import com.pres.pres_server.repository.ProjectRepository;
-import com.pres.pres_server.service.user.UserNotificationsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,11 +26,9 @@ import java.util.Optional;
 @Slf4j
 public class NotificationService {
 
-    private final UserNotificationsService userNotificationsService;
     private final NotificationPolicy notificationPolicy;
     private final EmailNotificationService emailNotificationService;
     private final ProjectRepository projectRepository;
-
     /**
      * 정책: 주어진 유저에 대해 해당 타입 전송 허용 여부
      */
@@ -50,45 +48,14 @@ public class NotificationService {
         emailNotificationService.send(userId, type, vars);
     }
 
-    private String safe(Object o) {
-        return o == null ? "" : o.toString();
-    }
-
-    /* === Trigger hooks === */
-
-    public void notifyWorkspaceActivity(Long userId, String workspaceName, String link) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("workspaceName", workspaceName);
-        vars.put("link", link);
-        sendIfAllowed(userId, NotificationType.WORKSPACE_ACTIVITY, vars);
-    }
-
-    public void notifyInvite(Long userId, String workspaceName, String invitedBy, String link) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("workspaceName", workspaceName);
-        vars.put("invitedBy", invitedBy);
-        vars.put("link", link);
-        sendIfAllowed(userId, NotificationType.INVITE, vars);
-    }
-
-    public void notifyReviewComment(Long userId, String projectName, String commentAuthor, String link) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("projectName", projectName);
-        vars.put("commentAuthor", commentAuthor);
-        vars.put("link", link);
-        sendIfAllowed(userId, NotificationType.REVIEW_COMMENT, vars);
-    }
-
     /* === Scheduler for practice reminders === */
-
+    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
     public void sendDailyPracticeReminders() {
         LocalDate today = LocalDate.now();
-        LocalDate d1 = today.plusDays(1);
-        LocalDate d2 = today.plusDays(2);
-
-        sendForDate(d1, NotificationType.PRACTICE_REMINDER_D1);
-        sendForDate(d2, NotificationType.PRACTICE_REMINDER_D2);
+        sendForDate(today.plusDays(1), NotificationType.PRACTICE_REMINDER_D1);
+        sendForDate(today.plusDays(2), NotificationType.PRACTICE_REMINDER_D2);
     }
+
 
     @Transactional(readOnly = true)
     public void sendForDate(LocalDate date, NotificationType type) {
@@ -102,10 +69,8 @@ public class NotificationService {
             Map<String, Object> vars = new HashMap<>();
             vars.put("projectName", p.getTitle());
             vars.put("dueDate", p.getDueDate());
-            String link = p.getProjectId() == null ? "" : "/projects/" + p.getProjectId();
-            vars.put("link", link);
+            vars.put("link", p.getProjectId() == null ? "" : "/projects/" + p.getProjectId());
             sendIfAllowed(presenterId, type, vars);
-            log.info("Reminder attempted for project {} presenter={} type={}", p.getProjectId(), presenterId, type);
         }
     }
 }

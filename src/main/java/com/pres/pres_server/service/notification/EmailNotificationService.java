@@ -4,6 +4,7 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,14 @@ public class EmailNotificationService {
 
     private final JavaMailSender mailSender;
     private final UserRepository userRepository;
+    @Value("${app.base-url}")
+    private String baseUrl;
+
+    private String absLink(String link) {
+        if (link == null) return "";
+        if (link.startsWith("http")) return link;
+        return baseUrl + link;
+    }
 
     public void send(Long userId, NotificationType type, Map<String, Object> vars) {
         try {
@@ -64,17 +73,22 @@ public class EmailNotificationService {
         String projectName = safe(vars.get("projectName"));
         String workspaceName = safe(vars.get("workspaceName"));
         String commentAuthor = safe(vars.get("commentAuthor"));
-        String link = safe(vars.get("link"));
+        String invitedBy = safe(vars.get("invitedBy"));
+        String link = absLink(safe(vars.get("link")));
         Object dueObj = vars.get("dueDate");
         String dueDate = dueObj == null ? "" : dueObj.toString();
 
         return switch (type) {
-            case WORKSPACE_ACTIVITY -> String.format("[%s] 워크스페이스에 활동이 있습니다. 자세히: %s", workspaceName, link);
-            case INVITE -> String.format("[%s] 님이 당신을 워크스페이스에 초대했습니다. 초대 링크: %s", workspaceName, link);
+            case WORKSPACE_ACTIVITY ->
+                    String.format("[%s] 워크스페이스에 활동이 있습니다. 자세히: %s", workspaceName, link);
+            case INVITE -> String.format("[%s] %s님이 당신을 워크스페이스에 초대했습니다. 초대 링크: %s",
+                    workspaceName, invitedBy, link);
             case REVIEW_COMMENT ->
-                String.format("[%s]님이 프로젝트 '%s'에 새 검토의견을 남겼습니다. 확인: %s", commentAuthor, projectName, link);
-            case PRACTICE_REMINDER_D1 -> String.format("발표가 내일입니다: %s (%s). 연습해보세요: %s", projectName, dueDate, link);
-            case PRACTICE_REMINDER_D2 -> String.format("발표가 모레입니다: %s (%s). 연습해보세요: %s", projectName, dueDate, link);
+                    String.format("[%s]님이 프로젝트 '%s'에 새 검토의견을 남겼습니다. 확인: %s", commentAuthor, projectName, link);
+            case PRACTICE_REMINDER_D1 ->
+                    String.format("발표가 내일입니다: %s (%s). 연습해보세요: %s", projectName, dueDate, link);
+            case PRACTICE_REMINDER_D2 ->
+                    String.format("발표가 모레입니다: %s (%s). 연습해보세요: %s", projectName, dueDate, link);
         };
     }
 

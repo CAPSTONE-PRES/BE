@@ -63,7 +63,7 @@ public class WorkspaceController {
     }
 
     @PatchMapping("/{workspaceId}/teammember/update")
-    @Operation(summary = "워크스페이스 팀 멤버 수정", description = "이메일 리스트로 팀 멤버를 덮어씌웁니다")
+    @Operation(summary = "워크스페이스 팀 멤버 수정", description = "요청한 이메일 리스트 기준으로 팀 멤버를 동기화합니다.")
     public ResponseEntity<String> editTeamMembers(
             @PathVariable Long workspaceId,
             @RequestBody TeamMemberEditRequest request,
