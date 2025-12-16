@@ -69,7 +69,7 @@ public class NotificationService {
             Map<String, Object> vars = new HashMap<>();
             vars.put("projectName", p.getTitle());
             vars.put("dueDate", p.getDueDate());
-            vars.put("link", p.getProjectId() == null ? "" : "/projects/" + p.getProjectId());
+            vars.put("link", p.getProjectId() == null ? "" : "/presentation/" + p.getProjectId());
             sendIfAllowed(presenterId, type, vars);
         }
     }
