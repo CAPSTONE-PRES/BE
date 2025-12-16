@@ -10,6 +10,7 @@ import com.pres.pres_server.dto.ResetPassword.ResetPasswordRequest;
 import com.pres.pres_server.dto.User.UserResponseDto;
 import com.pres.pres_server.dto.User.UserUpdateDto;
 import com.pres.pres_server.service.user.UserService;
+import com.pres.pres_server.util.CookieUtil;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -23,6 +24,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.email.EmailService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +35,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.Optional;
@@ -67,7 +68,7 @@ public class UserController {
     @PatchMapping("/me")
     public ResponseEntity<UserResponseDto> updateMyInfo(@AuthenticationPrincipal User user,
             @RequestBody UserUpdateDto updateUserDto) {
-         User updatedUser = userService.updateUser(user.getId(), updateUserDto);
+        User updatedUser = userService.updateUser(user.getId(), updateUserDto);
         UserResponseDto resp = userService.toDto(updatedUser);
         return ResponseEntity.ok(resp);
     }
@@ -76,10 +77,9 @@ public class UserController {
     @DeleteMapping("/me")
     public ResponseEntity<Void> deleteMyInfo(
             @AuthenticationPrincipal User user,
-            HttpServletResponse response
-    ) {
+            HttpServletResponse response) {
         userService.deleteUser(user.getId());
-        //CookieUtil.deleteCookie(response, "refresh_token");
+        CookieUtil.deleteCookie(response, "refresh_token");
         return ResponseEntity.noContent().build();
     }
 
@@ -128,14 +128,23 @@ public class UserController {
     // 현재는 임시로 주석 처리
     // @Operation(summary = "카카오 계정 연결 끊기", description = "로그인된 사용자의 카카오 계정 연결을
     // 끊습니다.", responses = {
-    // @ApiResponse(responseCode = "204", description = "연결 끊기 성공")
-    // })
+    // @ApiResponse(responseCode = "204", description = "연결 끊기 성공") })
     // @DeleteMapping("/me/kakao")
     // public ResponseEntity<Void> unlinkKakaoAccount(@AuthenticationPrincipal User
-    // user) {
-    // String kakaoAccessToken = user.getKakaoAccessToken(); // 또는 서비스에서 조회
-    // kakaoAuthService.unlinkKakaoAccount(kakaoAccessToken);
+    // user,
+    // @RequestParam(value = "accessToken", required = false) String accessToken) {
+    // // 현재 User 엔티티에 카카오 토큰을 저장하지 않으므로
+    // // 클라이언트에서 accessToken을 전달하도록 요구합니다.
+    // if (accessToken == null || accessToken.isBlank()) {
+    // return ResponseEntity.badRequest().build();
+    // }
+    // try {
+    // kakaoAuthService.unlinkKakaoAccount(accessToken);
     // return ResponseEntity.noContent().build();
+    // } catch (Exception e) {
+    // log.warn("Failed to unlink kakao account: {}", e.getMessage());
+    // return ResponseEntity.status(500).build();
+    // }
     // }
 
     @Operation(summary = "특정 사용자 정보 조회 (관리자)", description = "관리자가 특정 사용자의 정보를 조회합니다.", parameters = {
@@ -151,7 +160,6 @@ public class UserController {
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
-
         return ResponseEntity.ok(userService.toDto(user));
     }
 

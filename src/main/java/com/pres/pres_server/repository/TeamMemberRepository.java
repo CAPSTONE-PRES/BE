@@ -25,4 +25,7 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     // 워크스페이스의 OWNER는 보존하고 나머지 멤버만 삭제할 때 사용
     void deleteByWorkspaceAndRoleNot(WorkSpace workspace, String role);
 
+    // 사용자 ID로 멤버십을 전부 삭제
+    void deleteAllByUser_Id(Long userId);
+
 }

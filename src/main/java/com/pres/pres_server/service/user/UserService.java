@@ -143,17 +143,12 @@ public class UserService implements UserDetailsService {
     // 사용자 삭제
     @Transactional
     public void deleteUser(Long id) {
-        if (!userRepository.existsById(id)) {
-            throw new IllegalArgumentException("삭제할 사용자를 찾을 수 없습니다. id=" + id);
-        }
-        // 1. owner인 워크스페이스 전부 삭제
-        //workspaceRepository.deleteAllByOwnerId(id);
-        // → FK CASCADE로 하위 전부 정리
-        // 2. 멤버로만 속한 워크스페이스에서 membership 제거
-        //teamMemberRepository.deleteAllByUserId(id);
-        // 3. refresh token 제거
-        //refreshTokenRepository.deleteAllByUserId(id);
-        // 4. user 삭제
+        userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("삭제할 사용자를 찾을 수 없습니다. id=" + id));
+
+        workspaceRepository.deleteAllByOwnerUserId_Id(id);
+        teamMemberRepository.deleteAllByUser_Id(id);
+        refreshTokenRepository.deleteByUserId(id);
         userRepository.deleteById(id);
     }
 

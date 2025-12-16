@@ -49,4 +49,14 @@ public class CookieUtil {
         return cls.cast(
                 SerializationUtils.deserialize(Base64.getUrlDecoder().decode(cookie.getValue())));
     }
+
+    // 응답만으로 쿠키 삭제 (Request가 없는 컨텍스트에서 사용)
+    public static void deleteCookie(HttpServletResponse response, String name) {
+        Cookie cookie = new Cookie(name, "");
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true);
+        response.addCookie(cookie);
+    }
 }
