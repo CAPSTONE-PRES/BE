@@ -11,7 +11,6 @@ import lombok.NoArgsConstructor;
 @Builder
 public class UserNotificationsDto {
     private boolean emailEnabled;
-    private boolean workspaceActivityEnabled;
     private boolean inviteEnabled;
     private boolean reviewCommentEnabled;
     private boolean practiceReminderEnabled;

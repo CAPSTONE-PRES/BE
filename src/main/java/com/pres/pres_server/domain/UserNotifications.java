@@ -32,10 +32,6 @@ public class UserNotifications {
     private boolean emailEnabled = true;
 
     @Builder.Default
-    @Column(name = "workspace_activity_enabled", nullable = false)
-    private boolean workspaceActivityEnabled = true;
-
-    @Builder.Default
     @Column(name = "invite_enabled", nullable = false)
     private boolean inviteEnabled = true;
 

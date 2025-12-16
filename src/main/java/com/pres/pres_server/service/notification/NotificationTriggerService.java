@@ -15,13 +15,6 @@ public class NotificationTriggerService {
 
     private final NotificationService delegate;
 
-    public void notifyWorkspaceActivity(Long userId, String workspaceName, String link) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("workspaceName", workspaceName);
-        vars.put("link", link);
-        delegate.sendIfAllowed(userId, NotificationType.WORKSPACE_ACTIVITY, vars);
-    }
-
     public void notifyInvite(Long userId, String workspaceName, String invitedBy, String link) {
         Map<String, Object> vars = new HashMap<>();
         vars.put("workspaceName", workspaceName);

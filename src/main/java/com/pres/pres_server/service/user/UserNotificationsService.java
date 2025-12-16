@@ -52,8 +52,6 @@ public class UserNotificationsService {
 
         if (dto.getEmailEnabled() != null)
             entity.setEmailEnabled(dto.getEmailEnabled());
-        if (dto.getWorkspaceActivityEnabled() != null)
-            entity.setWorkspaceActivityEnabled(dto.getWorkspaceActivityEnabled());
         if (dto.getInviteEnabled() != null)
             entity.setInviteEnabled(dto.getInviteEnabled());
         if (dto.getReviewCommentEnabled() != null)
@@ -89,7 +87,6 @@ public class UserNotificationsService {
     private UserNotificationsDto toDto(UserNotifications e) {
         return UserNotificationsDto.builder()
                 .emailEnabled(e.isEmailEnabled())
-                .workspaceActivityEnabled(e.isWorkspaceActivityEnabled())
                 .inviteEnabled(e.isInviteEnabled())
                 .reviewCommentEnabled(e.isReviewCommentEnabled())
                 .practiceReminderEnabled(e.isPracticeReminderEnabled())
@@ -102,7 +99,6 @@ public class UserNotificationsService {
         UserNotifications u = UserNotifications.builder()
                 .userId(userId)
                 .emailEnabled(DEFAULT_EMAIL_ENABLED)
-                .workspaceActivityEnabled(DEFAULT_WORKSPACE_ACTIVITY_ENABLED)
                 .inviteEnabled(DEFAULT_INVITE_ENABLED)
                 .reviewCommentEnabled(DEFAULT_REVIEW_COMMENT_ENABLED)
                 .practiceReminderEnabled(DEFAULT_PRACTICE_REMINDER_ENABLED)
@@ -135,7 +131,6 @@ public class UserNotificationsService {
     private UserNotificationsDto defaultDtoForUser(Long userId) {
         return UserNotificationsDto.builder()
                 .emailEnabled(DEFAULT_EMAIL_ENABLED)
-                .workspaceActivityEnabled(DEFAULT_WORKSPACE_ACTIVITY_ENABLED)
                 .inviteEnabled(DEFAULT_INVITE_ENABLED)
                 .reviewCommentEnabled(DEFAULT_REVIEW_COMMENT_ENABLED)
                 .practiceReminderEnabled(DEFAULT_PRACTICE_REMINDER_ENABLED)

@@ -21,7 +21,6 @@ public class NotificationPolicy {
             return false;
 
         return switch (type) {
-            case WORKSPACE_ACTIVITY -> prefs.isWorkspaceActivityEnabled();
             case INVITE -> prefs.isInviteEnabled();
             case REVIEW_COMMENT -> prefs.isReviewCommentEnabled();
             case PRACTICE_REMINDER_D1 -> prefs.isPracticeReminderEnabled() && prefs.isPracticeRemindD1();

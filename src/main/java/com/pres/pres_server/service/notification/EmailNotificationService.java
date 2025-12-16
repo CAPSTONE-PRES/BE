@@ -61,7 +61,6 @@ public class EmailNotificationService {
 
     private String buildSubject(NotificationType type) {
         return switch (type) {
-            case WORKSPACE_ACTIVITY -> "워크스페이스 활동 알림";
             case INVITE -> "워크스페이스 초대 알림";
             case REVIEW_COMMENT -> "새로운 검토 의견 알림";
             case PRACTICE_REMINDER_D1 -> "발표 연습 D-1 알림";
@@ -79,8 +78,6 @@ public class EmailNotificationService {
         String dueDate = dueObj == null ? "" : dueObj.toString();
 
         return switch (type) {
-            case WORKSPACE_ACTIVITY ->
-                    String.format("[%s] 워크스페이스에 활동이 있습니다. 자세히: %s", workspaceName, link);
             case INVITE -> String.format("[%s] %s님이 당신을 워크스페이스에 초대했습니다. 초대 링크: %s",
                     workspaceName, invitedBy, link);
             case REVIEW_COMMENT ->
