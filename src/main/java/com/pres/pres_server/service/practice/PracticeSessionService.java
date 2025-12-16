@@ -70,17 +70,18 @@ public class PracticeSessionService {
                 session = practiceSessionRepository.save(session);
                 log.info("PracticeSession 생성 완료 - sessionId: {}", session.getSessionId());
 
-                                // 3. 프로젝트에 연결된 (메인) 발표 파일 조회 - additional == false 인 파일만 사용
-                                List<PresentationFile> mainFiles = presentationFileRepository.findAllByProjectAndAdditionalFalse(project);
-                                if (mainFiles == null || mainFiles.isEmpty()) {
-                                        throw new IllegalArgumentException("프로젝트에 연결된 메인 발표 파일이 없습니다. projectId: " + projectId);
-                                }
-                                if (mainFiles.size() > 1) {
-                                        throw new IllegalStateException("메인 발표 자료가 2개 이상 존재합니다. projectId: " + projectId);
-                                }
+                // 3. 프로젝트에 연결된 (메인) 발표 파일 조회 - additional == false 인 파일만 사용
+                List<PresentationFile> mainFiles = presentationFileRepository
+                                .findAllByProjectAndAdditionalFalse(project);
+                if (mainFiles == null || mainFiles.isEmpty()) {
+                        throw new IllegalArgumentException("프로젝트에 연결된 메인 발표 파일이 없습니다. projectId: " + projectId);
+                }
+                if (mainFiles.size() > 1) {
+                        throw new IllegalStateException("메인 발표 자료가 2개 이상 존재합니다. projectId: " + projectId);
+                }
 
-                                PresentationFile presentationFile = mainFiles.get(0);
-                                Long fileId = presentationFile.getFileId();
+                PresentationFile presentationFile = mainFiles.get(0);
+                Long fileId = presentationFile.getFileId();
                 log.info("PresentationFile 조회 완료 - fileId: {}", fileId);
 
                 // 4. 여기서는 더 이상 슬라이드/큐카드/qrUrl 리스트를 조립하지 않는다.
@@ -158,27 +159,32 @@ public class PracticeSessionService {
                 Long fileId = null;
                 Map<Integer, String> slideToImageUrl = new HashMap<>();
                 try {
-                                // 메인 파일만 선택하여 이미지 URL 매핑 시도
-                                List<PresentationFile> mains = presentationFileRepository.findAllByProjectAndAdditionalFalse(session.getProject());
-                                if (mains != null && !mains.isEmpty()) {
-                                        if (mains.size() > 1) {
-                                                log.warn("프로젝트에 메인 파일이 다수 존재합니다. sessionId={}", session.getSessionId());
-                                        }
-                                        fileId = mains.get(0).getFileId();
-                                        try {
-                                                java.util.Map<Integer, String> urlMap = presentationImageService.getImageUrlMap(fileId);
-                                                if (urlMap != null && !urlMap.isEmpty()) {
-                                                        slideToImageUrl.putAll(urlMap);
-                                                }
-                                        } catch (Exception e) {
-                                                log.info("프레젠테이션 이미지 URL 조회 실패: {}", e.getMessage());
-                                        }
+                        // 메인 파일만 선택하여 이미지 URL 매핑 시도
+                        List<PresentationFile> mains = presentationFileRepository
+                                        .findAllByProjectAndAdditionalFalse(session.getProject());
+                        if (mains != null && !mains.isEmpty()) {
+                                if (mains.size() > 1) {
+                                        log.warn("프로젝트에 메인 파일이 다수 존재합니다. sessionId={}", session.getSessionId());
                                 }
+                                fileId = mains.get(0).getFileId();
+                                try {
+                                        java.util.Map<Integer, String> urlMap = presentationImageService
+                                                        .getImageUrlMap(fileId);
+                                        if (urlMap != null && !urlMap.isEmpty()) {
+                                                slideToImageUrl.putAll(urlMap);
+                                        }
+                                } catch (Exception e) {
+                                        log.info("프레젠테이션 이미지 URL 조회 실패: {}", e.getMessage());
+                                }
+                        }
                 } catch (Exception ignore) {
                 }
 
                 // 3b. 슬라이드별 피드백 조회 및 변환
-                List<SlideFeedbackDto> slideFeedbacks = getSlideFeedbacks(feedback.getFeedbackId(), slideToImageUrl);
+                log.debug("presentation images for fileId {}: slideToImageUrl.size={}", fileId,
+                                slideToImageUrl == null ? 0 : slideToImageUrl.size());
+                List<SlideFeedbackDto> slideFeedbacks = getSlideFeedbacks(feedback.getFeedbackId(), slideToImageUrl,
+                                fileId);
 
                 // Query DB for most recent 3 history entries (DB-side limit & ordering)
                 org.springframework.data.domain.Pageable top3 = org.springframework.data.domain.PageRequest.of(0, 3);
@@ -207,19 +213,21 @@ public class PracticeSessionService {
         /**
          * 슬라이드별 피드백 조회 및 DTO 변환
          */
-        private List<SlideFeedbackDto> getSlideFeedbacks(Long feedbackId, Map<Integer, String> slideToImageUrl) {
+        private List<SlideFeedbackDto> getSlideFeedbacks(Long feedbackId, Map<Integer, String> slideToImageUrl,
+                        Long fileId) {
                 List<SlideFeedback> slideFeedbacks = slideFeedbackRepository
-                                .findByFeedbackIdOrderBySlideNumber(feedbackId);
+                                .findByFeedbackIdOrderByTimestampSecondsAsc(feedbackId);
 
                 return slideFeedbacks.stream()
-                                .map(entity -> convertToDto(entity, slideToImageUrl))
+                                .map(entity -> convertToDto(entity, slideToImageUrl, fileId))
                                 .collect(Collectors.toList());
         }
 
         /**
          * SlideFeedback 엔티티를 DTO로 변환
          */
-        private SlideFeedbackDto convertToDto(SlideFeedback entity, Map<Integer, String> slideToImageUrl) {
+        private SlideFeedbackDto convertToDto(SlideFeedback entity, Map<Integer, String> slideToImageUrl,
+                        Long fileId) {
                 Map<String, Integer> fillerDetail = null;
                 if (entity.getFillerDetail() != null) {
                         try {
@@ -324,12 +332,19 @@ public class PracticeSessionService {
                                 .slideText(entity.getSlideText())
                                 .issues(issues);
 
-                // 썸네일 URL 채우기 (가능하면)
+                // 썸네일 URL 채우기 (가능하면). 매핑이 없을 경우 폴백으로 프록시 경로를 생성
+                String url = null;
                 if (slideToImageUrl != null) {
-                        String url = slideToImageUrl.get(entity.getSlideNumber());
-                        if (url != null) {
-                                builder.thumbnailUrl(url);
-                        }
+                        url = slideToImageUrl.get(entity.getSlideNumber());
+                }
+                if (url != null) {
+                        builder.thumbnailUrl(url);
+                } else if (fileId != null) {
+                        // 폴백: 프론트는 백엔드 프록시 경로로 이미지를 요청하도록 설계되어 있음
+                        String fallback = "/api/files/" + fileId + "/page/" + entity.getSlideNumber() + "/image";
+                        log.debug("thumbnailUrl missing for slide {} - using fallback {}", entity.getSlideNumber(),
+                                        fallback);
+                        builder.thumbnailUrl(fallback);
                 }
 
                 return builder.build();
