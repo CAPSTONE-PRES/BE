@@ -325,7 +325,7 @@ public class AudioAnalysisService {
 
         // 1) 필러 분석
         List<FillerService.SlideFillerDto> fillerResults = fillerService
-                .countFillersBySlides(slideSttTexts);
+                .countFillersBySlides(slideSttTexts, intervals);
         log.info("    • Filler analysis: {} slides", fillerResults.size());
 
         // 2) 침묵 분석
@@ -399,7 +399,9 @@ public class AudioAnalysisService {
             int spmScore = speechSpeedService.mapSpmToScore(spm);
 
             results.add(SlideSpmResult.builder()
-                    .slideNumber(i + 1)
+                    .slideNumber(interval.getSlideNumber())
+                    .visitIndex(interval.getVisitIndex())
+                    .internalSlideIndex(interval.getInternalSlideIndex())
                     .spm(spm)
                     .spmScore(spmScore)
                     .build());
@@ -686,6 +688,8 @@ public class AudioAnalysisService {
     @lombok.Builder
     public static class SlideSpmResult {
         private final int slideNumber;
+        private final int visitIndex;
+        private final int internalSlideIndex;
         private final int spm; // 사용자 SPM
         private final int spmScore; // SPM 점수 (0-100)
     }

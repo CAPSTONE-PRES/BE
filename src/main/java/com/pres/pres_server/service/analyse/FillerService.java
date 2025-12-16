@@ -1,5 +1,7 @@
 package com.pres.pres_server.service.analyse;
 
+import com.pres.pres_server.service.analyse.utils.SlideSegmentExtractor.SlideInterval;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -94,7 +96,8 @@ public class FillerService {
      * @param slideTexts 슬라이드별 텍스트(순서대로)
      * @return 슬라이드별 필러 분석 결과 리스트 (슬라이드 인덱스, 카운트)
      */
-    public java.util.List<SlideFillerDto> countFillersBySlides(java.util.List<String> slideTexts) {
+    public java.util.List<SlideFillerDto> countFillersBySlides(java.util.List<String> slideTexts,
+            java.util.List<SlideInterval> intervals) {
         java.util.List<SlideFillerDto> result = new java.util.ArrayList<>();
         if (slideTexts == null || slideTexts.isEmpty()) {
             return result;
@@ -129,11 +132,20 @@ public class FillerService {
                                 } catch (Exception ex) {
                                     excerpt = fillerWord;
                                 }
-                                offsets.add(new TextOffset(b, e, i + 1, excerpt));
+                                // slideIndex for TextOffset should be slideNumber label; visitIndex from
+                                // intervals if available
+                                int visitIdx = 0;
+                                int slideNumberLabel = i;
+                                if (intervals != null && i < intervals.size()) {
+                                    SlideInterval intv = intervals.get(i);
+                                    visitIdx = intv.getVisitIndex();
+                                    slideNumberLabel = intv.getSlideNumber();
+                                }
+                                offsets.add(new TextOffset(b, e, slideNumberLabel, visitIdx, excerpt));
                             }
                         }
                     } catch (Exception ex) {
-                        log.debug("필러 오프셋 추출 중 예외(슬라이드={}, 단어={}): {}", i + 1, fillerWord, ex.getMessage());
+                        log.debug("필러 오프셋 추출 중 예외(슬라이드={}, 단어={}): {}", i, fillerWord, ex.getMessage());
                     }
                 }
             }

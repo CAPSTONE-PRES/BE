@@ -18,7 +18,8 @@ import java.util.List;
 @AllArgsConstructor
 public class SlideFeedbackDto {
 
-    private Integer slideNumber; // 슬라이드 번호
+    private Integer slideNumber; // 슬라이드 번호 (프론트 제공 라벨, 0-based)
+    private Integer visitIndex; // 동일 슬라이드의 방문 순서 (0-based, 재방문 구분용)
     private Double timestampSeconds; // 슬라이드 시작 시각 (초)
     private String slideText; // 해당 슬라이드 STT 텍스트
 

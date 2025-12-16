@@ -6,7 +6,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "slide_feedback")
+@Table(name = "slide_feedback", uniqueConstraints = @UniqueConstraint(columnNames = { "feedback_id", "slide_number",
+        "visit_index" }))
 @Getter
 @Setter
 public class SlideFeedback {
@@ -20,6 +21,10 @@ public class SlideFeedback {
 
     @Column(name = "slide_number", nullable = false)
     private Integer slideNumber;
+
+    // 동일 slide_number가 여러 번 등장할 때 시간 순 방문 순서를 구분하기 위한 인덱스(0-based)
+    @Column(name = "visit_index", nullable = false)
+    private Integer visitIndex;
 
     // 슬라이드 시작 시각 (초 단위) - 01:26:30 같은 값
     @Column(name = "timestamp_seconds")

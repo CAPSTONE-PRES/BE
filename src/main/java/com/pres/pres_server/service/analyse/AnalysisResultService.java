@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 import com.pres.pres_server.dto.practice.IssueDto;
 import com.pres.pres_server.domain.IssueType;
 import com.pres.pres_server.dto.practice.OffsetDto;
-import com.pres.pres_server.dto.practice.SlideFeedbackDto;
 
 /**
  * 분석 결과 저장 서비스
@@ -60,23 +59,13 @@ public class AnalysisResultService {
      */
     @Transactional
     public Long saveAnalysisResult(Long projectId, AudioAnalysisService.AnalysisResult analysisResult) {
-        log.info("▶ 분석 결과 저장 시작 - projectId: {}, windows: {}",
-                projectId, analysisResult.getWindows().size());
-
         // 1. PracticeSession 생성 및 저장
         PracticeSession session = createPracticeSession(projectId, analysisResult);
         session = sessionRepository.save(session);
-        log.info("  • PracticeSession 저장 완료 - sessionId: {}", session.getSessionId());
-
         // 2. SessionWindow 리스트 생성 및 저장
         saveSessionWindows(session, analysisResult.getWindows());
-        log.info("  • SessionWindow {} 개 저장 완료", analysisResult.getWindows().size());
-
         // 3. Feedback 계산 및 저장
         Feedback feedback = calculateAndSaveFeedback(session, analysisResult);
-        log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}",
-                feedback.getTotalScore(), feedback.getGrade());
-
         log.info("✅ 분석 결과 저장 완료 - sessionId: {}", session.getSessionId());
         return session.getSessionId();
     }
@@ -89,25 +78,14 @@ public class AnalysisResultService {
      */
     @Transactional
     public void saveAnalysisResult(PracticeSession session, AudioAnalysisService.AnalysisResult analysisResult) {
-        log.info("▶ 분석 결과 업데이트 시작 - sessionId: {}, windows: {}",
-                session.getSessionId(), analysisResult.getWindows().size());
-
         // 1. STT 텍스트 및 Duration 업데이트
         session.updateSttText(analysisResult.getFullSttText());
         session.updateDuration(analysisResult.getTotalDurationSeconds());
         sessionRepository.save(session);
-        log.info("  • PracticeSession STT 및 Duration 업데이트 완료 - sessionId: {}, duration: {}초",
-                session.getSessionId(), String.format("%.2f", analysisResult.getTotalDurationSeconds()));
-
         // 2. SessionWindow 리스트 생성 및 저장
         saveSessionWindows(session, analysisResult.getWindows());
-        log.info("  • SessionWindow {} 개 저장 완료", analysisResult.getWindows().size());
-
         // 3. Feedback 계산 및 저장
         Feedback feedback = calculateAndSaveFeedback(session, analysisResult);
-        log.info("  • Feedback 저장 완료 - totalScore: {}, grade: {}",
-                feedback.getTotalScore(), feedback.getGrade());
-
         log.info("✅ 분석 결과 업데이트 완료 - sessionId: {}", session.getSessionId());
     }
 
@@ -291,7 +269,7 @@ public class AnalysisResultService {
             StringBuilder agg = new StringBuilder();
             try {
                 List<SlideFeedback> slideFeedbackEntities = slideFeedbackRepository
-                        .findByFeedbackIdOrderBySlideNumber(feedbackForOverall.getFeedbackId());
+                        .findByFeedbackIdOrderByTimestampSecondsAsc(feedbackForOverall.getFeedbackId());
                 for (SlideFeedback s : slideFeedbackEntities) {
                     if (s == null || s.getIssues() == null)
                         continue;
@@ -476,7 +454,9 @@ public class AnalysisResultService {
         List<String> slideSttTexts = slideAnalysis.getSlideSttTexts();
         List<SlideSegmentExtractor.SlideInterval> intervals = slideAnalysis.getIntervals();
 
-        int slideCount = fillerResults != null ? fillerResults.size() : 0;
+        // Use intervals size as the authoritative slide count and preserve their
+        // original order
+        int slideCount = intervals != null ? intervals.size() : 0;
         log.info("• 슬라이드별 피드백 저장 시작 - {} 개", slideCount);
 
         // 슬라이드별 반복 결과를 Map으로 변환 (빠른 조회를 위해)
@@ -545,6 +525,7 @@ public class AnalysisResultService {
                         mappedOffsets++;
                         OffsetDto dto = OffsetDto.builder()
                                 .slideIndex(sIdx)
+                                .visitIndex(o.getVisitIndex())
                                 .begin(o.getBegin())
                                 .end(o.getEnd())
                                 .text(o.getText())
@@ -571,6 +552,7 @@ public class AnalysisResultService {
 
                         OffsetDto dto = OffsetDto.builder()
                                 .slideIndex(sIdx)
+                                .visitIndex(o.getVisitIndex())
                                 .begin(o.getBegin())
                                 .end(o.getEnd())
                                 .text(o.getText())
@@ -613,14 +595,29 @@ public class AnalysisResultService {
         for (int i = 0; i < slideCount; i++) {
             SlideFeedback slideFeedback = new SlideFeedback();
             slideFeedback.setFeedback(feedback);
-            slideFeedback.setSlideNumber(i + 1); // 슬라이드 번호는 1부터 시작
+            SlideSegmentExtractor.SlideInterval interval = intervals != null && i < intervals.size()
+                    ? intervals.get(i)
+                    : null;
+            if (interval == null) {
+                log.warn(
+                        "Skipping slide save: missing interval for internalSlideIndex {} - not saving fallback slideNumber.",
+                        i);
+                continue; // do not save slide feedback without a corresponding interval
+            }
+
+            int slideNumberLabel = interval.getSlideNumber();
+            int visitIndex = interval.getVisitIndex();
+            // internalSlideIndex: 0-based, intervals/list index와 1:1 대응
+            int internalIndex = interval.getSlideIndex(); // legacy compat
+            slideFeedback.setSlideNumber(slideNumberLabel);
+            slideFeedback.setVisitIndex(visitIndex);
 
             // 타임스탬프와 STT 텍스트 설정
-            if (intervals != null && i < intervals.size()) {
-                slideFeedback.setTimestampSeconds(intervals.get(i).getStartTime());
+            if (interval != null) {
+                slideFeedback.setTimestampSeconds(interval.getStartTime());
             }
-            if (slideSttTexts != null && i < slideSttTexts.size()) {
-                slideFeedback.setSlideText(slideSttTexts.get(i));
+            if (slideSttTexts != null && internalIndex < slideSttTexts.size()) {
+                slideFeedback.setSlideText(slideSttTexts.get(internalIndex));
             }
 
             boolean hasIssue = false;
@@ -628,8 +625,8 @@ public class AnalysisResultService {
             List<IssueDto> issuesList = new ArrayList<>();
 
             // 1. SPM 정보
-            if (spmResults != null && i < spmResults.size()) {
-                AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(i);
+            if (spmResults != null && internalIndex < spmResults.size()) {
+                AudioAnalysisService.SlideSpmResult spmResult = spmResults.get(internalIndex);
                 slideFeedback.setSpmUser(spmResult.getSpm());
 
                 // SPM이 최적 범위(예: SpeechSpeedService 기준)를 벗어난 경우에만 이슈로 추가
@@ -640,13 +637,16 @@ public class AnalysisResultService {
                             .spmUser(spmResult.getSpm());
                     // 즉시 OpenAI로 속도 코멘트 생성(실패하면 null 허용)
                     try {
-                        Map<String, String> p = openAIFeedbackService.generatePaceFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                        Map<String, String> p = openAIFeedbackService.generatePaceFeedback(
+                                String.valueOf(slideNumberLabel),
+                                (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                        ? slideSttTexts.get(internalIndex)
+                                        : "",
                                 spmResult.getSpm(), 330);
                         if (p != null && p.containsKey("pace"))
                             speedBuilder.comment(p.get("pace"));
                     } catch (Exception e) {
-                        log.warn("속도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                        log.warn("속도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", slideNumberLabel, e.getMessage());
                     }
                     issuesList.add(speedBuilder.build());
                     if (slideFeedback.getIssueType() == null)
@@ -656,8 +656,8 @@ public class AnalysisResultService {
             }
 
             // 2. 필러 정보
-            if (fillerResults != null && i < fillerResults.size()) {
-                FillerService.SlideFillerDto fillerDto = fillerResults.get(i);
+            if (fillerResults != null && internalIndex < fillerResults.size()) {
+                FillerService.SlideFillerDto fillerDto = fillerResults.get(internalIndex);
                 int totalFillers = fillerDto.getFillerCounts().values().stream()
                         .mapToInt(Integer::intValue)
                         .sum();
@@ -682,6 +682,7 @@ public class AnalysisResultService {
                                         .begin(o.getBegin())
                                         .end(o.getEnd())
                                         .slideIndex(o.getSlideIndex())
+                                        .visitIndex(o.getVisitIndex())
                                         .text(o.getText())
                                         .build()).collect(Collectors.toList());
                             }
@@ -689,29 +690,34 @@ public class AnalysisResultService {
                         }
 
                         if (fillerOffsets == null || fillerOffsets.isEmpty()) {
-                            String slideText = (slideSttTexts != null && i < slideSttTexts.size())
-                                    ? slideSttTexts.get(i)
+                            String slideText = (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                    ? slideSttTexts.get(internalIndex)
                                     : "";
                             List<String> fillerWords = new ArrayList<>(fillerDto.getFillerCounts().keySet());
-                            fillerOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, fillerWords, i + 1);
+                            fillerOffsets = slideSegmentExtractor.collectOffsetsForSlide(slideText, fillerWords,
+                                    slideNumberLabel, visitIndex);
                         }
 
                         if (fillerOffsets != null && !fillerOffsets.isEmpty()) {
                             fillerBuilder.offsets(fillerOffsets);
                         }
                     } catch (Exception ex) {
-                        log.warn("필러 오프셋 수집 중 오류 - slide {}: {}", i + 1, ex.getMessage());
+                        log.warn("필러 오프셋 수집 중 오류 - slide {} (visit {}): {}", slideNumberLabel, visitIndex,
+                                ex.getMessage());
                     }
                     // OpenAI 호출 (필러에 대한 코멘트)
                     try {
                         List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
-                        Map<String, String> r = openAIFeedbackService.generateFillerFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                        Map<String, String> r = openAIFeedbackService.generateFillerFeedback(
+                                String.valueOf(slideNumberLabel),
+                                (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                        ? slideSttTexts.get(internalIndex)
+                                        : "",
                                 totalFillers, fillers);
                         if (r != null && r.containsKey("filler"))
                             fillerBuilder.comment(r.get("filler"));
                     } catch (Exception e) {
-                        log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                        log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", slideNumberLabel, e.getMessage());
                     }
                     issuesList.add(fillerBuilder.build());
                     if (slideFeedback.getIssueType() == null)
@@ -721,8 +727,8 @@ public class AnalysisResultService {
             }
 
             // 3. 공백 정보
-            if (silenceResults != null && i < silenceResults.size()) {
-                List<SilenceDetectionService.SilenceInterval> silences = silenceResults.get(i);
+            if (silenceResults != null && internalIndex < silenceResults.size()) {
+                List<SilenceDetectionService.SilenceInterval> silences = silenceResults.get(internalIndex);
                 if (!silences.isEmpty()) {
                     int silenceCount = silences.size();
                     double totalDuration = silences.stream()
@@ -739,13 +745,17 @@ public class AnalysisResultService {
                             .issueType("SILENCE")
                             .silenceCount(silenceCount);
                     try {
-                        Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(String.valueOf(i + 1),
-                                (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                        Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(
+                                String.valueOf(slideNumberLabel),
+                                (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                        ? slideSttTexts.get(internalIndex)
+                                        : "",
                                 silenceCount, totalDuration);
                         if (h != null && h.containsKey("silence"))
                             silenceBuilder.comment(h.get("silence"));
                     } catch (Exception e) {
-                        log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                        log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                visitIndex, e.getMessage());
                     }
                     issuesList.add(silenceBuilder.build());
                     if (slideFeedback.getIssueType() == null)
@@ -756,13 +766,13 @@ public class AnalysisResultService {
 
             // 4. 반복 어휘 정보 - L1(WordRepetition) 기반으로 프론트에 전달
             // (기존 L2 로직은 주석 처리하되 삭제하지 않음)
-            int slideIndex1Based = i + 1; // i는 0부터 시작하므로 +1
+            int slideIndexKey = internalIndex; // use internalSlideIndex as map key
             Map<String, Integer> perPatternCount = new LinkedHashMap<>();
             List<OffsetDto> repOffsets = new ArrayList<>();
 
-            // L1(patternOffsetMap)을 사용하여 이 슬라이드의 반복 패턴 수집
-            Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern.getOrDefault(
-                    slideIndex1Based, Collections.emptyMap());
+            // L1(patternOffsetMap)을 사용하여 이 슬라이드의 반복 패턴 수집 (internal index 기준)
+            Map<String, List<OffsetDto>> patternsForSlide = slidePatternOffsetsByPattern
+                    .getOrDefault(slideIndexKey, Collections.emptyMap());
 
             if (patternsForSlide != null && !patternsForSlide.isEmpty()) {
                 for (Map.Entry<String, List<OffsetDto>> e : patternsForSlide.entrySet()) {
@@ -774,7 +784,8 @@ public class AnalysisResultService {
                     perPatternCount.put(pattern, offs.size());
                     repOffsets.addAll(offs);
                 }
-                log.info("  • L1-based perPatternCount for slide {}: {}", slideIndex1Based, perPatternCount);
+                log.info("  • L1-based perPatternCount for slide {}(visit {}): {}", slideNumberLabel, visitIndex,
+                        perPatternCount);
             }
 
             /*
@@ -870,8 +881,8 @@ public class AnalysisResultService {
              */
 
             int totalRepeatCount = repOffsets.size();
-            log.debug("[Slide {}] repetition offsets = {}, patterns = {}", slideIndex1Based, totalRepeatCount,
-                    perPatternCount);
+            log.debug("[Slide internalIndex={}] repetition offsets = {}, patterns = {}", internalIndex,
+                    totalRepeatCount, perPatternCount);
 
             if (totalRepeatCount >= 2) {
                 Map<String, Integer> repeatMapTop = perPatternCount.entrySet().stream()
@@ -901,15 +912,18 @@ public class AnalysisResultService {
 
                 try {
                     Map<String, String> r2 = openAIFeedbackService.generateRepetitionFeedback(
-                            String.valueOf(slideIndex1Based),
-                            (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                            String.valueOf(slideNumberLabel),
+                            (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                    ? slideSttTexts.get(internalIndex)
+                                    : "",
                             totalRepeatCount,
                             new ArrayList<>(repeatMapTop.keySet()));
                     if (r2 != null && r2.containsKey("repetition")) {
                         repBuilder.comment(r2.get("repetition"));
                     }
                 } catch (Exception e) {
-                    log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", slideIndex1Based, e.getMessage());
+                    log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel, visitIndex,
+                            e.getMessage());
                 }
 
                 issuesList.add(repBuilder.build());
@@ -920,8 +934,8 @@ public class AnalysisResultService {
             }
 
             // 5. 정확도 정보 (대본이 있을 때만)
-            if (accuracyResults != null && i < accuracyResults.size()) {
-                ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(i);
+            if (accuracyResults != null && internalIndex < accuracyResults.size()) {
+                ScriptAccuracyService.AccuracyAnalysisResult accuracyResult = accuracyResults.get(internalIndex);
                 if (accuracyResult.isSuccess()) {
                     // 정확도가 낮은 경우만 이슈로 표시 (scriptSimilarity 0.50 미만)
                     if (accuracyResult.getScriptSimilarity() < 0.50) {
@@ -935,13 +949,16 @@ public class AnalysisResultService {
                         try {
                             String expectedKeyPoints = "";
                             Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
-                                    String.valueOf(i + 1),
-                                    (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "",
+                                    String.valueOf(slideNumberLabel),
+                                    (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                                            ? slideSttTexts.get(internalIndex)
+                                            : "",
                                     expectedKeyPoints);
                             if (a != null && a.containsKey("accuracy"))
                                 accBuilder.comment(a.get("accuracy"));
                         } catch (Exception e) {
-                            log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                            log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                    visitIndex, e.getMessage());
                         }
                         // Offsets are intentionally omitted for ACCURACY issues.
                         // ScriptAccuracyService does not provide reliable offsets and
@@ -956,7 +973,8 @@ public class AnalysisResultService {
                     // 주의: 이전에는 전역 accuracy 결과(global accuracy)를 사용하여
                     // 슬라이드별 ACCURACY 이슈를 폴백으로 생성했음.
                     // 이 동작은 슬라이드별 정확도를 잘못 대표할 수 있으므로 제거합니다.
-                    log.debug("슬라이드 {}에 대해 슬라이드별 정확도 결과 없음 - 전역 accuracy 폴백 사용하지 않음", i + 1);
+                    log.debug("슬라이드 {}(visit {})에 대해 슬라이드별 정확도 결과 없음 - 전역 accuracy 폴백 사용하지 않음",
+                            slideNumberLabel, visitIndex);
                 }
             }
 
@@ -970,7 +988,9 @@ public class AnalysisResultService {
 
             // 이슈가 있고 전체 코멘트가 수집되지 않았다면 통합 생성기로 폴백(재시도 포함)
             if (hasIssue && (overallComment == null || overallComment.isBlank())) {
-                String transcript = (slideSttTexts != null && i < slideSttTexts.size()) ? slideSttTexts.get(i) : "";
+                String transcript = (slideSttTexts != null && internalIndex < slideSttTexts.size())
+                        ? slideSttTexts.get(internalIndex)
+                        : "";
                 // 감지된 이슈 타입 집합만 전달하도록 변경: null을 넘기지 않음
                 // only include issue types that do not yet have a generated comment
                 java.util.Set<String> detectedTypes = issuesList.stream()
@@ -983,16 +1003,19 @@ public class AnalysisResultService {
                     detectedTypes.add(slideFeedback.getIssueType().name());
 
                 if (!detectedTypes.isEmpty()) {
-                    overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults, silenceResults,
-                            accuracyResults, spmResults, repetitionMap);
+                    overallComment = generateSlideComment(internalIndex, slideNumberLabel, visitIndex, transcript,
+                            detectedTypes, fillerResults, silenceResults, accuracyResults, spmResults,
+                            repetitionMap);
                     if (overallComment == null || overallComment.isBlank()) {
-                        log.warn("OpenAI 통합 코멘트가 비어있음(slide={} types={}) - 1회 재시도합니다.", i + 1,
+                        log.warn("OpenAI 통합 코멘트가 비어있음(slide={} types={}) - 1회 재시도합니다.", slideNumberLabel,
                                 detectedTypes);
-                        overallComment = generateSlideComment(i, transcript, detectedTypes, fillerResults,
-                                silenceResults, accuracyResults, spmResults, repetitionMap);
+                        overallComment = generateSlideComment(internalIndex, slideNumberLabel, visitIndex, transcript,
+                                detectedTypes, fillerResults, silenceResults, accuracyResults, spmResults,
+                                repetitionMap);
                         if (overallComment == null || overallComment.isBlank()) {
-                            log.warn("재시도 후에도 OpenAI 코멘트가 비어있음(slide={} types={}) - 폴백 메시지를 저장합니다.",
-                                    i + 1, detectedTypes);
+                            log.warn(
+                                    "재시도 후에도 OpenAI 코멘트가 비어있음(slide={} types={}) - 폴백 메시지를 저장합니다.",
+                                    slideNumberLabel, detectedTypes);
                             overallComment = AI_FALLBACK_COMMENT;
                         }
                     }
@@ -1006,7 +1029,8 @@ public class AnalysisResultService {
             // issuesList를 JSON으로 저장 (빈 리스트인 경우에도 '[]'가 되도록 안전 직렬화 사용)
             slideFeedback.setIssues(toJsonSafe(issuesList));
             slideFeedbackRepository.save(slideFeedback);
-            log.info("    • 슬라이드 {} 피드백 저장 완료 - issueType: {}", i + 1, slideFeedback.getIssueType());
+            log.info("    • 슬라이드 {}(visit {}) 피드백 저장 완료 - issueType: {}", slideNumberLabel, visitIndex,
+                    slideFeedback.getIssueType());
         }
     }
 
@@ -1019,7 +1043,8 @@ public class AnalysisResultService {
      * 재시도 혹은 통합용으로 동일한(또는 유사한) AI 호출을 수행할 수 있음 → 동일 슬라이드에 대해 AI 호출이 중복될 가능성(성능·비용
      * 측면).
      */
-    private String generateSlideComment(int i, String transcript, java.util.Set<String> issueTypes,
+    private String generateSlideComment(int internalIndex, int slideNumberLabel, int visitIndex, String transcript,
+            java.util.Set<String> issueTypes,
             List<FillerService.SlideFillerDto> fillerResults,
             List<List<SilenceDetectionService.SilenceInterval>> silenceResults,
             List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults,
@@ -1040,25 +1065,26 @@ public class AnalysisResultService {
 
                 switch (t) {
                     case "SILENCE":
-                        if (silenceResults != null && i < silenceResults.size()) {
-                            List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(i);
+                        if (silenceResults != null && internalIndex < silenceResults.size()) {
+                            List<SilenceDetectionService.SilenceInterval> sils = silenceResults.get(internalIndex);
                             if (sils != null && !sils.isEmpty()) {
                                 int silenceCount = sils.size();
                                 double totalSilence = sils.stream()
                                         .mapToDouble(SilenceDetectionService.SilenceInterval::getDuration).sum();
                                 try {
                                     Map<String, String> h = openAIFeedbackService.generateSilenceFeedback(
-                                            String.valueOf(i + 1), transcript, silenceCount, totalSilence);
+                                            String.valueOf(slideNumberLabel), transcript, silenceCount, totalSilence);
                                     if (h != null && h.containsKey("silence"))
                                         commentBuilder.append(h.get("silence")).append(" ");
                                 } catch (Exception e) {
-                                    log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                    log.warn("공백 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                            visitIndex, e.getMessage());
                                 }
                             }
                         }
                         break;
                     case "REPETITION":
-                        List<RepetitiveTextAnalysisService.SlideRepetition> reps = repetitionMap.get(i);
+                        List<RepetitiveTextAnalysisService.SlideRepetition> reps = repetitionMap.get(internalIndex);
                         if (reps != null && !reps.isEmpty()) {
                             int totalRep = reps.stream()
                                     .mapToInt(RepetitiveTextAnalysisService.SlideRepetition::getCount).sum();
@@ -1066,60 +1092,64 @@ public class AnalysisResultService {
                                     .map(RepetitiveTextAnalysisService.SlideRepetition::getPattern).distinct().toList();
                             try {
                                 Map<String, String> r = openAIFeedbackService.generateRepetitionFeedback(
-                                        String.valueOf(i + 1), transcript, totalRep, patterns);
+                                        String.valueOf(slideNumberLabel), transcript, totalRep, patterns);
                                 if (r != null && r.containsKey("repetition"))
                                     commentBuilder.append(r.get("repetition")).append(" ");
                             } catch (Exception e) {
-                                log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                log.warn("반복 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                        visitIndex, e.getMessage());
                             }
                         }
                         break;
                     case "ACCURACY":
-                        if (accuracyResults != null && i < accuracyResults.size()) {
-                            ScriptAccuracyService.AccuracyAnalysisResult acc = accuracyResults.get(i);
+                        if (accuracyResults != null && internalIndex < accuracyResults.size()) {
+                            ScriptAccuracyService.AccuracyAnalysisResult acc = accuracyResults.get(internalIndex);
                             if (acc != null && acc.isSuccess()) {
                                 String expectedKeyPoints = "";
                                 try {
                                     Map<String, String> a = openAIFeedbackService.generateAccuracyFeedback(
-                                            String.valueOf(i + 1), transcript, expectedKeyPoints);
+                                            String.valueOf(slideNumberLabel), transcript, expectedKeyPoints);
                                     if (a != null && a.containsKey("accuracy"))
                                         commentBuilder.append(a.get("accuracy")).append(" ");
                                 } catch (Exception e) {
-                                    log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                    log.warn("정확도 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}",
+                                            slideNumberLabel, visitIndex, e.getMessage());
                                 }
                             }
                         }
                         break;
                     case "SPEED":
-                        if (spmResults != null && i < spmResults.size()) {
-                            AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(i);
+                        if (spmResults != null && internalIndex < spmResults.size()) {
+                            AudioAnalysisService.SlideSpmResult spmRes = spmResults.get(internalIndex);
                             if (spmRes != null) {
                                 double currentSpm = spmRes.getSpm();
                                 double idealSpm = 330.0;
                                 try {
                                     Map<String, String> p = openAIFeedbackService.generatePaceFeedback(
-                                            String.valueOf(i + 1), transcript, currentSpm, idealSpm);
+                                            String.valueOf(slideNumberLabel), transcript, currentSpm, idealSpm);
                                     if (p != null && p.containsKey("pace"))
                                         commentBuilder.append(p.get("pace")).append(" ");
                                 } catch (Exception e) {
-                                    log.warn("속도 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                    log.warn("속도 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                            visitIndex, e.getMessage());
                                 }
                             }
                         }
                         break;
                     case "FILLER":
-                        if (fillerResults != null && i < fillerResults.size()) {
-                            FillerService.SlideFillerDto fillerDto = fillerResults.get(i);
+                        if (fillerResults != null && internalIndex < fillerResults.size()) {
+                            FillerService.SlideFillerDto fillerDto = fillerResults.get(internalIndex);
                             int totalFillers = fillerDto.getFillerCounts().values().stream().mapToInt(Integer::intValue)
                                     .sum();
                             List<String> fillers = fillerDto.getFillerCounts().keySet().stream().limit(10).toList();
                             try {
                                 Map<String, String> r = openAIFeedbackService.generateFillerFeedback(
-                                        String.valueOf(i + 1), transcript, totalFillers, fillers);
+                                        String.valueOf(slideNumberLabel), transcript, totalFillers, fillers);
                                 if (r != null && r.containsKey("filler"))
                                     commentBuilder.append(r.get("filler")).append(" ");
                             } catch (Exception e) {
-                                log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {}: {}", i + 1, e.getMessage());
+                                log.warn("필러 관련 OpenAI 코멘트 생성 실패 - slide {} (visit {}): {}", slideNumberLabel,
+                                        visitIndex, e.getMessage());
                             }
                         }
                         break;
@@ -1132,48 +1162,54 @@ public class AnalysisResultService {
             return commentBuilder.length() > 0 ? commentBuilder.toString().trim() : null;
         } catch (Exception e) {
             log.warn("OpenAI 기반 슬라이드 코멘트 생성 실패: {}", e.getMessage());
-            log.error("OpenAI 기반 슬라이드 코멘트 생성 중 예외 발생 (issueTypes={}, slideIndex={}, transcriptLen={}): {}",
-                    issueTypes, i + 1, transcript == null ? 0 : Math.min(transcript.length(), 200), e.getMessage(), e);
+            log.error(
+                    "OpenAI 기반 슬라이드 코멘트 생성 중 예외 발생 (issueTypes={}, slideLabel={}, visitIndex={}, transcriptLen={}): {}",
+                    issueTypes, slideNumberLabel, visitIndex,
+                    transcript == null ? 0 : Math.min(transcript.length(), 200),
+                    e.getMessage(), e);
             // 폴백 메시지를 반환하여 프론트엔드에 빈 문자열이 노출되는 상황을 방지합니다.
             return AI_FALLBACK_COMMENT;
         }
     }
 
-    @Deprecated
-    public List<List<IssueDto>> loadSlideIssuesForSession(Long sessionId) {
-        if (sessionId == null)
-            return Collections.emptyList();
+    // @Deprecated
+    // public List<List<IssueDto>> loadSlideIssuesForSession(Long sessionId) {
+    // if (sessionId == null)
+    // return Collections.emptyList();
 
-        try {
-            Optional<Feedback> fbOpt = feedbackRepository.findByPracticeSessionSessionId(sessionId);
-            if (fbOpt.isEmpty())
-                return Collections.emptyList();
-            Feedback fb = fbOpt.get();
+    // try {
+    // Optional<Feedback> fbOpt =
+    // feedbackRepository.findByPracticeSessionSessionId(sessionId);
+    // if (fbOpt.isEmpty())
+    // return Collections.emptyList();
+    // Feedback fb = fbOpt.get();
 
-            List<SlideFeedback> sfs = slideFeedbackRepository.findByFeedbackIdOrderBySlideNumber(fb.getFeedbackId());
-            List<List<IssueDto>> out = new ArrayList<>();
-            if (sfs == null || sfs.isEmpty())
-                return out;
+    // List<SlideFeedback> sfs =
+    // slideFeedbackRepository.findByFeedbackIdOrderBySlideNumber(fb.getFeedbackId());
+    // List<List<IssueDto>> out = new ArrayList<>();
+    // if (sfs == null || sfs.isEmpty())
+    // return out;
 
-            for (SlideFeedback sf : sfs) {
-                String issuesJson = sf.getIssues();
-                if (issuesJson == null || issuesJson.isBlank()) {
-                    out.add(Collections.emptyList());
-                    continue;
-                }
-                try {
-                    IssueDto[] arr = objectMapper.readValue(issuesJson, IssueDto[].class);
-                    out.add(Arrays.asList(arr));
-                } catch (Exception e) {
-                    log.warn("슬라이드 이슈 JSON 파싱 실패: slide={} err={}", sf.getSlideNumber(), e.getMessage());
-                    out.add(Collections.emptyList());
-                }
-            }
-            return out;
-        } catch (Exception e) {
-            log.warn("세션의 슬라이드 이슈 불러오기 실패: {}", e.getMessage());
-            return Collections.emptyList();
-        }
-    }
+    // for (SlideFeedback sf : sfs) {
+    // String issuesJson = sf.getIssues();
+    // if (issuesJson == null || issuesJson.isBlank()) {
+    // out.add(Collections.emptyList());
+    // continue;
+    // }
+    // try {
+    // IssueDto[] arr = objectMapper.readValue(issuesJson, IssueDto[].class);
+    // out.add(Arrays.asList(arr));
+    // } catch (Exception e) {
+    // log.warn("슬라이드 이슈 JSON 파싱 실패: slide={} err={}", sf.getSlideNumber(),
+    // e.getMessage());
+    // out.add(Collections.emptyList());
+    // }
+    // }
+    // return out;
+    // } catch (Exception e) {
+    // log.warn("세션의 슬라이드 이슈 불러오기 실패: {}", e.getMessage());
+    // return Collections.emptyList();
+    // }
+    // }
 
 }

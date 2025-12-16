@@ -205,7 +205,7 @@ public class RepetitiveTextAnalysisService {
         Map<Integer, String> slideTextMap = new HashMap<>();
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
             for (int i = 0; i < slideSttTexts.size(); i++) {
-                slideTextMap.put(i + 1, slideSttTexts.get(i)); // 슬라이드 번호를 1-based로 설정
+                slideTextMap.put(i, slideSttTexts.get(i)); // internalSlideIndex (0-based)
             }
         } else {
             slideTextMap = mapTextToSlides(sttText, slideTransitions, segments);
@@ -286,7 +286,7 @@ public class RepetitiveTextAnalysisService {
         if (slideSttTexts != null && !slideSttTexts.isEmpty()) {
             slideTextMap = new HashMap<>();
             for (int i = 0; i < slideSttTexts.size(); i++) {
-                slideTextMap.put(i + 1, slideSttTexts.get(i)); // 1-based index
+                slideTextMap.put(i, slideSttTexts.get(i)); // internalSlideIndex (0-based)
             }
             log.info("L2 using provided slideSttTexts: {} slides", slideTextMap.size());
             // 각 슬라이드 텍스트 샘플 출력
@@ -307,6 +307,20 @@ public class RepetitiveTextAnalysisService {
             return Collections.emptyList();
 
         List<SlideRepetition> out = new ArrayList<>();
+
+        // internalSlideIndex -> visitIndex 매핑 생성
+        Map<Integer, Integer> internalToVisitIndex = new HashMap<>();
+        if (transitions != null && !transitions.isEmpty()) {
+            List<SlideTransition> sortedTransitions = new ArrayList<>(transitions);
+            sortedTransitions.sort(Comparator.comparingDouble(SlideTransition::getStartSec));
+            Map<Integer, Integer> visitCounters = new HashMap<>();
+            for (int idx = 0; idx < sortedTransitions.size(); idx++) {
+                int sn = sortedTransitions.get(idx).getSlideNumber();
+                int v = visitCounters.getOrDefault(sn, 0);
+                internalToVisitIndex.put(idx, v);
+                visitCounters.put(sn, v + 1);
+            }
+        }
         Set<String> keywords = (presentationKeywords != null) ? presentationKeywords : Collections.emptySet();
 
         // 필터링 카운터
@@ -363,17 +377,21 @@ public class RepetitiveTextAnalysisService {
                         int begin = window.get(0).begin;
                         int end = window.get(1).end;
                         String text = slideText.substring(Math.max(0, begin), Math.min(slideText.length(), end));
-                        occs.add(Offset.builder().begin(begin).end(end).slideIndex(slideNum).text(text).build());
+                        Integer occVisit = internalToVisitIndex.getOrDefault(slideNum, 0);
+                        occs.add(Offset.builder().begin(begin).end(end).slideIndex(slideNum).visitIndex(occVisit)
+                                .text(text).build());
                     }
                 }
 
                 // 디버그: 생성되는 SlideRepetition 정보 로그
                 log.info("Created SlideRepetition: slideNum={}, pattern='{}', count={}, occs={}", slideNum, ge.getKey(),
                         ge.getValue(), occs.size());
+                Integer repVisit = internalToVisitIndex.getOrDefault(slideNum, 0);
                 out.add(SlideRepetition.builder()
                         .pattern(ge.getKey())
                         .slideIndex(slideNum)
                         .slideIndices(List.of(slideNum))
+                        .visitIndex(repVisit)
                         .scope("INTRA_SLIDE")
                         .count(ge.getValue().intValue())
                         .offsets(occs) // offset 정보 포함
@@ -414,20 +432,17 @@ public class RepetitiveTextAnalysisService {
         List<SlideTransition> sorted = new ArrayList<>(transitions);
         sorted.sort(Comparator.comparingDouble(SlideTransition::getStartSec));
 
-        Map<Integer, StringBuilder> builders = new HashMap<>();
-        for (SlideTransition st : sorted) {
-            // SlideTransition.slideNumber는 0-based이므로, 분석 결과의 일관성을 위해
-            // 반환되는 맵의 키는 1-based로 정규화합니다.
-            builders.put(st.getSlideNumber() + 1, new StringBuilder());
+        Map<Integer, StringBuilder> builders = new LinkedHashMap<>(); // key: internalSlideIndex (0-based)
+        for (int idx = 0; idx < sorted.size(); idx++) {
+            builders.put(idx, new StringBuilder());
         }
 
         for (WhisperSegment seg : segments) {
             double mid = (seg.getStart() + seg.getEnd()) / 2.0;
-            int slideNum = findSlideNumber(mid, sorted);
+            int slideIdx = findSlideIndex(mid, sorted);
 
-            if (slideNum > 0) {
-                // slideNum은 이제 1-based임
-                StringBuilder sb = builders.get(slideNum);
+            if (slideIdx >= 0) {
+                StringBuilder sb = builders.get(slideIdx);
                 if (sb != null) {
                     if (sb.length() > 0)
                         sb.append(" ");
@@ -436,21 +451,21 @@ public class RepetitiveTextAnalysisService {
             }
         }
 
-        Map<Integer, String> result = new HashMap<>();
+        Map<Integer, String> result = new LinkedHashMap<>(); // internalSlideIndex -> text
         for (Map.Entry<Integer, StringBuilder> e : builders.entrySet()) {
             result.put(e.getKey(), e.getValue().toString());
         }
         return result;
     }
 
-    private int findSlideNumber(double ts, List<SlideTransition> sorted) {
-        for (SlideTransition st : sorted) {
+    private int findSlideIndex(double ts, List<SlideTransition> sorted) {
+        for (int i = 0; i < sorted.size(); i++) {
+            SlideTransition st = sorted.get(i);
             double start = st.getStartSec();
             double end = st.getEndSec();
             // end==0 이거나 start==end 인 경우는 skip
             if (end > start && ts >= start && ts < end) {
-                // SlideTransition.slideNumber는 0-based, 반환은 1-based
-                return st.getSlideNumber() + 1;
+                return i; // internalSlideIndex (0-based)
             }
         }
         return -1;
@@ -471,11 +486,10 @@ public class RepetitiveTextAnalysisService {
         }
 
         List<String> slideTexts = splitTextByTimestampsFallbackStatic(sttText, transitions);
-        Map<Integer, String> result = new HashMap<>();
+        Map<Integer, String> result = new LinkedHashMap<>();
         int limit = Math.min(slideTexts.size(), transitions.size());
         for (int i = 0; i < limit; i++) {
-            // normalize to 1-based slide number
-            result.put(transitions.get(i).getSlideNumber() + 1, slideTexts.get(i));
+            result.put(i, slideTexts.get(i)); // internalSlideIndex (0-based)
         }
         return result;
     }
@@ -638,7 +652,7 @@ public class RepetitiveTextAnalysisService {
                         int slideLen = slideText != null ? slideText.length() : 0;
                         int slideEndGlobal = start + slideLen;
                         if (begin >= start && begin < slideEndGlobal) {
-                            mappedSlide = si + 1;
+                            mappedSlide = si; // internalSlideIndex (0-based)
                             break;
                         }
                     }
@@ -920,6 +934,9 @@ public class RepetitiveTextAnalysisService {
         @Schema(description = "(선택) 슬라이드 인덱스 - 테스트/매핑 시 제공 가능", example = "2")
         private final Integer slideIndex;
 
+        @Schema(description = "동일 슬라이드의 방문 순서 (0-based, 재방문 구분용)", example = "0")
+        private final Integer visitIndex;
+
         @Schema(description = "해당하는 stt text 원문", example = "그러니까")
         private final String text;
     }
@@ -937,6 +954,9 @@ public class RepetitiveTextAnalysisService {
 
         @Schema(description = "(단일) 패턴이 발견된 슬라이드 번호 (intra-slide 용으로 명시적 제공)", example = "1")
         private final Integer slideIndex;
+
+        @Schema(description = "동일 슬라이드의 방문 순서 (0-based, 재방문 구분용)", example = "0")
+        private final Integer visitIndex;
 
         @Schema(description = "패턴의 범위: INTRA_SLIDE(슬라이드 내부 반복) 또는 CROSS_SLIDE(슬라이드 간 중복)", example = "INTRA_SLIDE")
         private final String scope;

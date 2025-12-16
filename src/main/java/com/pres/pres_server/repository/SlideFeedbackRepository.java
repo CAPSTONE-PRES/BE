@@ -11,17 +11,15 @@ import java.util.List;
 @Repository
 public interface SlideFeedbackRepository extends JpaRepository<SlideFeedback, Long> {
 
-    /**
-     * 특정 피드백 ID에 해당하는 모든 슬라이드 피드백 조회
-     * 슬라이드 번호 순으로 정렬
-     */
-    @Query("SELECT sf FROM SlideFeedback sf WHERE sf.feedback.feedbackId = :feedbackId ORDER BY sf.slideNumber ASC")
-    List<SlideFeedback> findByFeedbackIdOrderBySlideNumber(@Param("feedbackId") Long feedbackId);
+    @Query("SELECT sf FROM SlideFeedback sf WHERE sf.feedback.feedbackId = :feedbackId ORDER BY sf.timestampSeconds ASC, sf.id ASC")
+    List<SlideFeedback> findByFeedbackIdOrderByTimestampSecondsAsc(@Param("feedbackId") Long feedbackId);
 
-    /**
-     * 특정 피드백 ID와 슬라이드 번호로 조회
-     */
-    @Query("SELECT sf FROM SlideFeedback sf WHERE sf.feedback.feedbackId = :feedbackId AND sf.slideNumber = :slideNumber")
-    SlideFeedback findByFeedbackIdAndSlideNumber(@Param("feedbackId") Long feedbackId,
+    @Query("SELECT sf FROM SlideFeedback sf WHERE sf.feedback.feedbackId = :feedbackId AND sf.slideNumber = :slideNumber ORDER BY sf.timestampSeconds ASC")
+    List<SlideFeedback> findByFeedbackIdAndSlideNumberOrderByTimestampSecondsAsc(@Param("feedbackId") Long feedbackId,
             @Param("slideNumber") Integer slideNumber);
+
+    @Query("SELECT sf FROM SlideFeedback sf WHERE sf.feedback.feedbackId = :feedbackId AND sf.slideNumber = :slideNumber AND sf.visitIndex = :visitIndex")
+    SlideFeedback findByFeedbackIdAndSlideNumberAndVisitIndex(@Param("feedbackId") Long feedbackId,
+            @Param("slideNumber") Integer slideNumber,
+            @Param("visitIndex") Integer visitIndex);
 }

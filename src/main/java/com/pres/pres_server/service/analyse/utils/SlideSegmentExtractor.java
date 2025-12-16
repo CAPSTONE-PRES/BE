@@ -25,10 +25,16 @@ public class SlideSegmentExtractor {
     @Getter
     @AllArgsConstructor
     public static class SlideInterval {
-        private int slideNumber; // 실제 슬라이드 번호 (1-based)
-        private int slideIndex; // 배열 인덱스 (0-based)
+        private int slideNumber; // 프론트 라벨(0-based), 보정 금지
+        private int visitIndex; // 동일 slideNumber의 방문 순서(0-based)
+        private int internalSlideIndex; // 시간 순서 인덱스(0-based)
         private double startTime;
         private double endTime;
+
+        // 하위 호환: 기존 getSlideIndex 호출을 내부 인덱스로 매핑
+        public int getSlideIndex() {
+            return internalSlideIndex;
+        }
 
         public boolean contains(double timestamp) {
             return timestamp >= startTime && timestamp < endTime;
@@ -59,18 +65,25 @@ public class SlideSegmentExtractor {
         List<SlideTransition> sorted = new ArrayList<>(transitions);
         sorted.sort(Comparator.comparingDouble(SlideTransition::getTimestamp));
 
+        // slideNumber별 방문 횟수 계산용 카운터(visitIndex 산출)
+        Map<Integer, Integer> visitCounters = new HashMap<>();
+
         List<SlideInterval> intervals = new ArrayList<>();
 
         for (int i = 0; i < sorted.size(); i++) {
             SlideTransition current = sorted.get(i);
+            int slideNumber = current.getSlideNumber(); // 0-based 라벨
+            int visitIndex = visitCounters.getOrDefault(slideNumber, 0);
+            visitCounters.put(slideNumber, visitIndex + 1);
             double start = current.getTimestamp();
             double end = (i + 1 < sorted.size())
                     ? sorted.get(i + 1).getTimestamp()
                     : totalDuration;
 
             intervals.add(new SlideInterval(
-                    current.getSlideNumber(), // 실제 슬라이드 번호
-                    i, // 인덱스
+                    slideNumber,
+                    visitIndex,
+                    i, // internalSlideIndex
                     start,
                     end));
         }
@@ -137,7 +150,8 @@ public class SlideSegmentExtractor {
      * 슬라이드 텍스트에서 주어진 패턴(또는 단어) 목록의 모든 출현 위치를 찾아 OffsetDto 리스트로 반환
      * slideNumber는 1-based 인덱스로 채움
      */
-    public List<OffsetDto> collectOffsetsForSlide(String slideText, List<String> patterns, int slideNumber) {
+    public List<OffsetDto> collectOffsetsForSlide(String slideText, List<String> patterns, int slideNumber,
+            int visitIndex) {
         List<OffsetDto> out = new ArrayList<>();
         if (slideText == null || slideText.isEmpty() || patterns == null || patterns.isEmpty())
             return out;
@@ -149,7 +163,9 @@ public class SlideSegmentExtractor {
             int idx = text.indexOf(p);
             while (idx >= 0) {
                 int end = Math.min(text.length(), idx + p.length());
-                out.add(OffsetDto.builder().begin(idx).end(end).slideIndex(slideNumber).text(text.substring(idx, end))
+                out.add(OffsetDto.builder().begin(idx).end(end).slideIndex(slideNumber)
+                        .visitIndex(visitIndex)
+                        .text(text.substring(idx, end))
                         .build());
                 idx = text.indexOf(p, idx + Math.max(1, p.length()));
             }
@@ -226,7 +242,8 @@ public class SlideSegmentExtractor {
                 return Optional.of(OffsetDto.builder()
                         .begin(localBegin)
                         .end(localEnd)
-                        .slideIndex(si + 1)
+                        .slideIndex(si) // internal index로 표기
+                        .visitIndex(globalOffset.getVisitIndex())
                         .text(excerpt)
                         .build());
             }
