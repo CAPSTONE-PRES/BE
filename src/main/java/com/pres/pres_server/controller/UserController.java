@@ -23,6 +23,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import com.pres.pres_server.service.auth.KakaoOAuthService;
 import com.pres.pres_server.service.email.EmailService;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,11 +55,8 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponseDto> getMyInfo(@AuthenticationPrincipal User user) {
         try {
-            log.info("GET /user/me called - principalId={}", user == null ? null : user.getId());
             User myInfo = userService.getUser(user.getId());
             UserResponseDto dto = userService.toDto(myInfo);
-            log.info("GET /user/me - principalId={}, dbId={}, response={}", user == null ? null : user.getId(),
-                    myInfo == null ? null : myInfo.getId(), dto);
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
@@ -72,6 +70,17 @@ public class UserController {
          User updatedUser = userService.updateUser(user.getId(), updateUserDto);
         UserResponseDto resp = userService.toDto(updatedUser);
         return ResponseEntity.ok(resp);
+    }
+
+    @Operation(summary = "회원 탈퇴", description = "로그인된 사용자의 계정을 삭제합니다.")
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteMyInfo(
+            @AuthenticationPrincipal User user,
+            HttpServletResponse response
+    ) {
+        userService.deleteUser(user.getId());
+        //CookieUtil.deleteCookie(response, "refresh_token");
+        return ResponseEntity.noContent().build();
     }
 
     /**

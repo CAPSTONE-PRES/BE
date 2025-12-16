@@ -4,8 +4,11 @@ import com.pres.pres_server.domain.User;
 import com.pres.pres_server.dto.User.UserResponseDto;
 import com.pres.pres_server.dto.User.UserUpdateDto;
 import com.pres.pres_server.dto.User.UserValidationResponseDTO;
+import com.pres.pres_server.repository.RefreshTokenRepository;
+import com.pres.pres_server.repository.TeamMemberRepository;
 import com.pres.pres_server.repository.UserRepository;
 
+import com.pres.pres_server.repository.WorkspaceRepository;
 import com.pres.pres_server.service.DefaultProfileImageService;
 import com.pres.pres_server.service.S3Service;
 import jakarta.transaction.Transactional;
@@ -31,6 +34,9 @@ public class UserService implements UserDetailsService {
     private final DefaultProfileImageService defaultProfileImageService;
 
     private final UserRepository userRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final S3Service s3Service;
 
@@ -140,6 +146,14 @@ public class UserService implements UserDetailsService {
         if (!userRepository.existsById(id)) {
             throw new IllegalArgumentException("삭제할 사용자를 찾을 수 없습니다. id=" + id);
         }
+        // 1. owner인 워크스페이스 전부 삭제
+        //workspaceRepository.deleteAllByOwnerId(id);
+        // → FK CASCADE로 하위 전부 정리
+        // 2. 멤버로만 속한 워크스페이스에서 membership 제거
+        //teamMemberRepository.deleteAllByUserId(id);
+        // 3. refresh token 제거
+        //refreshTokenRepository.deleteAllByUserId(id);
+        // 4. user 삭제
         userRepository.deleteById(id);
     }
 
