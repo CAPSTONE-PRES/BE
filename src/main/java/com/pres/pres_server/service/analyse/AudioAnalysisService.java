@@ -342,8 +342,8 @@ public class AudioAnalysisService {
             accuracyResults = scriptAccuracyService.analyzeAccuracyBySlides(slideScripts, slideSttTexts);
         }
 
-        // 4) SPM 분석 (슬라이드별)
-        List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals);
+        // 4) SPM 분석 (슬라이드별) - segments 기반 발화 시간 합산을 사용
+        List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals, slideSegmentsList);
 
         // 5) 반복 어휘 분석 (슬라이드별) - 이미 performAnalysis에서 계산된 값 재사용
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = Collections.emptyList();
@@ -371,7 +371,8 @@ public class AudioAnalysisService {
     /**
      * 슬라이드별 SPM 분석
      */
-    private List<SlideSpmResult> analyzeSlideSpm(List<String> slideSttTexts, List<SlideInterval> intervals) {
+    private List<SlideSpmResult> analyzeSlideSpm(List<String> slideSttTexts, List<SlideInterval> intervals,
+            List<List<WhisperSegment>> slideSegmentsList) {
         List<SlideSpmResult> results = new ArrayList<>();
 
         for (int i = 0; i < slideSttTexts.size(); i++) {
@@ -382,8 +383,27 @@ public class AudioAnalysisService {
                 continue;
             }
 
-            // 슬라이드 구간의 시간(초) 계산
+            // 슬라이드 구간의 시간(초) 계산 — 가능한 경우 실제 발화(segment)들의 합계를 사용하여
+            // 침묵(무음) 시간을 제외하고 SPM을 계산합니다. 폴백: interval 길이 사용.
             double durationSeconds = interval.getEndTime() - interval.getStartTime();
+            try {
+                if (slideSegmentsList != null && i < slideSegmentsList.size()) {
+                    List<WhisperSegment> segs = slideSegmentsList.get(i);
+                    if (segs != null && !segs.isEmpty()) {
+                        double sum = 0.0;
+                        for (WhisperSegment s : segs) {
+                            double d = Math.max(0.0, s.getEnd() - s.getStart());
+                            sum += d;
+                        }
+                        // use sum if it's positive and non-trivial
+                        if (sum > 0.01) {
+                            durationSeconds = sum;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to compute slideSegments-based duration for slide {}: {}", i, ex.getMessage());
+            }
 
             if (durationSeconds <= 0) {
                 continue;

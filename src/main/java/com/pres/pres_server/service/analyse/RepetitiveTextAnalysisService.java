@@ -219,13 +219,26 @@ public class RepetitiveTextAnalysisService {
         // 슬라이드 별 반복 어휘 분석
         List<WordRepetition> allWordRepetitions = new ArrayList<>();
 
+        // internalSlideIndex -> visitIndex 매핑 생성 (transitions가 있을 때)
+        Map<Integer, Integer> internalToVisitIndex = new HashMap<>();
+        if (slideTransitions != null && !slideTransitions.isEmpty()) {
+            List<SlideTransition> sortedTransitions = new ArrayList<>(slideTransitions);
+            sortedTransitions.sort(Comparator.comparingDouble(SlideTransition::getStartSec));
+            Map<Integer, Integer> visitCounters = new HashMap<>();
+            for (int idx = 0; idx < sortedTransitions.size(); idx++) {
+                int sn = sortedTransitions.get(idx).getSlideNumber();
+                int v = visitCounters.getOrDefault(sn, 0);
+                internalToVisitIndex.put(idx, v);
+                visitCounters.put(sn, v + 1);
+            }
+        }
+
         for (Map.Entry<Integer, String> slideEntry : slideTextMap.entrySet()) {
             int slideIndex = slideEntry.getKey();
             String slideText = slideEntry.getValue();
 
             // Komoran 토큰화 수행 (Offset 포함)
             List<KomoranAnalyzer.NormToken> tokens = KomoranAnalyzer.tokenizeForRepeatWithSpans(slideText);
-
             // 슬라이드별 로컬 오프셋 사용 (slideText 기준)
             Map<String, List<Offset>> offsetsMap = tokens.stream()
                     .collect(Collectors.groupingBy(
@@ -235,6 +248,7 @@ public class RepetitiveTextAnalysisService {
                                             .begin(token.begin) // 슬라이드 텍스트 기준 오프셋
                                             .end(token.end) // 슬라이드 텍스트 기준 오프셋
                                             .slideIndex(slideIndex)
+                                            .visitIndex(internalToVisitIndex.getOrDefault(slideIndex, 0))
                                             .text(slideText.substring(
                                                     Math.max(0, token.begin),
                                                     Math.min(slideText.length(), token.end)))
@@ -614,6 +628,20 @@ public class RepetitiveTextAnalysisService {
             }
         }
 
+        // internalSlideIndex -> visitIndex 매핑 생성 (transitions가 있을 때)
+        Map<Integer, Integer> internalToVisitIndex = new HashMap<>();
+        if (slideTransitions != null && !slideTransitions.isEmpty()) {
+            List<SlideTransition> sortedTransitions = new ArrayList<>(slideTransitions);
+            sortedTransitions.sort(Comparator.comparingDouble(SlideTransition::getStartSec));
+            Map<Integer, Integer> visitCounters = new HashMap<>();
+            for (int idx = 0; idx < sortedTransitions.size(); idx++) {
+                int sn = sortedTransitions.get(idx).getSlideNumber();
+                int v = visitCounters.getOrDefault(sn, 0);
+                internalToVisitIndex.put(idx, v);
+                visitCounters.put(sn, v + 1);
+            }
+        }
+
         // ngram -> Offsets mapping
         Map<String, List<Offset>> ngramOffsets = new HashMap<>();
 
@@ -662,6 +690,7 @@ public class RepetitiveTextAnalysisService {
                         .begin(begin)
                         .end(end)
                         .slideIndex(mappedSlide)
+                        .visitIndex(mappedSlide == null ? null : internalToVisitIndex.getOrDefault(mappedSlide, 0))
                         .text(textExcerpt)
                         .build();
 
