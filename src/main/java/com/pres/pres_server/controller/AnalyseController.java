@@ -54,11 +54,13 @@ public class AnalyseController {
             @RequestParam("slideTransitions") String slideTransitionsJson) {
 
         try {
-            log.info("▶ Analysis request: file='{}', size={}, projectId={}",
-                    audioFile.getOriginalFilename(), audioFile.getSize(), projectId);
-
             // 1. Parse slideTransitions
             List<SlideTransition> transitions = parseSlideTransitions(slideTransitionsJson);
+
+            for (SlideTransition t : transitions) {
+                log.info("TRANSITION CHECK slideNumber={}, start={}, end={}",
+                        t.getSlideNumber(), t.getStartSec(), t.getEndSec());
+            }
 
             // 2. Fetch slideScripts from DB (요청으로 전달된 slideTransitions 길이에 맞춰 반환)
             // NOTE: fetchSlideScripts expects a presentation fileId, not projectId.
@@ -91,7 +93,7 @@ public class AnalyseController {
             // 3. Log transition/script sizes for mismatch detection
             int transitionCount = transitions == null ? 0 : transitions.size();
             int scriptCount = slideScripts == null ? 0 : slideScripts.size();
-            log.info("  • slideTransitions.size()={}, slideScripts.size()={}", transitionCount, scriptCount);
+            //log.info("  • slideTransitions.size()={}, slideScripts.size()={}", transitionCount,scriptCount);
             if (transitionCount > 0 && scriptCount > 0 && transitionCount != scriptCount) {
                 log.warn(
                         "  ⚠ slideTransitions count ({}) does not match slideScripts count ({}). Analysis will use controller-provided scripts as-is.",

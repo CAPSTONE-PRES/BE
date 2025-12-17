@@ -52,19 +52,13 @@ public class WhisperService {
     public TranscriptionResult transcribeWithTimestamps(File wavFile, boolean includeTimestamps) {
         validateInputFile(wavFile);
 
-        log.info("      ▶ Preparing Whisper request for file: {} (timestamps: {})",
-                wavFile.getName(), includeTimestamps);
-
         try {
             HttpEntity<MultiValueMap<String, Object>> request = buildRequest(wavFile, includeTimestamps);
-            log.info("      ▶ Sending Whisper API request...");
             if (includeTimestamps) {
                 // verbose_json: Map 파싱
                 Map<String, Object> response = callWhisperApiJson(request);
                 String text = extractTextFromResponse(response);
                 List<WhisperSegment> segments = extractSegments(response);
-                log.info("      ▶ Whisper API responded, text length = {}, segments = {}",
-                        text.length(), segments != null ? segments.size() : 0);
                 return TranscriptionResult.builder()
                         .text(text)
                         .segments(segments)

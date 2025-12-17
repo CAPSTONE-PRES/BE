@@ -107,13 +107,11 @@ public class AudioProcessingService {
             throw new IOException("파일이 존재하지 않습니다: " + filePath);
         }
 
-        log.info("▶ 오디오 변환 시작: filePath='{}', size={} bytes",
-                filePath, inputFile.length());
+        //log.info("▶ 오디오 변환 시작: filePath='{}', size={} bytes", filePath, inputFile.length());
 
         try {
             // ffmpeg로 16kHz mono WAV 변환
             File wavFile = convertWithFfmpeg(inputFile);
-            log.info("  • WAV 변환 완료: {}", wavFile.getAbsolutePath());
 
             // 오디오 길이 추출
             double duration = extractDuration(wavFile);
@@ -140,21 +138,15 @@ public class AudioProcessingService {
             throw new IllegalArgumentException("오디오 파일이 비어있습니다.");
         }
 
-        log.info("▶ 오디오 변환 시작: originalName='{}', size={} bytes",
-                multipartFile.getOriginalFilename(), multipartFile.getSize());
-
         // 1) 임시 입력 파일 저장
         File tempInput = createTempFile(multipartFile);
-        log.info("  • 임시 입력 파일 저장: {}", tempInput.getAbsolutePath());
 
         try {
             // 2) ffmpeg로 16kHz mono WAV 변환
             File wavFile = convertWithFfmpeg(tempInput);
-            log.info("  • WAV 변환 완료: {}", wavFile.getAbsolutePath());
 
             // 3) 오디오 길이 추출
             double duration = extractDuration(wavFile);
-            log.info("  • 오디오 길이: {}초", String.format("%.2f", duration));
 
             return new AudioFile(wavFile, duration);
 
@@ -184,7 +176,7 @@ public class AudioProcessingService {
         }
 
         int numWindows = (int) Math.ceil(audioFile.getDurationSeconds() / windowSeconds);
-        log.info("  • 윈도우 분할 시작: {} 개의 윈도우 ({} 초 단위)", numWindows, windowSeconds);
+        //log.info("  • 윈도우 분할 시작: {} 개의 윈도우 ({} 초 단위)", numWindows, windowSeconds);
 
         List<AudioWindow> windows = new ArrayList<>();
 
@@ -202,8 +194,6 @@ public class AudioProcessingService {
             log.info("    • 윈도우 {} 생성: {}초 ~ {}초",
                     i, String.format("%.2f", startTime), String.format("%.2f", startTime + duration));
         }
-
-        log.info("  • 윈도우 분할 완료: {} 개", windows.size());
         return windows;
     }
 

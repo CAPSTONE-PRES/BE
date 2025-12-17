@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AudioAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AudioAnalysisService.class);
-    // TODO: 윈도우 크기 상수화
     private static final double WINDOW_SEC = 30.0;
 
     // Core services
@@ -113,6 +112,7 @@ public class AudioAnalysisService {
     /**
      * 오디오 분석 (파일 경로)
      */
+    @Deprecated
     public AnalysisResult analyzeAudio(
             String filePath,
             Long projectId,
@@ -326,12 +326,10 @@ public class AudioAnalysisService {
         // 1) 필러 분석
         List<FillerService.SlideFillerDto> fillerResults = fillerService
                 .countFillersBySlides(slideSttTexts, intervals);
-        log.info("    • Filler analysis: {} slides", fillerResults.size());
 
         // 2) 침묵 분석
         List<List<SilenceDetectionService.SilenceInterval>> silenceResults = silenceDetectionService
                 .detectSilencesBySlides(slideSegmentsList);
-        log.info("    • Silence analysis: {} slides", silenceResults.size());
 
         // 3) 정확도 분석 (대본/슬라이드 STT 리스트가 존재하면 가능한 범위 내에서 계산)
         List<ScriptAccuracyService.AccuracyAnalysisResult> accuracyResults = Collections.emptyList();
@@ -342,12 +340,10 @@ public class AudioAnalysisService {
             log.warn("    • Accuracy analysis skipped: missing scripts or STT texts");
         } else {
             accuracyResults = scriptAccuracyService.analyzeAccuracyBySlides(slideScripts, slideSttTexts);
-            log.info("    • Accuracy analysis: {} slides", accuracyResults.size());
         }
 
         // 4) SPM 분석 (슬라이드별)
         List<SlideSpmResult> spmResults = analyzeSlideSpm(slideSttTexts, intervals);
-        log.info("    • SPM analysis: {} slides", spmResults.size());
 
         // 5) 반복 어휘 분석 (슬라이드별) - 이미 performAnalysis에서 계산된 값 재사용
         List<RepetitiveTextAnalysisService.SlideRepetition> repetitionResults = Collections.emptyList();
