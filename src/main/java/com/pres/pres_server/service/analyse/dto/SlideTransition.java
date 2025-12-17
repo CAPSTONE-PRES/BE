@@ -1,5 +1,6 @@
 package com.pres.pres_server.service.analyse.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -7,6 +8,7 @@ import lombok.Getter;
 @Getter
 @Builder
 public class SlideTransition {
+    @JsonProperty("slide")
     private final int slideNumber; // 0-based
     private final double startSec; // inclusive, 슬라이드 시작 시점
     private final double endSec; // exclusive, 슬라이드 종료 시점

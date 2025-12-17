@@ -5,6 +5,8 @@ import com.pres.pres_server.service.analyse.dto.SlideTransition;
 import com.pres.pres_server.service.analyse.dto.WhisperSegment;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -12,26 +14,19 @@ import java.util.stream.Collectors;
 import com.pres.pres_server.dto.practice.OffsetDto;
 import com.pres.pres_server.service.analyse.RepetitiveTextAnalysisService;
 
-/**
- * 슬라이드 구간 추출 및 segment 분할을 담당하는 유틸리티
- * - 기존 SlideSentenceMapper의 기능을 포함하여 확장
- */
 @Component
 public class SlideSegmentExtractor {
+    private static final Logger log = LoggerFactory.getLogger(SlideSegmentExtractor.class);
 
-    /**
-     * 슬라이드별 구간 정보
-     */
     @Getter
     @AllArgsConstructor
     public static class SlideInterval {
-        private int slideNumber; // 프론트 라벨(0-based), 보정 금지
-        private int visitIndex; // 동일 slideNumber의 방문 순서(0-based)
-        private int internalSlideIndex; // 시간 순서 인덱스(0-based)
+        private int slideNumber;
+        private int visitIndex;
+        private int internalSlideIndex;
         private double startTime;
         private double endTime;
 
-        // 하위 호환: 기존 getSlideIndex 호출을 내부 인덱스로 매핑
         public int getSlideIndex() {
             return internalSlideIndex;
         }
@@ -41,18 +36,17 @@ public class SlideSegmentExtractor {
         }
 
         public boolean containsSegment(WhisperSegment segment) {
-            double segMid = (segment.getStart() + segment.getEnd()) / 2.0;
-            return contains(segMid);
+            return segment.getStart() < endTime && segment.getEnd() > startTime;
+        }
+
+        // 세그먼트와의 겹침 시간 계산
+        public double getOverlapDuration(WhisperSegment segment) {
+            double overlapStart = Math.max(startTime, segment.getStart());
+            double overlapEnd = Math.min(endTime, segment.getEnd());
+            return Math.max(0, overlapEnd - overlapStart);
         }
     }
 
-    /**
-     * SlideTransition을 SlideInterval로 변환
-     *
-     * @param transitions   슬라이드 전환 정보
-     * @param totalDuration 전체 오디오 길이 (초)
-     * @return 슬라이드 구간 리스트
-     */
     public List<SlideInterval> createSlideIntervals(
             List<SlideTransition> transitions,
             double totalDuration) {
@@ -61,29 +55,35 @@ public class SlideSegmentExtractor {
             return Collections.emptyList();
         }
 
-        // timestamp 기준 정렬
         List<SlideTransition> sorted = new ArrayList<>(transitions);
         sorted.sort(Comparator.comparingDouble(SlideTransition::getTimestamp));
 
-        // slideNumber별 방문 횟수 계산용 카운터(visitIndex 산출)
         Map<Integer, Integer> visitCounters = new HashMap<>();
-
         List<SlideInterval> intervals = new ArrayList<>();
 
         for (int i = 0; i < sorted.size(); i++) {
             SlideTransition current = sorted.get(i);
-            int slideNumber = current.getSlideNumber(); // 0-based 라벨
+
+            int slideNumber = current.getSlideNumber();
             int visitIndex = visitCounters.getOrDefault(slideNumber, 0);
             visitCounters.put(slideNumber, visitIndex + 1);
+
             double start = current.getTimestamp();
-            double end = (i + 1 < sorted.size())
-                    ? sorted.get(i + 1).getTimestamp()
-                    : totalDuration;
+            double end;
+            double endSec = current.getEndSec();
+
+            if (endSec > start) {
+                end = endSec;
+            } else if (i + 1 < sorted.size()) {
+                end = sorted.get(i + 1).getTimestamp();
+            } else {
+                end = totalDuration;
+            }
 
             intervals.add(new SlideInterval(
                     slideNumber,
                     visitIndex,
-                    i, // internalSlideIndex
+                    i,
                     start,
                     end));
         }
@@ -92,11 +92,108 @@ public class SlideSegmentExtractor {
     }
 
     /**
-     * 슬라이드별로 WhisperSegment 분할
-     *
-     * @param segments  전체 Whisper segment 리스트
-     * @param intervals 슬라이드 구간 리스트
-     * @return 슬라이드별 segment 리스트
+     * 슬라이드별 STT 텍스트 추출 (개선된 버전)
+     * 세그먼트가 여러 슬라이드에 걸쳐있을 경우 시간 비율에 따라 텍스트 분할
+     */
+    public List<String> extractSlideSttTexts(
+            List<WhisperSegment> segments,
+            List<SlideInterval> intervals) {
+
+        if (segments == null || segments.isEmpty() || intervals.isEmpty()) {
+            return Collections.nCopies(intervals.size(), "");
+        }
+
+        List<StringBuilder> slideTexts = new ArrayList<>();
+        for (int i = 0; i < intervals.size(); i++) {
+            slideTexts.add(new StringBuilder());
+        }
+
+        for (WhisperSegment segment : segments) {
+            String segmentText = segment.getText();
+            if (segmentText == null || segmentText.trim().isEmpty()) {
+                continue;
+            }
+
+            // 이 세그먼트와 겹치는 모든 슬라이드 찾기
+            List<Integer> overlappingSlides = new ArrayList<>();
+            List<Double> overlapDurations = new ArrayList<>();
+            double totalOverlap = 0.0;
+
+            for (int i = 0; i < intervals.size(); i++) {
+                SlideInterval interval = intervals.get(i);
+                if (interval.containsSegment(segment)) {
+                    double overlap = interval.getOverlapDuration(segment);
+                    if (overlap > 0) {
+                        overlappingSlides.add(i);
+                        overlapDurations.add(overlap);
+                        totalOverlap += overlap;
+                    }
+                }
+            }
+
+            if (overlappingSlides.isEmpty()) {
+                continue;
+            }
+
+            // 1개 슬라이드에만 속하는 경우: 전체 텍스트 할당
+            if (overlappingSlides.size() == 1) {
+                int slideIdx = overlappingSlides.get(0);
+                if (slideTexts.get(slideIdx).length() > 0) {
+                    slideTexts.get(slideIdx).append(" ");
+                }
+                slideTexts.get(slideIdx).append(segmentText.trim());
+                continue;
+            }
+
+            // 여러 슬라이드에 걸쳐있는 경우: 시간 비율에 따라 분할
+            log.debug("Segment ({}-{}s) overlaps {} slides, splitting text proportionally",
+                    segment.getStart(), segment.getEnd(), overlappingSlides.size());
+
+            String[] words = segmentText.trim().split("\\s+");
+            int wordsAssigned = 0;
+
+            for (int i = 0; i < overlappingSlides.size(); i++) {
+                int slideIdx = overlappingSlides.get(i);
+                double ratio = overlapDurations.get(i) / totalOverlap;
+
+                // 마지막 슬라이드는 남은 모든 단어 할당
+                int wordsForThisSlide;
+                if (i == overlappingSlides.size() - 1) {
+                    wordsForThisSlide = words.length - wordsAssigned;
+                } else {
+                    wordsForThisSlide = (int) Math.round(words.length * ratio);
+                }
+
+                if (wordsForThisSlide > 0) {
+                    int endIdx = Math.min(wordsAssigned + wordsForThisSlide, words.length);
+                    String partialText = String.join(" ",
+                            Arrays.copyOfRange(words, wordsAssigned, endIdx));
+
+                    if (slideTexts.get(slideIdx).length() > 0) {
+                        slideTexts.get(slideIdx).append(" ");
+                    }
+                    slideTexts.get(slideIdx).append(partialText);
+
+                    log.debug("  Slide {} ({}): assigned {} words (ratio={:.2f})",
+                            intervals.get(slideIdx).getSlideNumber(),
+                            slideIdx,
+                            wordsForThisSlide,
+                            ratio);
+
+                    wordsAssigned = endIdx;
+                }
+            }
+        }
+
+        return slideTexts.stream()
+                .map(sb -> sb.toString().trim())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 슬라이드별로 WhisperSegment 분할 (레거시 호환용)
+     * 주의: 이 메서드는 세그먼트를 첫 번째 매칭 슬라이드에만 할당합니다.
+     * 텍스트 추출에는 extractSlideSttTexts() 사용을 권장합니다.
      */
     public List<List<WhisperSegment>> splitSegmentsBySlides(
             List<WhisperSegment> segments,
@@ -106,52 +203,36 @@ public class SlideSegmentExtractor {
             return Collections.emptyList();
         }
 
-        // 슬라이드별 segment를 담을 리스트 초기화
         List<List<WhisperSegment>> result = new ArrayList<>();
         for (int i = 0; i < intervals.size(); i++) {
             result.add(new ArrayList<>());
         }
 
-        // 각 segment를 해당 슬라이드에 할당
         for (WhisperSegment segment : segments) {
+            // 가장 많이 겹치는 슬라이드 찾기
+            int bestSlideIdx = -1;
+            double maxOverlap = 0.0;
+
             for (int i = 0; i < intervals.size(); i++) {
                 if (intervals.get(i).containsSegment(segment)) {
-                    result.get(i).add(segment);
-                    break;
+                    double overlap = intervals.get(i).getOverlapDuration(segment);
+                    if (overlap > maxOverlap) {
+                        maxOverlap = overlap;
+                        bestSlideIdx = i;
+                    }
                 }
+            }
+
+            if (bestSlideIdx >= 0) {
+                result.get(bestSlideIdx).add(segment);
             }
         }
 
         return result;
     }
 
-    /**
-     * 슬라이드별 STT 텍스트 추출
-     *
-     * @param segments  전체 Whisper segment 리스트
-     * @param intervals 슬라이드 구간 리스트
-     * @return 슬라이드별 텍스트 리스트
-     */
-    public List<String> extractSlideSttTexts(
-            List<WhisperSegment> segments,
-            List<SlideInterval> intervals) {
-
-        List<List<WhisperSegment>> slideSegments = splitSegmentsBySlides(segments, intervals);
-
-        return slideSegments.stream()
-                .map(segs -> segs.stream()
-                        .map(WhisperSegment::getText)
-                        .filter(text -> text != null && !text.trim().isEmpty())
-                        .collect(Collectors.joining(" ")))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 슬라이드 텍스트에서 주어진 패턴(또는 단어) 목록의 모든 출현 위치를 찾아 OffsetDto 리스트로 반환
-     * slideNumber는 1-based 인덱스로 채움
-     */
     public List<OffsetDto> collectOffsetsForSlide(String slideText, List<String> patterns, int slideNumber,
-            int visitIndex) {
+                                                  int visitIndex) {
         List<OffsetDto> out = new ArrayList<>();
         if (slideText == null || slideText.isEmpty() || patterns == null || patterns.isEmpty())
             return out;
@@ -171,7 +252,6 @@ public class SlideSegmentExtractor {
             }
         }
 
-        // 중복 제거 (begin:end 기준)
         Map<String, OffsetDto> uniq = new LinkedHashMap<>();
         for (OffsetDto o : out) {
             String key = String.valueOf(o.getBegin()) + ":" + String.valueOf(o.getEnd());
@@ -180,9 +260,6 @@ public class SlideSegmentExtractor {
         return new ArrayList<>(uniq.values());
     }
 
-    /**
-     * 각 슬라이드 텍스트의 시작 global index를 전체 STT에서 찾아 반환 (없으면 -1)
-     */
     public List<Integer> computeSlideStartOffsets(String fullText, List<String> slideTexts) {
         List<Integer> starts = new ArrayList<>();
         if (slideTexts == null || slideTexts.isEmpty() || fullText == null) {
@@ -210,9 +287,7 @@ public class SlideSegmentExtractor {
         return starts;
     }
 
-    /**
-     * global Offsets -> slide-local OffsetDto 변환 시도
-     */
+    @Deprecated
     public Optional<OffsetDto> convertGlobalOffsetToSlideOffset(
             RepetitiveTextAnalysisService.Offset globalOffset,
             List<Integer> slideStartIndices,
@@ -242,7 +317,7 @@ public class SlideSegmentExtractor {
                 return Optional.of(OffsetDto.builder()
                         .begin(localBegin)
                         .end(localEnd)
-                        .slideIndex(si) // internal index로 표기
+                        .slideIndex(si)
                         .visitIndex(globalOffset.getVisitIndex())
                         .text(excerpt)
                         .build());
@@ -252,15 +327,7 @@ public class SlideSegmentExtractor {
         return Optional.empty();
     }
 
-    /**
-     * 문장을 슬라이드에 매핑 (기존 SlideSentenceMapper 기능)
-     *
-     * @param sentences     매핑할 문장 리스트
-     * @param segments      Whisper segment 리스트
-     * @param intervals     슬라이드 구간 리스트
-     * @param slideContents 슬라이드별 대본 (선택적)
-     * @return 각 문장이 속한 슬라이드 번호 리스트 (-1: 매칭 실패)
-     */
+    @Deprecated
     public List<Integer> mapSentencesToSlides(
             List<String> sentences,
             List<WhisperSegment> segments,
@@ -275,17 +342,12 @@ public class SlideSegmentExtractor {
             return new ArrayList<>(Collections.nCopies(sentences.size(), -1));
         }
 
-        // 슬라이드별 텍스트 구성
         Map<Integer, String> slideTexts = buildSlideTexts(
                 segments, intervals, slideContents);
 
-        // 문장 매핑
         return matchSentencesToSlides(sentences, slideTexts);
     }
 
-    /**
-     * 슬라이드별 텍스트 맵 생성
-     */
     private Map<Integer, String> buildSlideTexts(
             List<WhisperSegment> segments,
             List<SlideInterval> intervals,
@@ -293,7 +355,6 @@ public class SlideSegmentExtractor {
 
         Map<Integer, String> slideTexts = new LinkedHashMap<>();
 
-        // 1순위: 명시적으로 제공된 슬라이드 대본
         if (slideContents != null && !slideContents.isEmpty()) {
             int size = Math.min(intervals.size(), slideContents.size());
             for (int i = 0; i < size; i++) {
@@ -301,9 +362,7 @@ public class SlideSegmentExtractor {
                         intervals.get(i).getSlideNumber(),
                         slideContents.get(i));
             }
-        }
-        // 2순위: Whisper segment 기반 추출
-        else if (segments != null && !segments.isEmpty()) {
+        } else if (segments != null && !segments.isEmpty()) {
             List<String> extractedTexts = extractSlideSttTexts(segments, intervals);
             for (int i = 0; i < intervals.size(); i++) {
                 if (i < extractedTexts.size()) {
@@ -317,9 +376,6 @@ public class SlideSegmentExtractor {
         return slideTexts;
     }
 
-    /**
-     * 문장을 슬라이드 텍스트와 매칭
-     */
     private List<Integer> matchSentencesToSlides(
             List<String> sentences,
             Map<Integer, String> slideTexts) {
@@ -327,7 +383,6 @@ public class SlideSegmentExtractor {
         List<Integer> mapping = new ArrayList<>(
                 Collections.nCopies(sentences.size(), -1));
 
-        // 문장 정규화
         List<String> normSentences = sentences.stream()
                 .map(s -> TextAnalysisUtils.normalizeText(s).trim())
                 .collect(Collectors.toList());
@@ -340,35 +395,30 @@ public class SlideSegmentExtractor {
                 continue;
             }
 
-            // 슬라이드 텍스트를 문장으로 분할 및 정규화
             List<String> slideSentences = TextAnalysisUtils
                     .tokenizeSentences(slideText);
             List<String> normSlideSents = slideSentences.stream()
                     .map(s -> TextAnalysisUtils.normalizeText(s).trim())
                     .collect(Collectors.toList());
 
-            // 토큰 집합 미리 계산
             List<Set<String>> slideTokenSets = normSlideSents.stream()
                     .map(s -> new HashSet<>(
                             TextAnalysisUtils.tokenizeKomoran(s)))
                     .collect(Collectors.toList());
 
-            // 각 입력 문장을 슬라이드 문장과 매칭
             for (int i = 0; i < normSentences.size(); i++) {
                 if (mapping.get(i) != -1)
-                    continue; // 이미 매칭됨
+                    continue;
 
                 String sentence = normSentences.get(i);
                 if (sentence.isEmpty())
                     continue;
 
-                // 1단계: 정확한 매칭 (equals/contains)
                 if (tryExactMatch(sentence, normSlideSents)) {
                     mapping.set(i, slideNum);
                     continue;
                 }
 
-                // 2단계: Jaccard 유사도 매칭
                 if (tryJaccardMatch(sentence, slideTokenSets, 0.2)) {
                     mapping.set(i, slideNum);
                 }
@@ -378,9 +428,6 @@ public class SlideSegmentExtractor {
         return mapping;
     }
 
-    /**
-     * 정확한 문자열 매칭 시도
-     */
     private boolean tryExactMatch(String sentence, List<String> candidates) {
         for (String candidate : candidates) {
             if (candidate.isEmpty())
@@ -394,9 +441,6 @@ public class SlideSegmentExtractor {
         return false;
     }
 
-    /**
-     * Jaccard 유사도 기반 매칭 시도
-     */
     private boolean tryJaccardMatch(
             String sentence,
             List<Set<String>> candidateTokenSets,
