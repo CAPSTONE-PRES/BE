@@ -28,6 +28,6 @@ public class NotificationTriggerService {
         vars.put("projectName", projectName);
         vars.put("commentAuthor", commentAuthor);
         vars.put("link", link);
-        delegate.sendIfAllowed(userId, NotificationType.REVIEW_COMMENT, vars);
+        delegate.sendIfAllowed(userId, NotificationType.REVIEW_COMMENT_ADDED, vars);
     }
 }

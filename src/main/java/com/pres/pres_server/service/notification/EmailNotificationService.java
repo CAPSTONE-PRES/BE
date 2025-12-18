@@ -62,9 +62,11 @@ public class EmailNotificationService {
     private String buildSubject(NotificationType type) {
         return switch (type) {
             case INVITE -> "워크스페이스 초대 알림";
-            case REVIEW_COMMENT -> "새로운 검토 의견 알림";
+            case REVIEW_COMMENT_ADDED -> "새로운 검토 의견 알림";
             case PRACTICE_REMINDER_D1 -> "발표 연습 D-1 알림";
             case PRACTICE_REMINDER_D2 -> "발표 연습 D-2 알림";
+            //TODO: REVIEW_COMMENT_CONFIRMED 안오게 막아야함
+            default -> throw new IllegalStateException("Unsupported value: " + type);
         };
     }
 
@@ -80,7 +82,7 @@ public class EmailNotificationService {
         return switch (type) {
             case INVITE -> String.format("[%s] %s님이 당신을 워크스페이스에 초대했습니다. 초대 링크: %s",
                     workspaceName, invitedBy, link);
-            case REVIEW_COMMENT ->
+            case REVIEW_COMMENT_ADDED ->
                     String.format("[%s]님이 프로젝트 '%s'에 새 검토의견을 남겼습니다. 확인: %s", commentAuthor, projectName, link);
             case PRACTICE_REMINDER_D1 ->
                     String.format("발표가 내일입니다: %s (%s). 연습해보세요: %s", projectName, dueDate, link);
