@@ -135,13 +135,15 @@ public class PracticeQnaService {
          * @return 질문 단위 비교 결과 (쓰기 트랜잭션: 분석 및 저장 수행)
          */
         @Transactional
-        public QnaComparisonDto runAndSaveQuestionComparison(Long sessionId, Long questionId) {
-                log.info("▶ 질문 단위 QnA 비교 실행(쓰기) - sessionId: {}, questionId: {}", sessionId, questionId);
+        public QnaComparisonDto runAndSaveQuestionComparison(Long sessionId, Long questionId, Long answerId) {
+                log.info("▶ 질문 단위 QnA 비교 실행(쓰기) - sessionId: {}, questionId: {}, answerId: {}", sessionId, questionId,
+                                answerId);
 
-                QnaComparisonDto comparison = qnaComparisonService.compareAnswerForQuestion(sessionId, questionId);
+                QnaComparisonDto comparison = qnaComparisonService.compareAnswerForQuestion(sessionId, questionId,
+                                answerId);
 
-                log.info("✅ 질문 단위 QnA 비교(저장) 완료 - sessionId: {}, questionId: {}, comparisonId: {}",
-                                sessionId, questionId, comparison.getComparisonId());
+                log.info("✅ 질문 단위 QnA 비교(저장) 완료 - sessionId: {}, questionId: {}, answerId: {}, comparisonId: {}",
+                                sessionId, questionId, answerId, comparison.getComparisonId());
 
                 return comparison;
         }

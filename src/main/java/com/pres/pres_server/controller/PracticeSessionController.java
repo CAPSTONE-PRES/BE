@@ -113,11 +113,13 @@ public class PracticeSessionController {
         @PostMapping(value = "/{sessionId}/qna/{questionId}/compare")
         public ResponseEntity<QnaComparisonDto> compareQnaAnswer(
                         @PathVariable("sessionId") Long sessionId,
-                        @PathVariable("questionId") Long questionId) {
+                        @PathVariable("questionId") Long questionId,
+                        @RequestParam(value = "answerId", required = false) Long answerId) {
                 try {
-                        log.info("▶ QnA 비교(분석+ 분석 결과 저장) 요청 - sessionId: {}, questionId: {}", sessionId, questionId);
+                        log.info("▶ QnA 비교(분석+ 분석 결과 저장) 요청 - sessionId: {}, questionId: {}, answerId: {}", sessionId,
+                                        questionId, answerId);
                         QnaComparisonDto result = practiceQnaService.runAndSaveQuestionComparison(sessionId,
-                                        questionId);
+                                        questionId, answerId);
                         log.info("✅ QnA 비교(분석+ 분석 결과 저장) 완료 - sessionId: {}, questionId: {}, comparisonId: {}",
                                         sessionId, questionId, result.getComparisonId());
                         return ResponseEntity.ok(result);

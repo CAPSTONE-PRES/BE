@@ -400,8 +400,9 @@ public class QnaComparisonService {
          * 특정 질문에 대한 비교 수행 및 피드백 생성 (질문 단위)
          */
         @Transactional
-        public QnaComparisonDto compareAnswerForQuestion(Long sessionId, Long questionId) {
-                log.info("🔍 QnA 답변 비교 시작 (question) - sessionId: {}, questionId: {}", sessionId, questionId);
+        public QnaComparisonDto compareAnswerForQuestion(Long sessionId, Long questionId, Long answerId) {
+                log.info("🔍 QnA 답변 비교 시작 (question) - sessionId: {}, questionId: {}, answerId: {}", sessionId,
+                                questionId, answerId);
 
                 PracticeSession session = practiceSessionRepository.findById(sessionId)
                                 .orElseThrow(() -> new IllegalArgumentException("세션을 찾을 수 없습니다"));
@@ -435,13 +436,35 @@ public class QnaComparisonService {
                                         .build();
                 }
 
-                // 사용자 답변 조회
-                List<QnaAnswer> userAnswers = qnaAnswerRepository.findByQnaQuestionAndAnswerType(question, "user");
-                if (userAnswers.isEmpty()) {
-                        throw new IllegalStateException("해당 질문에 대한 제출된 답변이 없습니다");
+                // 사용자 답변 선택: answerId 우선, 없으면 질문 기준 모든 user 답변에서 최신(또는 first) 사용
+                QnaAnswer userAnswer = null;
+                if (answerId != null) {
+                        Optional<QnaAnswer> candidate = qnaAnswerRepository.findById(answerId);
+                        if (candidate.isEmpty()) {
+                                throw new IllegalArgumentException("주어진 answerId가 존재하지 않습니다: " + answerId);
+                        }
+                        QnaAnswer candidateAnswer = candidate.get();
+                        // 검증: 해당 답변이 요청된 질문, 세션, 그리고 user 타입인지 확인
+                        if (!Objects.equals(candidateAnswer.getQnaQuestion().getQnaId(), questionId)) {
+                                throw new IllegalArgumentException("answerId가 지정된 questionId와 일치하지 않습니다");
+                        }
+                        if (!Objects.equals(candidateAnswer.getPracticeSession().getSessionId(), sessionId)) {
+                                throw new IllegalArgumentException("answerId가 지정된 sessionId와 일치하지 않습니다");
+                        }
+                        if (!"user".equals(candidateAnswer.getAnswerType())) {
+                                throw new IllegalArgumentException("answerId가 사용자 답변(user) 타입이 아닙니다");
+                        }
+                        userAnswer = candidateAnswer;
+                } else {
+                        List<QnaAnswer> userAnswers = qnaAnswerRepository.findByQnaQuestionAndAnswerType(question,
+                                        "user");
+                        if (userAnswers.isEmpty()) {
+                                throw new IllegalStateException("해당 질문에 대한 제출된 답변이 없습니다");
+                        }
+                        // DB 반환 순서 보장이 없으므로 명시적으로 최신(createdAt 기준) 답변을 사용하도록 정렬
+                        userAnswers.sort(Comparator.comparing(QnaAnswer::getCreatedAt).reversed());
+                        userAnswer = userAnswers.get(0);
                 }
-
-                QnaAnswer userAnswer = userAnswers.get(0);
 
                 QnaAnswer idealAnswer = qnaAnswerRepository
                                 .findFirstByQnaQuestionAndAnswerType(question, "AI_GENERATED")

@@ -8,7 +8,9 @@ import com.pres.pres_server.service.analyse.AudioAnalysisService.AnalysisResult;
 import com.pres.pres_server.service.analyse.AnalysisResultService;
 import com.pres.pres_server.repository.CueCardRepository;
 import com.pres.pres_server.repository.PresentationFileRepository;
+import com.pres.pres_server.repository.PracticeSessionRepository;
 import com.pres.pres_server.domain.PresentationFile;
+import com.pres.pres_server.domain.PracticeSession;
 import com.pres.pres_server.domain.CueCard;
 
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class AnalyseController {
     private final AnalysisResultService analysisResultService;
     private final CueCardRepository cueCardRepository;
     private final PresentationFileRepository presentationFileRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
     private final ObjectMapper objectMapper;
 
     @Operation(summary = "오디오 분석", description = "오디오 파일 업로드 및 분석 수행" +
@@ -51,6 +54,7 @@ public class AnalyseController {
     public ResponseEntity<Map<String, Long>> analyse(
             @RequestPart("audio") MultipartFile audioFile,
             @RequestParam("projectId") Long projectId,
+            @RequestParam(value = "sessionId", required = false) Long sessionId,
             @RequestParam("slideTransitions") String slideTransitionsJson) {
 
         try {
@@ -93,7 +97,8 @@ public class AnalyseController {
             // 3. Log transition/script sizes for mismatch detection
             int transitionCount = transitions == null ? 0 : transitions.size();
             int scriptCount = slideScripts == null ? 0 : slideScripts.size();
-            //log.info("  • slideTransitions.size()={}, slideScripts.size()={}", transitionCount,scriptCount);
+            // log.info(" • slideTransitions.size()={}, slideScripts.size()={}",
+            // transitionCount,scriptCount);
             if (transitionCount > 0 && scriptCount > 0 && transitionCount != scriptCount) {
                 log.warn(
                         "  ⚠ slideTransitions count ({}) does not match slideScripts count ({}). Analysis will use controller-provided scripts as-is.",
@@ -104,12 +109,28 @@ public class AnalyseController {
             AnalysisResult analysisResult = audioAnalysisService.analyzeAudio(
                     audioFile, projectId, transitions, slideScripts);
 
-            // 4. Save to DB
-            Long sessionId = analysisResultService.saveAnalysisResult(projectId, analysisResult);
+            // 5. Save to DB
+            if (sessionId != null) {
+                try {
+                    Optional<PracticeSession> sessionOpt = practiceSessionRepository.findById(sessionId);
+                    if (sessionOpt.isPresent()) {
+                        analysisResultService.saveAnalysisResult(sessionOpt.get(), analysisResult);
+                        log.info("Analysis updated existing session: sessionId={}, windows={}", sessionId,
+                                analysisResult.getWindows().size());
+                        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("sessionId", sessionId));
+                    } else {
+                        log.warn("Provided sessionId={} not found - will create a new session instead", sessionId);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to load session {} - creating new session. Error: {}", sessionId, e.getMessage());
+                }
+            }
 
-            // 5. Return minimal success response (frontend will call feedback endpoint)
-            log.info("Analysis saved: sessionId={}, windows={}", sessionId, analysisResult.getWindows().size());
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("sessionId", sessionId));
+            // Fallback: create a new PracticeSession (existing behavior)
+            Long createdSessionId = analysisResultService.saveAnalysisResult(projectId, analysisResult);
+            log.info("Analysis saved (new session): sessionId={}, windows={}", createdSessionId,
+                    analysisResult.getWindows().size());
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("sessionId", createdSessionId));
 
         } catch (Exception e) {
             log.error("Analysis failed", e);
