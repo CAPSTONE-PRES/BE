@@ -23,6 +23,7 @@ public class NotificationPolicy {
         return switch (type) {
             case INVITE -> prefs.isInviteEnabled();
             case REVIEW_COMMENT_ADDED -> prefs.isReviewCommentEnabled();
+            //case REVIEW_COMMENT_CONFIRMED -> prefs.isReviewCommentEnabled();
             case PRACTICE_REMINDER_D1 -> prefs.isPracticeReminderEnabled() && prefs.isPracticeRemindD1();
             case PRACTICE_REMINDER_D2 -> prefs.isPracticeReminderEnabled() && prefs.isPracticeRemindD2();
         };
